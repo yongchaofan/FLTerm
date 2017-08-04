@@ -1,0 +1,14 @@
+HEADERS = ietf.h ssh_Host.h Fl_Term.h table.h
+OBJS =	obj/Fl_Term.o obj/ssh_Host.o obj/flTerm.o
+LIBS = /usr/local/lib/libssh2.a
+INCLUDE_DIRS = -I.
+CFLAGS= -Os $(shell fltk-config --cxxflags) 
+LDFLAGS = $(shell fltk-config --ldstaticflags ) -lstdc++ -lz -lcrypto -lssl
+
+all: flTerm
+flTerm: ${OBJS} 
+	cc -Wall -o "$@" ${OBJS} ${LDFLAGS} ${LIBS}
+obj/%.o: %.cxx ${HEADERS}
+	cc -Wall ${CFLAGS} ${INCLUDE_DIRS} -c $< -o $@
+clean:
+	rm obj/*.o flTerm
