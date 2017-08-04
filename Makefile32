@@ -1,16 +1,12 @@
-HEADERS = src/table.h src/Fl_Term.h src/ssh_Host.h src/ietf.h
-OBJS =	obj/flTable32.o obj/table32.o obj/Fl_Term32.o obj/ssh_Host32.o obj/ietf32.o obj/finity32.o obj/resource32.o ../sqlite3/sqlite3_32.o ../tinyxml2/tinyxml2_32.o
+HEADERS = Fl_Term.h ssh_Host.h
 LIBS =  /mingw32/lib/libssh2.a /mingw32/lib/libz.a /mingw32/lib/libssl.a /mingw32/lib/libcrypto.a
-INCLUDE_DIRS = -I../sqlite3 -I../tinyxml2
 
 CFLAGS = -Os $(shell fltk-config --cxxflags)
 LDFLAGS = -s $(shell fltk-config --ldstaticflags) -lws2_32 -static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread
 RC = windres
 
-all: flTable32.exe flTerm32.exe
+all: flTerm32.exe
 
-flTable32.exe: ${OBJS} 
-	cc -Wall -o "$@" ${OBJS} ${LIBS} ${LDFLAGS}
 flTerm32.exe: obj/flTerm32.o obj/Fl_Term32.o obj/ssh_Host32.o obj/resource32.o
 	cc -Wall -o "$@" obj/flTerm32.o obj/Fl_Term32.o obj/ssh_Host32.o obj/resource32.o ${LIBS} ${LDFLAGS}
 
@@ -21,4 +17,4 @@ obj/resource32.o: res\fltk.rc res\fltk.manifest res\Fl.ico
 	${RC} -I. -I.\res -i $< -o $@
 
 clean:
-	rm obj/*32.o "flTable32.exe" "flTerm32.exe"
+	rm obj/*32.o "flTerm32.exe"
