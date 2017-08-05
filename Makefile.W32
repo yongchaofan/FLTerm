@@ -7,7 +7,7 @@ CFLAGS = -Os $(shell fltk-config --cxxflags)
 LDFLAGS = -s $(shell fltk-config --ldstaticflags) -lws2_32 -static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread
 RC = windres
 
-all: flTable32.exe flTerm32.exe
+all: flTable32.exe flTerm32.exe 
 
 flTable32.exe: ${OBJS} 
 	cc -Wall -o "$@" ${OBJS} ${LIBS} ${LDFLAGS}
