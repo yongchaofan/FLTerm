@@ -6,7 +6,7 @@ INCLUDE = -I.
 CFLAGS= -Os ${shell fltk-config --cxxflags}
 LDFLAGS = ${shell fltk-config --ldstaticflags} -lc++ -lz -lssl -lcrypto
 
-all: netconfTable flTerm flTable
+all: flTerm flTable netconfTable
 
 flTerm: obj/flTerm.o obj/Fl_Term.o obj/ssh_Host.o  
 	cc -o "$@" obj/flTerm.o obj/Fl_Term.o obj/ssh_Host.o ${LIBS} ${LDFLAGS}
