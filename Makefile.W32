@@ -1,4 +1,4 @@
-HEADERS = src/sqlTable.h src/Fl_Term.h src/sshHost.h src/ietf.h
+HEADERS = src/sqlTable.h src/Fl_Term.h src/sshHost.h
 OBJS =	obj/netconfTable32.o obj/sqlTable32.o obj/Fl_Term32.o obj/sshHost32.o obj/ietf32.o obj/finity32.o obj/resource32.o ../sqlite3/sqlite3_32.o ../tinyxml2/tinyxml2_32.o
 LIBS =  /mingw32/lib/libssh2.a /mingw32/lib/libz.a /mingw32/lib/libssl.a /mingw32/lib/libcrypto.a
 INCLUDE_DIRS = -I../sqlite3 -I../tinyxml2
