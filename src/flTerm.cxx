@@ -29,7 +29,7 @@ const char ABOUT_TERM[]="\n\n\n\
 		by yongchaofan@gmail.com	07-31-2017";
 #include <ctype.h>
 #include <unistd.h>
-#include "ssh_Host.h"
+#include "sshHost.h"
 
 #define TABHEIGHT 20
 #include <FL/x.H>               // needed for fl_display
@@ -58,7 +58,7 @@ Fl_Window *pTermWin;
 
 Fl_Term *act_term=NULL;
 Fl_Term *term_new(const char *host)
-{			
+{
 	Fl_Host *pHost;
 	Fl_Term *pTerm=new Fl_Term(0, TABHEIGHT, pTermTabs->w(), pTermTabs->h()-TABHEIGHT, "");
 	pTerm->color(FL_BLACK, FL_GRAY);
@@ -91,8 +91,8 @@ void term_delete()
 	act_term = n>0?(Fl_Term *)pTermTabs->child(0):NULL;
 	pTermTabs->value( pTermTabs->child(0) );
 	if ( act_term!=NULL ) act_term->take_focus();
-		
-	Fl::delete_widget(pTerm);	
+
+	Fl::delete_widget(pTerm);
 	Fl::awake(pTermWin);
 }
 void term_tab(const char *host)
