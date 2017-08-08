@@ -4,7 +4,7 @@ LIBS =  /usr/local/lib/libssh2.a -L/usr/local/lib
 INCLUDE = -I.
 
 CFLAGS= -Os ${shell fltk-config --cxxflags}
-LDFLAGS = ${shell fltk-config --ldstaticflags} -lc++ -lz -lssl -lcrypto
+LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++ -lz -lssl -lcrypto
 
 all: flTerm flTable netconfTable
 
