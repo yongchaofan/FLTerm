@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Term.h 3988 2017-08-04 13:48:10 $"
+// "$Id: Fl_Term.h 3739 2018-05-25 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
-// Copyright 2017 by Yongchao Fan.
+// Copyright 2017-2018 by Yongchao Fan.
 //
 // This library is free software distributed under GUN LGPL 3.0,
 // see the license at:
@@ -14,10 +14,10 @@
 //
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
-
+#include "Hosts.h"
 #include <FL/Fl.H>
-#include <FL/Fl_Ask.H>
 #include <FL/Fl_Draw.H>
+#include <thread>
 
 #ifdef __APPLE__ 
 	#define TERMFONT "Monaco"
@@ -25,29 +25,8 @@
 	#define TERMFONT "Consolas"
 #endif
 
-#define HOST_IDLE			0
-#define HOST_START			1
-#define HOST_CONNECTING		2
-#define HOST_AUTHENTICATING 4
-#define HOST_CONNECTED		8
-
 #ifndef _FL_TERM_H_
 #define _FL_TERM_H_
-class Fl_Term;
-class Fl_Host {
-protected:
-	Fl_Term *term;
-public: 
-	virtual int set_term(Fl_Term *pTerm)	=0;
-	virtual void start( const char *host )	=0;
-	virtual	int state()						=0;
-
-	virtual	int connect()					=0;
-	virtual	void read()						=0;
-	virtual	void write( const char *cmd )	=0;
-	virtual void send_size(int sx, int sy)	=0;
-	virtual	void disconn()					=0;	
-};
 class Fl_Term : public Fl_Widget {
 	char c_attr;			//current character attribute(color)
 	char *buff, *attr;		//buffer for characters and attributes, one byte per char
@@ -58,8 +37,10 @@ class Fl_Term : public Fl_Widget {
 	int cursor_x;			//index to buff and attr for current insert position
 	int	cursor_y;			//index to line buffer for current row of text
 	int save_y;				//saves the previous cursor_y when switch to alternate screen
-	int scroll_y;			//scroll offset for the current line at top of screen
 	int screen_y;			//the line at top of screen
+	int scroll_y;			//scroll offset for the current line at top of screen
+	int bMouseScroll;		//if mouse if dragged on scrollbar
+	int page_up_hold, page_down_hold;		//control of scroll speed
 	int roll_top, roll_bot;	//the range of lines that will scroll in vi
 	int sel_left, sel_right;//begin and end of selection on screen
 	int iFontWidth, iFontHeight;
@@ -77,43 +58,56 @@ class Fl_Term : public Fl_Widget {
 	char sPrompt[32];		//wait for sPrompt before next command when scripting
 	int iPrompt;			//length of sPrompt
 	int bPrompt;			//if sPrompt was found after the last append
+	int bEnter;				//set when enter key is pressed, cleared at next key press 
 	int iTimeOut;			//time out in seconds while waiting for sPrompt
 	int recv0;				//cursor_x at the start of last command
-	char script[4096];		//buffer for pasted or drag&dropped script
 	
 	int bLogging;			//if logging is active 
 	FILE *fpLogFile;
-	char keyword[256];		//search keyword
+	int cursor;
+	int bGets;
+	int bReturn;
+	int bPassword;
+	char keys[256];
 
+	std::thread readerThread;
+	int bReaderRunning;
+	int bDND;
+	char script[4096];
+	
 protected: 
 	Fl_Host *host;
+	void draw();
+	void reader();
+	void scripter();
 	void more_lines();
 	void more_chars();
+	void append( const char *newtxt, int len );
 	const char *vt100_Escape( const char *sz );
 
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
 	~Fl_Term();
-	void draw();
 	int  handle( int e );
 	void resize( int X, int Y, int W, int H );
-	void set_fontsize( int pt );
-
-	void append( const char *newtxt, int len );
+	void textsize( int pt );
 	void clear();
-	void logg( const char *fn=NULL );
-	void save( const char *fn=NULL );
+	int cursorx();
+
+	void set_host(Fl_Host *pHost);
+	void start_reader();
+	void stop_reader();
+	void run_script(const char *text);
+	int active() { return bReaderRunning; }
+
+	int  logging() { return bLogging; }
+	void logg( const char *fn );
+	void save( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
-
-	void exec( const char *cmd );
 	int  command( const char *cmd, char **response );
-static	void *scripter( void *pv );
 
-	int  get_size_x() { return size_x; }
-	int  get_size_y() { return size_y; }
-	char *get_script() { return script; }
-	void write( const char *cmd ) { if ( host!=NULL ) host->write(cmd); }	
-	void set_host(Fl_Host *pHost) { host = pHost; }
-	Fl_Host *get_host(){ return host; } 	
+	char *gets(const char *prompt, int echo);
+	void write(const char *buf);
+	void print(const char *fmt, ...);
 };
 #endif

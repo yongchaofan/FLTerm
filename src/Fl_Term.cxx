@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Term.cxx 16354 2017-08-04 13:48:10 $"
+// "$Id: Fl_Term.cxx 19952 2018-05-25 23:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
-// Copyright 2017 by Yongchao Fan.
+// Copyright 2017-2018 by Yongchao Fan.
 //
 // This library is free software distributed under GUN LGPL 3.0,
 // see the license at:
@@ -15,9 +15,10 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 
+#include <stdio.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <ctype.h>
-#include <pthread.h>
 #include "Fl_Term.h"
 
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L) 
@@ -25,20 +26,30 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bInsert = bAlterScreen = bAppCursor = false;
 	bEscape = bGraphic = bTitle = false;
 	bLogging = false;
+	bMouseScroll = false;
 	ESC_idx = 0;
 
 	Fl::set_font(FL_COURIER, TERMFONT);
+	color(FL_BLACK);
+	textsize(14);
 	strcpy(sPrompt, "> ");
-	bPrompt = false;
 	iPrompt = 2;
 	iTimeOut = 30;	
-	keyword[0] = 0;
+	bPrompt = true;
+	bGets = bEnter = false;
+	bDND = bReaderRunning = false;
 	
+	host = NULL;
 	line = NULL;
 	buff = attr = NULL;
 	clear();
-	set_fontsize(14);
 }
+Fl_Term::~Fl_Term(){
+	if ( host!=NULL ) delete host;
+	free(attr);
+	free(buff);
+	free(line);
+};
 void Fl_Term::clear()
 {
 	Fl::lock();
@@ -53,164 +64,13 @@ void Fl_Term::clear()
 	cursor_y = cursor_x = 0;
 	screen_y = -1;
 	scroll_y = 0;
+	page_up_hold = page_down_hold = 0;
 	c_attr = 0;
 	sel_left = 0;
 	sel_right= 0;
 	recv0 = 0;
 	Fl::unlock();
 	redraw();
-}
-void Fl_Term::set_fontsize( int pt ) 
-{
-	font_size = pt;
-	iFontHeight = font_size; size_y = (h()-8)/iFontHeight;
-	iFontWidth = font_size/2+1; size_x = w()/iFontWidth;
-}	
-Fl_Term::~Fl_Term(){
-	free(attr);
-	free(buff);
-	free(line);
-};
-
-const int VT_attr[8]={FL_WHITE, FL_RED, FL_GREEN, FL_YELLOW, 
-					 FL_BLUE, FL_MAGENTA, FL_CYAN, FL_BLACK};
-void Fl_Term::draw()
-{
-	fl_color(color());
-	fl_rectf(x(),y(),w(),h());
-	fl_font(FL_COURIER, font_size);
-
-	int lx = cursor_x-line[cursor_y];
-	int ly = screen_y+1+scroll_y;
-	if ( ly<0 ) ly=0;
-	int dy = y()+iFontHeight;
-	for ( int i=0; i<size_y; i++ ) {
-		int dx = x()+1;
-		int j = line[ly+i];
-		while( j<line[ly+i+1] ) {
-			int n=j;
-			while (  attr[n]==attr[j] ) {
-				if ( ++n==line[ly+i+1]) break;
-				if ( n==sel_right || n==sel_left ) break;
-			}
-			int font_color = VT_attr[(int)attr[j]%8];
-			if ( j>=sel_left && j<sel_right ) {
-				fl_color(selection_color());
-				fl_rectf(dx, dy-iFontHeight+3, (n-j)*iFontWidth, iFontHeight);
-				fl_color(fl_contrast(font_color, selection_color()));
-			}
-			else 
-				fl_color( font_color );
-				
-			int k = n;
-			if ( buff[k-1]==0x0a ) k--;
-			fl_draw( buff+j, k-j, dx, dy );
-			dx += iFontWidth*(k-j);
-			j=n;
-		}
-		dy += iFontHeight;
-	}
-	fl_color(FL_WHITE);		//draw a white block as cursor
-	fl_rectf(x()+lx*iFontWidth+1, y()+(cursor_y-ly+1)*iFontHeight-4,8,8);
-}
-
-int Fl_Term::handle( int e ) {
-	switch (e) {
-		case FL_FOCUS: return 1;
-		case FL_MOUSEWHEEL: 
-			scroll_y += Fl::event_dy();
-			if ( scroll_y<-cursor_y ) scroll_y = -cursor_y;
-			if ( scroll_y>0 ) scroll_y = 0;	
-			redraw();
-			return 1;
-		case FL_KEYDOWN: {
-			int key = Fl::event_key();
-			switch (key) {
-			case FL_Page_Up: 
-					scroll_y-=size_y; 
-					if ( scroll_y<-cursor_y ) scroll_y=-cursor_y;
-					redraw();
-					break;
-			case FL_Page_Down:
-					scroll_y+=size_y; 
-					if ( scroll_y>0 ) scroll_y = 0;
-					redraw();
-					break;
-			case FL_Up:    write(bAppCursor?"\033OA":"\033[A"); break;
-			case FL_Down:  write(bAppCursor?"\033OB":"\033[B"); break;
-			case FL_Right: write(bAppCursor?"\033OC":"\033[C"); break;
-			case FL_Left:  write(bAppCursor?"\033OD":"\033[D"); break;
-			case FL_BackSpace: write("\177"); break;
-			default: if ( Fl::event_state(FL_ALT )==0 ) {
-					write(Fl::event_text());
-					scroll_y = 0;
-				}
-				else switch(key) {
-					case FL_Enter: if ( host!=NULL ) 
-										if ( host->state()==HOST_IDLE ) 
-											host->start(NULL); 
-									break;
-					case FL_Home:scroll_y=-cursor_y; redraw(); break;
-					case FL_End: scroll_y=0; redraw(); break;
-					case 'a': sel_left=0; sel_right=cursor_x;
-							  Fl::copy(buff, cursor_x, 1);
-							  redraw();
-							  break;
-					case 's': srch(NULL); break;
-					case 'p': srch(keyword); break;
-					case 'n': srch(keyword, 1); break;
-					default: break;
-				}
-			}
-			return 1;
-		}
-		case FL_PUSH: if ( Fl::event_button()==FL_LEFT_MOUSE ) {
-				int x=Fl::event_x()/iFontWidth; 
-				int y=(Fl::event_y()-8)/iFontHeight+screen_y+scroll_y; 
-				sel_left = line[y]+x;
-				if ( sel_left>line[y+1] ) sel_left=line[y+1] ;
-				sel_right = sel_left;
-			}
-			return 1;
-		case FL_DRAG: if ( Fl::event_button()==FL_LEFT_MOUSE ) {
-				int x=Fl::event_x()/iFontWidth; 
-				int y=(Fl::event_y()-8)/iFontHeight+screen_y+scroll_y; 
-				sel_right = line[y]+x;
-				if ( sel_right>line[y+1] ) sel_right=line[y+1];
-				if ( sel_right!=sel_left  ) redraw();
-			}
-			return 1;
-		case FL_RELEASE:
-			if ( Fl::event_button()==FL_LEFT_MOUSE ) {
-				take_focus();		//left button drag to copy
-				if ( sel_left>sel_right ) {
-					int t=sel_left; sel_left=sel_right; sel_right=t;
-				}
-				if ( sel_left<sel_right ) 
-					Fl::copy(buff+sel_left, sel_right-sel_left, 1);
-			}
-			else					//right click to paste
-				Fl::paste(*this, 1);
-			return 1; 
-		case FL_DND_ENTER: 
-		case FL_DND_DRAG:  
-		case FL_DND_RELEASE: 
-		case FL_DND_LEAVE:  return 1;
-		case FL_PASTE: 	{
-				const char *txt = Fl::event_text();
-				const char *p = strchr(txt, 0x0a);
-				if ( p==NULL || p[1]==0 ) {	//paste if only one line
-					write(txt);
-				}
-				else { 			//run script when more than one line
-					strncpy(script, txt, 4095 );
-					pthread_t id;
-					pthread_create( &id, NULL, scripter, (void *)this);
-				}
-			}
-			return 1;
-	}
-	return(Fl_Widget::handle(e));
 }
 void Fl_Term::resize( int X, int Y, int W, int H ) 
 {
@@ -219,7 +79,10 @@ void Fl_Term::resize( int X, int Y, int W, int H )
 	size_x = w()/iFontWidth;
 	if ( host!=NULL ) host->send_size(size_x, size_y);
 }
-
+int Fl_Term::cursorx()
+{
+	return (cursor_x-line[cursor_y])*iFontWidth;
+}
 void Fl_Term::more_chars()
 {
 	Fl::lock();
@@ -243,7 +106,206 @@ void Fl_Term::more_lines()
 	else clear();
 	Fl::unlock();
 }
+void Fl_Term::textsize( int pt ) 
+{
+	if ( pt== 0 ) {
+		font_size += 2; 
+		if ( font_size>16 ) font_size=12;
+	}
+	else 
+		font_size = pt;
+	fl_font(FL_COURIER, font_size);
+	iFontWidth = fl_width('a'); size_x = w()/iFontWidth;
+	iFontHeight = fl_height(); size_y = h()/iFontHeight;
+	redraw();
+}	
 
+const int VT_attr[8]={FL_WHITE, FL_RED, FL_GREEN, FL_YELLOW, 
+					 FL_BLUE, FL_MAGENTA, FL_CYAN, FL_BLACK};
+void Fl_Term::draw()
+{
+	fl_color(color());
+	fl_rectf(x(),y(),w(),h());
+	fl_font(FL_COURIER, font_size);
+
+	int sel_l = sel_left;
+	int sel_r = sel_right;
+	if ( sel_l>sel_r ) {
+		sel_l = sel_right;
+		sel_r = sel_left;
+	}
+	int lx = cursor_x-line[cursor_y];
+	int ly = screen_y+1+scroll_y;
+	if ( ly<0 ) ly=0;
+	int dy = y()+iFontHeight;
+	for ( int i=0; i<size_y; i++ ) {
+		int dx = x()+1;
+		int j = line[ly+i];
+		while( j<line[ly+i+1] ) {
+			int n=j;
+			while (  attr[n]==attr[j] ) {
+				if ( ++n==line[ly+i+1]) break;
+				if ( n==sel_r || n==sel_l ) break;
+			}
+			int font_color = VT_attr[(int)attr[j]%8];
+			if ( j>=sel_l && j<sel_r ) {
+				fl_color(selection_color());
+				fl_rectf(dx, dy-iFontHeight+4, (n-j)*iFontWidth, iFontHeight);
+				fl_color(fl_contrast(font_color, selection_color()));
+			}
+			else 
+				fl_color( font_color );
+				
+			int k = n;
+			if ( buff[k-1]==0x0a ) k--;
+			fl_draw( buff+j, k-j, dx, dy );
+			dx += iFontWidth*(k-j);
+			j=n;
+		}
+		dy += iFontHeight;
+	}
+	if ( scroll_y ) {
+		fl_color(FL_DARK3);		//draw scrollbar
+		fl_rectf(x()+w()-8, y(), 8, y()+h());
+		fl_color(FL_RED);		//draw slider
+		int slider_y = (cursor_y+scroll_y)*(h()-16)/cursor_y; 
+		fl_rectf(x()+w()-8, y()+slider_y+2, 8, 12);
+		fl_line( x()+w()-7, y()+slider_y+1, x()+w()-2, y()+slider_y+1 );
+		fl_line( x()+w()-6, y()+slider_y+0, x()+w()-3, y()+slider_y+0 );
+		fl_line( x()+w()-6, y()+slider_y+15, x()+w()-3, y()+slider_y+15 );
+		fl_line( x()+w()-7, y()+slider_y+14, x()+w()-2, y()+slider_y+14 );
+	}
+	if ( Fl::focus()==this && active() ) {
+		fl_color(FL_WHITE);		//draw a white block as cursor
+		fl_rectf(x()+lx*iFontWidth+1, y()+(cursor_y-ly+1)*iFontHeight-4,8,8);
+	}
+}
+
+int Fl_Term::handle( int e ) {
+	switch (e) {
+		case FL_FOCUS: redraw(); return 1;
+		case FL_MOUSEWHEEL: 
+			scroll_y += Fl::event_dy();
+			if ( scroll_y<-cursor_y ) scroll_y = -cursor_y;
+			if ( scroll_y>0 ) scroll_y = 0;	
+			redraw();
+			return 1;
+		case FL_PUSH: if ( Fl::event_button()==FL_LEFT_MOUSE ) {
+				int x=Fl::event_x()/iFontWidth; 
+				int y=Fl::event_y();
+				
+				if ( x>=size_x-2 && scroll_y!=0 ) {
+					bMouseScroll = true;
+					scroll_y = (Fl::event_y()-16)*cursor_y/h()-cursor_y;
+					redraw();
+				}
+				else {
+					y = (y-8)/iFontHeight+screen_y+scroll_y; 
+					sel_left = line[y]+x;
+					if ( sel_left>line[y+1] ) sel_left=line[y+1] ;
+					sel_right = sel_left;
+				}
+			}
+			return 1;
+		case FL_DRAG: if ( Fl::event_button()==FL_LEFT_MOUSE ) {
+				int x = Fl::event_x()/iFontWidth;
+				int y = Fl::event_y();
+				if ( bMouseScroll) {
+					scroll_y = (y-16)*cursor_y/h()-cursor_y;
+				}
+				else {
+					if ( y<0 ) scroll_y += y/8;
+					if ( y>h() ) scroll_y += (y-h())/8;
+					y = (y-8)/iFontHeight+screen_y+scroll_y; 
+					sel_right = line[y]+x;
+					if ( sel_right>line[y+1] ) sel_right=line[y+1];
+				}
+				redraw();
+			}
+			return 1;
+		case FL_RELEASE:
+			if ( Fl::event_button()==FL_LEFT_MOUSE ) {
+				take_focus();		//left button drag to copy
+				bMouseScroll = false;
+				if ( sel_left>sel_right ) {
+					int t=sel_left; sel_left=sel_right; sel_right=t;
+				}
+				if ( sel_left<sel_right ) 
+					Fl::copy(buff+sel_left, sel_right-sel_left, 1);
+			}
+			else					//right click to paste
+				Fl::paste(*this, 1);
+			return 1; 
+		case FL_DND_RELEASE: bDND = true;
+		case FL_DND_ENTER: 
+		case FL_DND_DRAG:  
+		case FL_DND_LEAVE:  return 1;
+		case FL_PASTE: 
+				if ( bReaderRunning ) {
+					if ( bDND ) {
+						bDND = false;
+						run_script(Fl::event_text());
+					}
+					else
+						write(Fl::event_text()); 
+				}
+				else 
+					append(Fl::event_text(), Fl::event_length());
+				return 1;
+		case FL_KEYUP:  if ( Fl::event_state(FL_ALT)==0 ) {
+				int key = Fl::event_key();
+				switch ( key ) {
+					case FL_Page_Up:
+						page_up_hold = 0;
+						break;
+					case FL_Page_Down:
+						page_down_hold = 0;
+						break;
+				}
+			}
+			break;
+		case FL_KEYDOWN:if ( Fl::event_state(FL_ALT)==0 ) {
+				int key = Fl::event_key();
+				switch (key) {
+				case FL_Page_Up: 
+						scroll_y-=size_y*(1<<(page_up_hold/16))-1; 
+						page_up_hold++;
+						if ( scroll_y<-cursor_y ) scroll_y=-cursor_y;
+						redraw();
+						break;
+				case FL_Page_Down:
+						scroll_y+=size_y*(1<<(page_down_hold/16))-1; 
+						page_down_hold++;
+						if ( scroll_y>0 ) scroll_y = 0;
+						redraw();
+						break;
+				case FL_Up:    write(bAppCursor?"\033OA":"\033[A"); break;
+				case FL_Down:  write(bAppCursor?"\033OB":"\033[B"); break;
+				case FL_Right: write(bAppCursor?"\033OC":"\033[C"); break;
+				case FL_Left:  write(bAppCursor?"\033OD":"\033[D"); break;
+				case FL_BackSpace: write("\177"); break;
+				default:if ( key==FL_Enter ) {
+							bEnter = true;
+							if ( !active() ) start_reader();
+						}
+						else {
+							if ( bEnter ) {	//auto detect Prompt after each Enter 
+								bEnter = false;
+								sPrompt[0] = buff[cursor_x-2];
+								sPrompt[1] = buff[cursor_x-1];
+								iPrompt = 2;  
+							}
+						}
+						write( Fl::event_text() ); 
+						scroll_y = 0;
+				}
+				return 1;
+			}
+			else 
+				return 0;
+	}
+	return Fl_Widget::handle(e);
+}
 void Fl_Term::append( const char *newtext, int len ){
 	const char *p = newtext;
 
@@ -252,6 +314,7 @@ void Fl_Term::append( const char *newtext, int len ){
 	while ( p < newtext+len ) {
 		char c=*p++;
 		switch ( c ) {
+		case 0x0:  break;
 		case 0x07: if ( bTitle ) {
 						bTitle=false;
 						buff[cursor_x]=0;
@@ -290,8 +353,8 @@ void Fl_Term::append( const char *newtext, int len ){
 					if ( line[cursor_y+1]<cursor_x ) 
 						line[cursor_y+1] = cursor_x;
 					if ( cursor_x>=buff_size ) more_chars(); 
-					if ( c==0x0a || cursor_x-line[cursor_y]==size_x ) {
-						line[++cursor_y] = cursor_x;
+					if ( c==0x0a || cursor_x-line[cursor_y]>size_x ) {
+						line[++cursor_y] = cursor_x-(c==0x0a?0:1);
 						if ( scroll_y<0 ) scroll_y--;
 						if ( cursor_y==line_size ) more_lines();
 						if ( line[cursor_y+1]<cursor_x ) 
@@ -301,17 +364,14 @@ void Fl_Term::append( const char *newtext, int len ){
 					}
 		}
 	}
-	if ( strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0 ) bPrompt=true;
-	Fl::awake( this );	//redraw() is slower in responding to key strokes;
+	if ( !bPrompt )	
+		if ( strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0 ) 
+			bPrompt=true;
+	Fl::awake( this );	
 }
 
-void Fl_Term::srch( const char *word, int dirn ) {
-	if ( word==NULL ) {
-		word=fl_input("search for:", keyword);
-		if ( word!=NULL ) strncpy(keyword, word, 255);
-		else return;
-	}
-	
+void Fl_Term::srch( const char *word, int dirn ) 
+{
 	for ( int i=cursor_y+scroll_y+dirn; i>0&&i<cursor_y; i+=dirn ) {
 		int len = strlen(word);
 		char *p, tmp=buff[line[i+1]+len-1]; 
@@ -335,7 +395,7 @@ void Fl_Term::logg( const char *fn )
 		append("\n***Log file closed***\n",23);
 	}
 	else {
-		fpLogFile = fopen( fn, "wb+" );
+		fpLogFile = fl_fopen( fn, "wb" );
 		if ( fpLogFile != NULL ) {
 			bLogging = true;
 			append("\n***",4);
@@ -346,7 +406,7 @@ void Fl_Term::logg( const char *fn )
 }
 void Fl_Term::save(const char *fn)
 {
-	FILE *fp = fopen( fn, "wb+" );
+	FILE *fp = fl_fopen( fn, "w" );
 	if ( fp != NULL ) {
 		fwrite(buff, 1, cursor_x, fp);
 		fclose( fp );
@@ -362,7 +422,7 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 		case '[':	if ( isalpha(ESC_code[ESC_idx-1]) || 
 								 ESC_code[ESC_idx-1]=='@' ) {
 			bEscape = false;
-			int n0=1, n1=0, n2=0;
+			int n0=1, n1=1, n2=1;
 			if ( ESC_idx>1 ) {
 				char *p = strchr(ESC_code,';');
 				if ( p != NULL ) {
@@ -461,8 +521,10 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 				}
 				if ( ESC_code[1]=='?' ) {
 					n0 = atoi(ESC_code+2);
-					if ( n0==1 ) // ?1h app cursor key, ?1l exit app cursor key
+					if ( n0==1 ) {// ?1h app cursor key, ?1l exit app cursor key
 						bAlterScreen = bAppCursor = (ESC_code[ESC_idx-1]=='h');
+						roll_top = 1; roll_bot = size_y;
+					}
 					if ( n0==1049 ) { 	//?1049h alternate screen, 
 						if ( ESC_code[ESC_idx-1]=='h' ) {
 							save_y = cursor_y;
@@ -528,32 +590,128 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 	}
 	return sz;
 }
-void Fl_Term::exec(const char *cmd)
-{
-	if ( strncmp(cmd, "Timeout", 7)==0 )  iTimeOut=atoi(cmd+8); 
-	else if ( strncmp(cmd,"Wait",4)==0 ) sleep(atoi(cmd+5));
-	else if ( strncmp(cmd,"Log ",4)==0 ) logg( cmd+4 );
-	else if ( strncmp(cmd,"Save",4)==0 ) save( cmd+5 );
-	else if ( strncmp(cmd,"Clear",5)==0 ) clear();
-	else if ( strncmp(cmd,"Title",5)==0 ) copy_label( cmd+6 );
-	else if ( strncmp(cmd,"Prompt",6)==0 ) {
-		strncpy(sPrompt, cmd+7, 31); 
-		for ( char *p=sPrompt; *p!=0; p++ ) {
-			if ( *p=='%' && isdigit(p[1]) ) {
-				int a;
-				sscanf( p+1, "%02x", &a);
-				*p = a;
-				strcpy(p+1, p+3);
-			}
-		}
-		iPrompt=strlen(sPrompt);
-	} 
+
+void Fl_Term::set_host(Fl_Host *pHost) 
+{ 
+	if ( bReaderRunning ) stop_reader();
+	if ( host!=NULL ) delete host;
+	if ( (host=pHost)!=NULL ) {
+		copy_label(host->name());
+		host->set_term(this); 
+	}
 }
-int Fl_Term::command( const char *cmd, char **response )
+void Fl_Term::reader()
 {
-	if ( *cmd=='#' ) { exec(cmd+1); return 0; }
-	if ( host==NULL ) return 0;
-	if ( host->state()==HOST_CONNECTED ) {
+	int len, rc;
+	char buf[65536];
+
+	if ( (rc=host->connect()) == 0 ) {
+		host->send_size(size_x, size_y);
+		do {
+			len=host->read(buf, 65535);
+			if ( len>0 ) append(buf, len);
+		} while ( len>=0 );
+	}
+	host->disconn();
+	append("\n****Disconnected, press Enter to restart****\n\n", 48);
+	bReaderRunning = false;
+}
+void Fl_Term::start_reader()
+{
+	if ( !bReaderRunning && host!=NULL ) {
+		bReaderRunning = true;
+		std::thread th(&Fl_Term::reader, this);
+		readerThread.swap(th);
+		if ( th.joinable() ) th.detach();
+	}
+}
+void Fl_Term::stop_reader()
+{
+	if ( bReaderRunning ) {
+		bGets = false;
+		host->disconn();
+		if ( readerThread.joinable() ) readerThread.join();
+		while ( bReaderRunning ) usleep(100000);
+	}
+}
+void Fl_Term::print(const char *fmt, ...)
+{
+	char buff[4096];
+	va_list args;
+	va_start(args, (char *)fmt);
+	int len = vsnprintf(buff, 4096, (char *)fmt, args);
+	va_end(args);
+	if ( len>0 ) append(buff, len);
+}
+void Fl_Term::write(const char *buf)
+ { 
+	if ( bGets ) {
+		for ( int i=0; buf[i]; i++ ) {
+			if ( buf[i]=='\015' ) {
+				keys[cursor++]=0; 
+				bReturn=true; 
+				append("\n", 1);
+			}
+			else if ( buf[i]=='\177' ) {
+				if ( cursor>0 ) {
+					cursor--; 
+					if ( !bPassword ) 
+						append( "\010 \010", 3);									
+				}
+			}
+			else {
+				keys[cursor++]=buf[i]; 
+				if ( cursor>255 ) cursor=255;
+				if ( !bPassword ) append(buf+i, 1);
+			}
+		}	
+	}
+	else {
+		if ( bReaderRunning ) 
+			host->write(buf, strlen(buf)); 
+	}
+}	
+char* Fl_Term::gets( const char *prompt, int echo )
+{
+	cursor=0;
+	bGets = true;
+	bReturn = false; 
+	bPassword = echo;
+	append(prompt, strlen(prompt));
+	int old_cursor = cursor;
+	for ( int i=0; i<iTimeOut*10&&bGets; i++ ) {
+		if ( bReturn ) { bGets = false; return keys; }
+		if ( cursor>old_cursor ) { old_cursor=cursor; i=0; }
+		usleep(100000);
+	}
+	bGets = false;
+	return NULL;
+}
+int Fl_Term::command( const char *cmd, char **preply )
+{
+	if ( *cmd=='#' ) {
+		cmd++;
+		if ( strncmp(cmd, "Timeout", 7)==0 )  iTimeOut = atoi(cmd+8); 
+		else if ( strncmp(cmd,"Wait",4)==0 )  sleep(atoi(cmd+5));
+		else if ( strncmp(cmd,"Log ",4)==0 )  logg( cmd+4 );
+		else if ( strncmp(cmd,"Save",4)==0 )  save( cmd+5 );
+		else if ( strncmp(cmd,"Clear",5)==0 ) clear();
+		else if ( strncmp(cmd,"Title",5)==0 ) copy_label( cmd+6 );
+		else if ( strncmp(cmd,"Prompt",6)==0 ) {
+			strncpy(sPrompt, cmd+7, 31); 
+			iPrompt=strlen(sPrompt);
+		}
+		else if ( strncmp(cmd,"scp ",4)==0  && host!=NULL ) {
+				if ( host->type()==HOST_SSH ) 
+					((sshHost*)host)->scp(cmd+4);
+		}
+		else if ( strncmp(cmd,"tunnel ",7)==0 && host!=NULL ) {
+				if ( host->type()==HOST_SSH ) 
+					((sshHost*)host)->tunnel(cmd+7);
+		}
+		return 0;
+	}
+	if ( bReaderRunning ) {
 		bPrompt = false; 
 		write( cmd ); write("\015");
 		recv0 = cursor_x;
@@ -561,24 +719,34 @@ int Fl_Term::command( const char *cmd, char **response )
 		for ( int i=0; i<iTimeOut && !bPrompt; i++ ) {
 			sleep(1);
 			if ( cursor_x>oldlen ) { i=0; oldlen=cursor_x; }
-		}
-		if ( response!=NULL ) *response = buff+recv0;	
+		}	
+		bPrompt = true;
+		if ( preply!=NULL ) *preply = buff+recv0;	
 		return cursor_x-recv0;
+	}
+	else {
+		append(cmd, strlen(cmd));
+		append("\015\012", 2);
 	}
 	return 0;
 }
-void *Fl_Term::scripter( void *pv )
+void Fl_Term::scripter()
 {
-	Fl_Term *pTerm = (Fl_Term *)pv;
-	char *p0=pTerm->get_script(), *p1, *p2;
+	char *p0, *p1, *p2;
+	p0 = script;
 	do {
 		p2=p1=strchr(p0, 0x0a);
 		if ( p1==NULL ) p1 = p0+strlen(p0);
 		*p1 = 0;
 
-		if (p1-p0>1) pTerm->command( p0, NULL );
+		if (p1-p0>1) command( p0, NULL );
 		if ( p0!=p1 ) { p0 = p1+1; *p1 = 0x0a; }
 	} 
 	while ( p2!=NULL );
-	return NULL;
+}
+void Fl_Term::run_script(const char *txt)
+{
+	strncpy(script, txt, 4095);
+	std::thread scripterThread(&Fl_Term::scripter, this);
+	scripterThread.detach();
 }
