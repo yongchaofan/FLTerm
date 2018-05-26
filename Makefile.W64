@@ -1,5 +1,4 @@
-HEADERS = src/sqlTable.h src/Fl_Term.h src/sshHost.h
-OBJS =	obj/netconfTable.o obj/sqlTable.o obj/Fl_Term.o obj/sshHost.o obj/ietf.o obj/finity.o obj/resource.o ../sqlite3/sqlite3.o ../tinyxml2/tinyxml2.o 
+HEADERS = src/acInput.h src/Fl_Term.h src/Fl_Host.h src/ssh2.h
 LIBS =  /mingw64/lib/libssh2.a /mingw64/lib/libz.a
 INCLUDE_DIRS = -I../sqlite3 -I../tinyxml2
 
@@ -7,14 +6,10 @@ CFLAGS = -Os $(shell fltk-config --cxxflags)
 LDFLAGS = -s $(shell fltk-config --ldstaticflags) -lws2_32 -lcrypt32 -lbcrypt -static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread
 RC = windres
 
-all: flTerm.exe flTable.exe netconfTable.exe
+all: flTerm.exe
 
-flTerm.exe: obj/flTerm.o obj/Fl_Term.o obj/sshHost.o obj/resource.o
-	cc -Wall -o "$@" obj/flTerm.o obj/Fl_Term.o obj/sshHost.o obj/resource.o ${LIBS} ${LDFLAGS}
-flTable.exe: obj/flTable.o obj/sqlTable.o obj/Fl_Term.o ../sqlite3/sqlite3.o obj/resource.o
-	cc -Wall -o "$@" obj/flTable.o obj/sqlTable.o obj/Fl_Term.o ../sqlite3/sqlite3.o obj/resource.o ${LIBS} ${LDFLAGS}
-netconfTable.exe: ${OBJS} 
-	cc -Wall -o "$@" ${OBJS} ${LIBS} ${LDFLAGS}
+flTerm.exe: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Fl_Host.o obj/ssh2.o obj/resource.o
+	cc -Wall -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Fl_Host.o obj/ssh2.o obj/resource.o ${LIBS} ${LDFLAGS}
 
 obj/%.o: src/%.cxx ${HEADERS}
 	${CC} ${CFLAGS} ${INCLUDE_DIRS} -c $< -o $@
@@ -23,4 +18,4 @@ obj/resource.o: res\fltk.rc res\fltk.manifest res\Fl.ico
 	${RC} -I. -I.\res -i $< -o $@
 
 clean:
-	rm obj/*.o "flTerm.exe" "flTable.exe" "netconfTable.exe"
+	rm obj/*.o "flTerm.exe"
