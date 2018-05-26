@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 3739 2018-05-25 13:48:10 $"
+// "$Id: Fl_Term.h 3760 2018-05-25 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -14,7 +14,7 @@
 //
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
-#include "Hosts.h"
+#include "Fl_Host.h"
 #include <FL/Fl.H>
 #include <FL/Fl_Draw.H>
 #include <thread>

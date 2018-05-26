@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 19952 2018-05-25 23:48:10 $"
+// "$Id: Fl_Term.cxx 20033 2018-05-25 23:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include "Fl_Term.h"
+#include "ssh2.h"
 
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L) 
 {

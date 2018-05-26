@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 14174 2018-05-25 23:55:10 $"
+// "$Id: flTerm.cxx 16563 2018-05-25 23:55:10 $"
 //
 // flTerm -- A minimalist ssh terminal simulator
 //
@@ -32,9 +32,10 @@ const char ABOUT_TERM[]="\n\n\n\
 #include <ctype.h>
 #include <unistd.h>
 #include <thread>
-#include "Hosts.h"
-#include "Fl_Term.h"
 #include "acInput.h"
+#include "Fl_Term.h"
+#include "Fl_Host.h"
+#include "ssh2.h"
 
 #define MARGIN 20
 #include <FL/x.H>               // needed for fl_display

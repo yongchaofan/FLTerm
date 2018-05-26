@@ -1,3 +1,19 @@
+//
+// "$Id: Fl_Host.h 1825 2018-05-08 23:48:10 $"
+//
+// Fl_Input widget extended with auto completion 
+//
+// Copyright 2017-2018 by Yongchao Fan.
+//
+// This library is free software distributed under GUN LGPL 3.0,
+// see the license at:
+//
+//     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
+//
+// Please report all bugs and problems on the following page:
+//
+//     https://github.com/zoudaokou/flTerm/issues/new
+//
 #include "acInput.h"
 
 void acInput::add( const char *cmd ) {
