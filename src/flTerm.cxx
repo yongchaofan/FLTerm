@@ -211,17 +211,27 @@ void menu_callback(Fl_Widget *w, void *data)
 	const char *session = pMenu->text();
 	if ( session ) term_new((const char *)data);
 }
-void menu_add(const char *line)
+void menu_add(char *line)
 {
 	if ( strncmp(line, "ssh ",4)==0 ||
 		 strncmp(line, "telnet ",7)==0 ||
 		 strncmp(line, "serial ",7)==0 ||
 		 strncmp(line, "netconf ",8)==0 ) {
-		const char *p = strrchr(line, ' ');
+		char *menuline = strdup(line);
+		char *p = strrchr(line, ' ');
 		if ( p[1]!= 0 ) {
+#ifdef WIN32
+			char *p1 = strchr(p+1, '@');
+			if ( p1!=NULL ) {
+				for (int i=0; i<p1-p; i++ ) 
+					p[i] = p[i+1];
+			}
+			else
+				p++;
+#endif			
 			char item[40] = "Sessions/";
 			strncat(item, p, 31);
-			pMenu->add(item, 0, menu_callback, (void *)strdup(line) );
+			pMenu->add(item, 0, menu_callback, (void *)menuline );
 		}
 	}	
 }
@@ -477,7 +487,7 @@ int http_callback( char *buf, char **preply)
 	}
 	if ( strncmp(buf, "Cmd=", 4)==0 ) rc = term_cmd( buf+4, preply );
 	else if ( strncmp(buf, "Tab=", 4)==0 ) term_tab( buf+4 ); 
-	else if ( strncmp(buf, "New=", 4)==0 ) { term_new(buf+4); }
+	else if ( strncmp(buf, "New=", 4)==0 ) term_new( buf+4 );
 	return rc;
 }
 /**********************************HTTPd**************************************/
