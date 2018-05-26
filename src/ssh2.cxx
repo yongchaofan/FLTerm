@@ -22,7 +22,6 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <direct.h>
 #include <dirent.h>
 #include <fnmatch.h>
 

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Host.h 3617 2018-05-08 23:48:10 $"
+// "$Id: Fl_Host.h 3639 2018-05-08 23:48:10 $"
 //
 // tcpHost comHost ftpDaemon tftpDaemon sshHost sftpHost confHost 
 //
@@ -19,6 +19,7 @@
 //
 
 #ifdef WIN32
+	#include <direct.h>
 	#include <winsock2.h>
 	#include <windows.h>
 	#define socklen_t int
