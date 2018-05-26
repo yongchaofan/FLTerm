@@ -22,6 +22,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <direct.h>
 #include <dirent.h>
 #include <fnmatch.h>
 
@@ -877,7 +878,7 @@ int sftpHost::sftp_lcd(char *cmd)
 	if ( cmd==NULL || *cmd==0 ) {
 		char buf[4096];
 		if ( getcwd(buf, 4096)!=NULL ) {
-			print("\t\033[34m%s \033[30mis current local directory\n", cmd);
+			print("\t\033[32m%s \033[30mis current local directory\n", cmd);
 		}
 		else {
 			print("\t\033[31mCouldn't get current local directory\033[30m\n");
@@ -886,7 +887,7 @@ int sftpHost::sftp_lcd(char *cmd)
 	else {
 		while ( *cmd==' ' ) cmd++;
 		if ( chdir(cmd)==0 ) {
-			print("\t\033[34m%s\033[30m is now local directory!\n", cmd);
+			print("\t\033[32m%s\033[30m is now local directory!\n", cmd);
 		}
 		else {
 			print("\t\033[31mCouldn't change local directory to\033[32m%s\033[30m\n", cmd);
@@ -908,7 +909,7 @@ int sftpHost::sftp_cd(char *path)
 		int rc = libssh2_sftp_realpath(sftp_session, path, newpath, 1024);
 		if ( rc>0 ) strcpy( realpath, newpath );
 	}
-	print("\t\033[34m%s \033[30mis current working directory\n", realpath);
+	print("\t\033[32m%s \033[30mis current working directory\n", realpath);
 	return 0;
 }
 int sftpHost::sftp_ls(char *path, int ll)
@@ -1014,7 +1015,7 @@ int sftpHost::sftp_get_one(char *src, char *dst)
     	libssh2_sftp_close(sftp_handle);
 		return 0;
 	}
-	print("\t\033[34m%s\033[30m ", dst);
+	print("\t\033[32m%s\033[30m ", dst);
     char mem[1024*64];
 	int rc, block=0;
 	long total=0;
@@ -1046,7 +1047,7 @@ int sftpHost::sftp_put_one(char *src, char *dst)
 		print("\t\033[31mcouldn't open local file\033[32m%s\033[30m\n", src);
 		return 0;
 	}
-	print("\t\033[34m%s\033[30m ", dst);
+	print("\t\033[32m%s\033[30m ", dst);
     char mem[1024*64];
 	int nread;
 	long total=0;
