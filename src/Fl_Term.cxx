@@ -1,11 +1,11 @@
 //
-// "$Id: Fl_Term.cxx 20033 2018-05-25 23:48:10 $"
+// "$Id: Fl_Term.cxx 21953 2018-05-29 23:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GUN LGPL 3.0,
+// This library is free software distributed under GNU LGPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -37,7 +37,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	iPrompt = 2;
 	iTimeOut = 30;	
 	bPrompt = true;
-	bGets = bEnter = false;
+	bGets = bEnter = bEnter1 = false;
 	bDND = bReaderRunning = false;
 	
 	host = NULL;
@@ -165,16 +165,16 @@ void Fl_Term::draw()
 		}
 		dy += iFontHeight;
 	}
-	if ( scroll_y ) {
+	if ( scroll_y || bMouseScroll) {
 		fl_color(FL_DARK3);		//draw scrollbar
 		fl_rectf(x()+w()-8, y(), 8, y()+h());
 		fl_color(FL_RED);		//draw slider
-		int slider_y = (cursor_y+scroll_y)*(h()-16)/cursor_y; 
-		fl_rectf(x()+w()-8, y()+slider_y+2, 8, 12);
-		fl_line( x()+w()-7, y()+slider_y+1, x()+w()-2, y()+slider_y+1 );
-		fl_line( x()+w()-6, y()+slider_y+0, x()+w()-3, y()+slider_y+0 );
-		fl_line( x()+w()-6, y()+slider_y+15, x()+w()-3, y()+slider_y+15 );
-		fl_line( x()+w()-7, y()+slider_y+14, x()+w()-2, y()+slider_y+14 );
+		int slider_y = h()*(cursor_y+scroll_y)/cursor_y; 
+		fl_rectf(x()+w()-8, y()+slider_y-6, 8, 12);
+		fl_line( x()+w()-6, y()+slider_y-8, x()+w()-3, y()+slider_y-8 );
+		fl_line( x()+w()-7, y()+slider_y-7, x()+w()-2, y()+slider_y-7 );
+		fl_line( x()+w()-7, y()+slider_y+6, x()+w()-2, y()+slider_y+6 );
+		fl_line( x()+w()-6, y()+slider_y+7, x()+w()-3, y()+slider_y+7 );
 	}
 	if ( Fl::focus()==this && active() ) {
 		fl_color(FL_WHITE);		//draw a white block as cursor
@@ -187,21 +187,36 @@ int Fl_Term::handle( int e ) {
 		case FL_FOCUS: redraw(); return 1;
 		case FL_MOUSEWHEEL: 
 			scroll_y += Fl::event_dy();
-			if ( scroll_y<-cursor_y ) scroll_y = -cursor_y;
+			if ( scroll_y<-screen_y ) scroll_y = -screen_y;
 			if ( scroll_y>0 ) scroll_y = 0;	
 			redraw();
 			return 1;
 		case FL_PUSH: if ( Fl::event_button()==FL_LEFT_MOUSE ) {
 				int x=Fl::event_x()/iFontWidth; 
-				int y=Fl::event_y();
-				
-				if ( x>=size_x-2 && scroll_y!=0 ) {
+				int y=Fl::event_y()-Fl_Widget::y();
+				if ( Fl::event_clicks()==1 ) {	//double click to select word
+					y = y/iFontHeight + screen_y+scroll_y+1; 
+					sel_left = line[y]+x;
+					sel_right = sel_left;
+					while ( --sel_left>line[y] )
+						if ( !isalnum(buff[sel_left]) ) {
+							sel_left++; 
+							break;
+						} 
+					while ( ++sel_right<line[y+1])
+						if ( !isalnum(buff[sel_right]) ) 
+							break; 
+					redraw();
+					return 1;
+				}
+				if ( x>=size_x-2 && scroll_y!=0 ) {	//push in scrollbar area 
 					bMouseScroll = true;
-					scroll_y = (Fl::event_y()-16)*cursor_y/h()-cursor_y;
+					scroll_y = y*cursor_y/h()-cursor_y;
+					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
 					redraw();
 				}
-				else {
-					y = (y-8)/iFontHeight+screen_y+scroll_y; 
+				else {								//push to start draging
+					y = y/iFontHeight + screen_y+scroll_y+1; 
 					sel_left = line[y]+x;
 					if ( sel_left>line[y+1] ) sel_left=line[y+1] ;
 					sel_right = sel_left;
@@ -210,14 +225,24 @@ int Fl_Term::handle( int e ) {
 			return 1;
 		case FL_DRAG: if ( Fl::event_button()==FL_LEFT_MOUSE ) {
 				int x = Fl::event_x()/iFontWidth;
-				int y = Fl::event_y();
+				int y = Fl::event_y()-Fl_Widget::y();
 				if ( bMouseScroll) {
-					scroll_y = (y-16)*cursor_y/h()-cursor_y;
+					scroll_y = y*cursor_y/h()-cursor_y;
+					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
+					if ( scroll_y>0 ) scroll_y=0;
 				}
 				else {
-					if ( y<0 ) scroll_y += y/8;
-					if ( y>h() ) scroll_y += (y-h())/8;
-					y = (y-8)/iFontHeight+screen_y+scroll_y; 
+					if ( y<0 ) {
+						scroll_y += y/8;
+						if ( scroll_y<-cursor_y ) scroll_y = -cursor_y;
+					}
+					if ( y>h() ) {
+						scroll_y += (y-h())/8;
+						if ( scroll_y>0 ) scroll_y=0;
+					}
+					y = y/iFontHeight + screen_y+scroll_y+1;
+					if ( y<0 ) y=0;
+					if ( y>cursor_y ) y = cursor_y; 
 					sel_right = line[y]+x;
 					if ( sel_right>line[y+1] ) sel_right=line[y+1];
 				}
@@ -271,7 +296,7 @@ int Fl_Term::handle( int e ) {
 				case FL_Page_Up: 
 						scroll_y-=size_y*(1<<(page_up_hold/16))-1; 
 						page_up_hold++;
-						if ( scroll_y<-cursor_y ) scroll_y=-cursor_y;
+						if ( scroll_y<-screen_y ) scroll_y=-screen_y;
 						redraw();
 						break;
 				case FL_Page_Down:
@@ -290,11 +315,9 @@ int Fl_Term::handle( int e ) {
 							if ( !active() ) start_reader();
 						}
 						else {
-							if ( bEnter ) {	//auto detect Prompt after each Enter 
+							if ( bEnter ) {	//try to detect Prompt after each Enter 
 								bEnter = false;
-								sPrompt[0] = buff[cursor_x-2];
-								sPrompt[1] = buff[cursor_x-1];
-								iPrompt = 2;  
+								bEnter1= true;
 							}
 						}
 						write( Fl::event_text() ); 
@@ -310,6 +333,14 @@ int Fl_Term::handle( int e ) {
 void Fl_Term::append( const char *newtext, int len ){
 	const char *p = newtext;
 
+	if ( bEnter1 ) { //capture prompt for scripting after Enter key pressed
+		if ( len==1 ) {	//wnen the echo is just one letter after Enter key 							
+			sPrompt[0] = buff[cursor_x-2];
+			sPrompt[1] = buff[cursor_x-1];
+			iPrompt = 2;
+		}
+		bEnter1 = false;
+	}
 	if ( bLogging ) fwrite( newtext, 1, len, fpLogFile );
 	if ( bEscape ) p = vt100_Escape( p ); 
 	while ( p < newtext+len ) {
@@ -484,8 +515,10 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 				break;
 			case 'L': //insert lines
 				for ( int i=roll_bot; i>cursor_y-screen_y; i-- ) {
-					memcpy(buff+line[screen_y+i], buff+line[screen_y+i-n0], size_x);
-					memcpy(attr+line[screen_y+i], attr+line[screen_y+i-n0], size_x);
+					memcpy( buff+line[screen_y+i], 
+							buff+line[screen_y+i-n0], size_x );
+					memcpy( attr+line[screen_y+i], 
+							attr+line[screen_y+i-n0], size_x );
 				}
 				for ( int i=0; i<n0; i++ ) {
 					memset(buff+line[cursor_y+i], ' ', size_x);
@@ -494,8 +527,10 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 				break; 
 			case 'M': //delete lines
 				for ( int i=cursor_y-screen_y; i<=roll_bot-n0; i++ ) {
-					memcpy(buff+line[screen_y+i], buff+line[screen_y+i+n0], size_x);
-					memcpy(attr+line[screen_y+i], attr+line[screen_y+i+n0], size_x);
+					memcpy( buff+line[screen_y+i], 
+							buff+line[screen_y+i+n0], size_x);
+					memcpy( attr+line[screen_y+i], 
+							attr+line[screen_y+i+n0], size_x);
 				}
 				for ( int i=0; i<n0; i++ ) {
 					memset(buff+line[screen_y+roll_bot+1-i], ' ', size_x);
@@ -538,9 +573,9 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 						else {			//?1049l exit alternate screen
 							cursor_y = save_y; 
 							cursor_x = line[cursor_y];
-							for ( int i=0; i<=size_y; i++ ) 
-								line[screen_y+i+1] = 0;
-							screen_y -= size_y;
+							for ( int i=1; i<=size_y; i++ ) 
+								line[cursor_y+i] = 0;
+							screen_y -= size_y-1;
 							if ( screen_y<0 ) screen_y=0;
 							bAlterScreen = false; 
 						}
@@ -733,21 +768,92 @@ int Fl_Term::command( const char *cmd, char **preply )
 }
 void Fl_Term::scripter()
 {
-	char *p0, *p1, *p2;
+	char *p0, *p1, *p2, fn[256];
+	p0 = script;
+	
+	do {
+		p2=p1=strchr(p0, 0x0a);
+		if ( p1==NULL ) 
+			p1 = p0+strlen(p0);
+		else 
+			*p1 = 0;
+		if (p1-p0>1) command( p0, NULL );
+		*p1 = 0x0a;
+		p0 = p1+1; 
+	}
+	while ( p2!=NULL );
+}
+void Fl_Term::scper()
+{
+	char *p0, *p1, *p2, fn[256], rpath[256];
+	command("pwd", &p2);
+	p1 = strchr(p2, 0x0a);
+	if ( p1==NULL ) return;
+	p2 = p1+1;
+	p1 = strchr(p2, 0x0a);
+	if ( p1==NULL ) return;
+	strncpy(rpath, p2, p1-p2);
+	rpath[p1-p2] = 0;
+	
 	p0 = script;
 	do {
 		p2=p1=strchr(p0, 0x0a);
-		if ( p1==NULL ) p1 = p0+strlen(p0);
-		*p1 = 0;
-
-		if (p1-p0>1) command( p0, NULL );
-		if ( p0!=p1 ) { p0 = p1+1; *p1 = 0x0a; }
-	} 
-	while ( p2!=NULL );
+		if ( p1==NULL ) 
+			p1 = p0+strlen(p0);
+		else 
+			*p1 = 0; 
+		strncpy(fn, p0, 252);
+		for ( int i=0; i<strlen(fn); i++ ) 
+			if ( fn[i]=='\\' ) fn[i]='/';
+		((sshHost *)host)->scp_write(fn, rpath);
+		p0 = p1+1;
+	}
+	while ( p2!=NULL ); 
+	write("\015");
+}
+void Fl_Term::sftper()
+{
+	char *p0, *p1, *p2, fn[256];
+	p0 = script;
+	do {
+		p2=p1=strchr(p0, 0x0a);
+		if ( p1==NULL ) 
+			p1 = p0+strlen(p0);
+		else 
+			*p1 = 0; 
+		strcpy(fn, "put ");
+		strncat(fn, p0, 251);
+		for ( int i=0; i<strlen(fn); i++ ) 
+			if ( fn[i]=='\\' ) fn[i]='/';
+		((sftpHost *)host)->sftp(fn);
+		p0 = p1+1;
+	}
+	while ( p2!=NULL ); 
+	append("sftp > ", 7);
 }
 void Fl_Term::run_script(const char *txt)
 {
 	strncpy(script, txt, 4095);
+
+	char *p0 = script;
+	char *p1=strchr(p0, 0x0a);
+	if ( p1!=NULL ) *p1=0;
+	struct stat sb;
+	int rc = stat(p0, &sb);
+	if ( p1!=NULL ) *p1=0x0a;
+
+	if ( rc!=-1 ) {
+		if ( host->type()==HOST_SSH ) {
+			std::thread scripterThread(&Fl_Term::scper, this);
+			scripterThread.detach();
+			return;
+		}
+		if ( host->type()==HOST_SFTP ) {
+			std::thread scripterThread(&Fl_Term::sftper, this);
+			scripterThread.detach();
+			return;
+		}
+	}
 	std::thread scripterThread(&Fl_Term::scripter, this);
 	scripterThread.detach();
 }

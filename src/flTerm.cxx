@@ -7,7 +7,7 @@
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GUN LGPL 3.0,
+// This library is free software distributed under GNU LGPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -25,7 +25,7 @@ const char ABOUT_TERM[]="\n\n\n\
         * Select to copy, right click to paste\n\n\
         * Drag and Drop to run list of commands\n\n\
         * Scripting interface \033[34mxmlhttp://127.0.0.1:%d\n\n\n\
-    \033[30mby yongchaofan@gmail.com		05-25-2018\n\n\
+    \033[30mby yongchaofan@gmail.com		05-30-2018\n\n\
     https://github.com/zoudaokou/flTerm\n";
 
 #include <stdio.h>
