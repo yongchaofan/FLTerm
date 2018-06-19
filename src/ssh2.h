@@ -8,7 +8,7 @@
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GUN LGPL 3.0,
+// This library is free software distributed under GNU LGPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -18,7 +18,7 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 
-#include "Fl_Host.h"
+#include "Hosts.h"
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 #include <mutex>
@@ -44,9 +44,7 @@ protected:
 	int ssh_authentication();
 
 	int scp_read_one(const char *rpath, const char *lpath);
-	int scp_read(const char *rpath, const char *lpath);
 	int scp_write_one(const char *lpath, const char *rpath);
-	int scp_write(const char *lpath, const char *rpath);
 	int tun_local(const char *lpath, const char *rpath);
 	int tun_remote(const char *rpath,const char *lpath);
 
@@ -58,6 +56,8 @@ public:
 		if ( *pass ) strncpy(password, pass, 31); 
 	}
 	int scp(const char *cmd);
+	int scp_read(const char *rpath, const char *lpath);
+	int scp_write(const char *lpath, const char *rpath);
 	int tunnel(const char *cmd);
 	
 //	virtual const char *name();
@@ -84,8 +84,8 @@ protected:
 	int sftp_ren(char *src, char *dst);
 	int sftp_get_one(char *src, char *dst);
 	int sftp_get(char *src, char *dst);
-	int sftp_put_one(char *src, char *dst);
 	int sftp_put(char *src, char *dst);
+	int sftp_put_one(char *src, char *dst);
 
 public:
 	sftpHost(const char *address) : sshHost(address) {}
@@ -95,10 +95,11 @@ public:
 	virtual int read(char *buf, int len);
 	virtual void write(const char *buf, int len){}
 	virtual void send_size(int sx, int sy){}
-//	virtual void disconn();				
+//	virtual void disconn();	
+	int sftp(char *p);
 };
 
-#define BUFLEN 65536
+#define BUFLEN 65536*2
 class confHost : public sshHost {
 private: 
 	LIBSSH2_CHANNEL *channel2;
@@ -116,6 +117,7 @@ public:
 //	virtual const char *name();
 	virtual int type() { return HOST_CONF; }
 	virtual int connect();
+	virtual int connect2();
 	virtual int read(char *buf, int len);
 	virtual void write(const char *buf, int len);
 //	virtual void send_size(int sx, int sy);

@@ -25,7 +25,7 @@ const char ABOUT_TERM[]="\n\n\n\
         * Select to copy, right click to paste\n\n\
         * Drag and Drop to run list of commands\n\n\
         * Scripting interface \033[34mxmlhttp://127.0.0.1:%d\n\n\n\
-    \033[30mby yongchaofan@gmail.com		05-30-2018\n\n\
+    \033[30mby yongchaofan@gmail.com		06-18-2018\n\n\
     https://github.com/zoudaokou/flTerm\n";
 
 #include <stdio.h>
@@ -34,7 +34,7 @@ const char ABOUT_TERM[]="\n\n\n\
 #include <thread>
 #include "acInput.h"
 #include "Fl_Term.h"
-#include "Fl_Host.h"
+#include "Hosts.h"
 #include "ssh2.h"
 
 #define MARGIN 20
@@ -45,7 +45,6 @@ const char ABOUT_TERM[]="\n\n\n\
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Choice.H>
-//#include <FL/Fl_Secret_Input.H>
 #include <FL/Fl_Sys_Menu_Bar.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_File_Chooser.H>
@@ -111,7 +110,7 @@ const char *term_get(const char *prompt, int echo)
 }
 void term_new(const char *host)
 {
-	Fl_Host *pHost = NULL;
+	Fan_Host *pHost = NULL;
 	Fl_Term *pTerm = NULL;
 	if ( strncmp(host, "telnet ", 7)==0 ) {
 		pHost = new tcpHost(host+7);
@@ -246,7 +245,7 @@ void cmd_callback(Fl_Widget *o)
 {
 	char cmd[256];
 	strncpy(cmd, pCmd->value(), 255);
-	pCmd->position(0, strlen(cmd));
+	pCmd->position(strlen(cmd), 0);
 	pCmd->add( cmd );
 	switch( *cmd ) {
 		case '/':  acTerm->srch(cmd+1); break;
@@ -475,17 +474,13 @@ int main() {
 }
 int http_callback( char *buf, char **preply)
 {
-	int rc=0;
 	if ( *buf=='?' ) buf++;
 	for ( char *p=buf; *p!=0; p++ ) {
 		if ( *p=='+' ) *p=' ';
-		if ( *p=='%' && isdigit(p[1]) ){
-			int a;
-			sscanf( p+1, "%02x", &a);
-			*p = a;
-			strcpy(p+1, p+3);
-		}
 	}
+	fl_decode_uri(buf);
+
+	int rc=0;
 	if ( strncmp(buf, "Cmd=", 4)==0 ) rc = term_cmd( buf+4, preply );
 	else if ( strncmp(buf, "Tab=", 4)==0 ) term_tab( buf+4 ); 
 	else if ( strncmp(buf, "New=", 4)==0 ) term_new( buf+4 );

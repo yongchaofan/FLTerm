@@ -25,7 +25,6 @@
 #include <dirent.h>
 #include <fnmatch.h>
 
-#include "Fl_Host.h"
 #include "Fl_Term.h"
 #include "ssh2.h"
 
@@ -418,6 +417,7 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
             }
         }
     }/* only continue if nread was drained */ 
+	fclose(fp);
     int duration = (int)(time(NULL)-start);
 	print("%ld bytes in %d seconds", total, duration);
 
@@ -986,15 +986,17 @@ int sftpHost::sftp_md(char *path)
                             LIBSSH2_SFTP_S_IRWXU|
                             LIBSSH2_SFTP_S_IRGRP|LIBSSH2_SFTP_S_IXGRP|
                             LIBSSH2_SFTP_S_IROTH|LIBSSH2_SFTP_S_IXOTH);
-    if ( rc )
+    if ( rc ) {
         print("\t\033[31mcouldn't create directory\033[32m%s\033[30m\n", path);	
+	}
 	return 0;
 }
 int sftpHost::sftp_rd(char *path)
 {
  	int rc = libssh2_sftp_rmdir(sftp_session, path);
-    if ( rc )
+    if ( rc ) {
         print("\t\033[31mcouldn't remove directory\033[32m%s\033[30m\n", path);	
+	}
 	return 0;
 }
 int sftpHost::sftp_ren(char *src, char *dst)
@@ -1021,7 +1023,7 @@ int sftpHost::sftp_get_one(char *src, char *dst)
 	}
 	print("\t\033[32m%s\033[30m ", dst);
     char mem[1024*64];
-	int rc, block=0;
+	unsigned int rc, block=0;
 	long total=0;
 	time_t start = time(NULL);
     while ( (rc=libssh2_sftp_read(sftp_handle, mem, sizeof(mem)))>0 ) {
@@ -1283,124 +1285,174 @@ const char *ietf_header="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 const char *ietf_footer="</rpc>]]>]]>";
 int confHost::connect()
 {
-	int rc = tcp();
-	if ( rc>0 ) {
-		bConnected = false;
-		sock = rc;
-		session = libssh2_session_init();
-		if ( libssh2_session_handshake(session, sock)!=0 ) { 
-			rc=-3;	goto Channel_Close; 
+	int rc = sock = tcp();
+	if ( rc<0 ) goto TCP_Close;
+	
+	bConnected = false;
+	session = libssh2_session_init();
+	if ( libssh2_session_handshake(session, sock)!=0 ) { 
+		rc=-3;	goto Channel_Close; 
+	}
+	if ( ssh_knownhost()!=0 ) { 
+		rc=-4; goto Channel_Close; 
+	}
+	if ( ssh_authentication()!=0 ) { 
+		rc=-5; goto Channel_Close; 
+	}
+	channel = libssh2_channel_open_session(session);
+	if ( !channel ) { 
+		rc=-6; goto Channel_Close; 
+	}
+	if ( libssh2_channel_subsystem(channel, "netconf") ) { 
+		rc=-7; goto Channel_Close; 
+	}
+	//must be nonblocking for 2 channels on the same session
+	libssh2_session_set_blocking(session, 0); 
+	int len;
+	for ( int i=0; i<100; i++ ) {
+		mtx.lock();
+		len=libssh2_channel_read(channel,reply, BUFLEN-1);
+		mtx.unlock();
+		if (len==LIBSSH2_ERROR_EAGAIN ) {
+			usleep(100000); continue;
 		}
-		if ( ssh_knownhost()!=0 ) { 
-			rc=-4; goto Channel_Close; 
-		}
-		if ( ssh_authentication()!=0 ) { 
-			rc=-5; goto Channel_Close; 
-		}
-		channel = libssh2_channel_open_session(session);
-		channel2 = libssh2_channel_open_session(session);
-		if ( !channel || !channel2 ) { 
-			rc=-6; goto Channel_Close; 
-		}
-		if ( libssh2_channel_subsystem(channel2, "netconf") ||
-			libssh2_channel_subsystem(channel, "netconf")) { 
-			rc=-7; goto Channel_Close; 
-		}
-		//must be nonblocking for 2 channels on the same session
-		libssh2_session_set_blocking(session, 0); 
+		else break;
+	}
+	if ( len<0 ) { rc = -8; goto Channel_Close; }
+	reply[len] = 0;
+	if ( strstr(reply, "interleave")!=NULL ) {
 		bConnected = true;
 		msg_id = 0;
-		rd = rd2 = 0;
+		rd = 0;
+		*reply = 0;
+		channel2 = NULL;
 		libssh2_channel_write( channel, ietf_hello, strlen(ietf_hello) );
-		libssh2_channel_write( channel2, ietf_hello, strlen(ietf_hello) );
-		libssh2_channel_write( channel2, ietf_subscribe, strlen(ietf_subscribe) );
+		libssh2_channel_write( channel, ietf_subscribe, strlen(ietf_subscribe) );
 		return 0;		//success
-
-	Channel_Close:
-		libssh2_session_disconnect(session, "Normal Shutdown");
-		libssh2_session_free(session);
 	}
+	else {
+		libssh2_channel_close(channel);
+		libssh2_channel_free(channel);
+		channel = NULL;
+		libssh2_session_disconnect(session, "Reader Shutdown");
+		libssh2_session_free(session);
+		closesocket(sock);
+		return connect2();
+	} 
+Channel_Close:
+	libssh2_session_disconnect(session, "Normal Shutdown");
+	libssh2_session_free(session);
+TCP_Close:
 	print("%s\n", sshmsgs[-rc]);
 	return rc;
 }
-int confHost::read(char *buf, int len)
+int confHost::connect2()
 {
-	char *delim;
-	int len1, len2, rc; 
+	int rc = sock = tcp();
+	if ( rc<0 ) goto TCP_Close2;
+	
+	session = libssh2_session_init();
+	if ( libssh2_session_handshake(session, sock)!=0 ) { 
+		rc=-3;	goto Channel_Close2; 
+	}
+	if ( ssh_knownhost()!=0 ) { 
+		rc=-4; goto Channel_Close2; 
+	}
+	if ( ssh_authentication()!=0 ) { 
+		rc=-5; goto Channel_Close2; 
+	}
+	channel = libssh2_channel_open_session(session);
+	channel2 = libssh2_channel_open_session(session);
+	if ( !channel || !channel2 ) { 
+		rc=-6; goto Channel_Close2; 
+	}
+	if ( libssh2_channel_subsystem(channel, "netconf") 
+		|| libssh2_channel_subsystem(channel2, "netconf") ) { 
+		rc=-7; goto Channel_Close2; 
+	}
+	//must be nonblocking for 2 channels on the same session
+	libssh2_session_set_blocking(session, 0); 
+	bConnected = true;
+	msg_id = 0;
+	rd = rd2 = 0;
+	*reply = 0;
+	*notif = 0;
+	libssh2_channel_write( channel, ietf_hello, strlen(ietf_hello) );
+	libssh2_channel_write( channel2, ietf_hello, strlen(ietf_hello) );
+	libssh2_channel_write( channel2, ietf_subscribe, strlen(ietf_subscribe) );
+	return 0;		//success
+Channel_Close2:
+	libssh2_session_disconnect(session, "Normal Shutdown");
+	libssh2_session_free(session);
+TCP_Close2:
+	print("%s\n", sshmsgs[-rc]);
+	return rc;
+}
+int confHost::read(char *buf, int buflen)
+{
+	int len, len2, rc; 
 again:
-	do {
-		mtx.lock();
-		len1=libssh2_channel_read(channel,reply+rd,BUFLEN-rd);
-		mtx.unlock();
-
-		if ( len1>0 ) {
-			rd += len1; 
-			reply[rd] = 0;
-			delim = strstr(reply, "]]>]]>");
-			if ( delim != NULL ) {
-				*delim=0; 
-				rc = delim - reply; if ( rc>len ) rc = len;
-				strncpy(buf, reply, rc);
-				strcpy(reply, delim+6); 
-				rd = strlen(reply);
-				return rc;
-			}
-			if ( rd>BUFLEN-6 ){ 
-				fprintf(stderr, "buffer too small!\n"); 
-				rd=0; 
-			}
+	while ( true ) {
+		char *delim = strstr(reply, "]]>]]>");
+		if ( delim != NULL ) {
+			*delim=0; 
+			rc = delim - reply; 
+			memcpy(buf, reply, rc);
+			rd -= rc+6;
+			memmove(reply, delim+6, rd+1); 
+			return rc;
 		}
-	} while ( len1>0 );
-
-	do {
 		mtx.lock();
-		len2=libssh2_channel_read(channel2,notif+rd2,BUFLEN-rd2);
+		len=libssh2_channel_read(channel,reply+rd,buflen-rd);
 		mtx.unlock();
+		if ( len<=0 ) break;
 
-		if ( len2>0 ) {
-			rd2 += len2; 
-			notif[rd2] = 0;
-			delim = strstr(notif, "]]>]]>");
-			if ( delim != NULL ) {
-				*delim=0;
-				rc = delim - notif; if ( rc>len ) rc = len; 
-				strncpy(buf, notif, rc);
-				strcpy(notif, delim+6); 
-				rd2 = strlen(notif);
-				return rc;
-			}
-			if ( rd2>BUFLEN-6 ){ 
-				fprintf(stderr, "buffer too small!\n"); 
-				rd2=0; 
-			}
+		rd += len; 
+		reply[rd] = 0;
+	}
+	while ( channel2!=NULL ) {
+		char *delim = strstr(notif, "]]>]]>");
+		if ( delim != NULL ) {
+			*delim=0;
+			rc = delim - notif; 
+			memcpy(buf, notif, rc);
+			rd2 -= rc+6;
+			memmove(notif, delim+6, rd2+1); 
+			return rc;
 		}
-	} while ( len2>0 );
+		mtx.lock();
+		len2=libssh2_channel_read(channel2,notif+rd2,buflen-rd2);
+		mtx.unlock();
+		if ( len2<=0 ) break;
 
-	if ( len1==LIBSSH2_ERROR_EAGAIN && len2==LIBSSH2_ERROR_EAGAIN ) {
+		rd2 += len2; 
+		notif[rd2] = 0;
+	}
+
+	if ( len==LIBSSH2_ERROR_EAGAIN ) {
 		if ( wait_socket()>0 ) goto again;
 	}
 
-	if ( len1<=0 || len2<=0 ) {
+	if ( channel ) {
 		libssh2_channel_close(channel);
 		libssh2_channel_free(channel);
+	}
+	if ( channel2 ) {
 		libssh2_channel_close(channel2);
 		libssh2_channel_free(channel2);
-		libssh2_session_disconnect(session, "Reader Shutdown");
-		libssh2_session_free(session);
-		return -1;
 	}
-	return 0;
+	libssh2_session_disconnect(session, "Reader Shutdown");
+	libssh2_session_free(session);
+	return -1;
 }
 void confHost::write(const char *msg, int len)
 {
+	if ( channel==NULL ) return;
 	char header[256];
-	sprintf(header, ietf_header, msg_id++);
+	sprintf(header, ietf_header, ++msg_id);
 	sshHost::write( header, strlen(header) );
-	sshHost::write( msg, strlen(msg) );
-	sshHost::write( ietf_footer, strlen(ietf_footer) );
+	sshHost::write( msg, len );
+	sshHost::write( "</rpc>]]>]]>", 12 );
 	if ( term!=NULL ) 
-		term->print("\n%s\n%s\n%s\n", header, msg, ietf_footer);
-	else 
-		fprintf(stderr, "\n************* sent to %s***********\n%s\n%s\n%s\n",
-						 hostname, header, msg, ietf_footer);
+		term->print("\n%s%s%s\n", header, msg, ietf_footer);
 }

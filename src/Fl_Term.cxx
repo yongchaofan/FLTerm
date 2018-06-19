@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 21953 2018-05-29 23:48:10 $"
+// "$Id: Fl_Term.cxx 22714 2018-05-29 23:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -627,7 +627,7 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 	return sz;
 }
 
-void Fl_Term::set_host(Fl_Host *pHost) 
+void Fl_Term::set_host(Fan_Host *pHost) 
 { 
 	if ( bReaderRunning ) stop_reader();
 	if ( host!=NULL ) delete host;
@@ -664,7 +664,7 @@ void Fl_Term::start_reader()
 void Fl_Term::stop_reader()
 {
 	if ( bReaderRunning ) {
-		bGets = false;
+		bGets = false; bWait = false;
 		host->disconn();
 		if ( readerThread.joinable() ) readerThread.join();
 		while ( bReaderRunning ) usleep(100000);
@@ -723,11 +723,24 @@ char* Fl_Term::gets( const char *prompt, int echo )
 	bGets = false;
 	return NULL;
 }
+int Fl_Term::waitfor(const char *word)
+{
+	char *p = buff+recv0;
+	bWait = true;
+	for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
+		buff[cursor_x]=0;
+		if ( strstr(p, word)!=NULL ) return 1;
+		sleep(1);
+	}
+	return 0;
+}
+		
 int Fl_Term::command( const char *cmd, char **preply )
 {
 	if ( *cmd=='#' ) {
 		cmd++;
-		if ( strncmp(cmd, "Timeout", 7)==0 )  iTimeOut = atoi(cmd+8); 
+		if ( strncmp(cmd, "Timeout", 7)==0 )  iTimeOut = atoi(cmd+8);
+		else if ( strncmp(cmd,"Waitfor",7)==0 ) waitfor(cmd+8); 
 		else if ( strncmp(cmd,"Wait",4)==0 )  sleep(atoi(cmd+5));
 		else if ( strncmp(cmd,"Log ",4)==0 )  logg( cmd+4 );
 		else if ( strncmp(cmd,"Save",4)==0 )  save( cmd+5 );
@@ -745,6 +758,9 @@ int Fl_Term::command( const char *cmd, char **preply )
 				if ( host->type()==HOST_SSH ) 
 					((sshHost*)host)->tunnel(cmd+7);
 		}
+		else {
+			print("%s\n",cmd);
+		}
 		return 0;
 	}
 	if ( bReaderRunning ) {
@@ -761,14 +777,13 @@ int Fl_Term::command( const char *cmd, char **preply )
 		return cursor_x-recv0;
 	}
 	else {
-		append(cmd, strlen(cmd));
-		append("\015\012", 2);
+		print("%s\n", cmd);
 	}
 	return 0;
 }
 void Fl_Term::scripter()
 {
-	char *p0, *p1, *p2, fn[256];
+	char *p0, *p1, *p2;
 	p0 = script;
 	
 	do {
@@ -777,7 +792,7 @@ void Fl_Term::scripter()
 			p1 = p0+strlen(p0);
 		else 
 			*p1 = 0;
-		if (p1-p0>1) command( p0, NULL );
+		if (p1!=p0) command( p0, NULL );
 		*p1 = 0x0a;
 		p0 = p1+1; 
 	}
@@ -803,7 +818,7 @@ void Fl_Term::scper()
 		else 
 			*p1 = 0; 
 		strncpy(fn, p0, 252);
-		for ( int i=0; i<strlen(fn); i++ ) 
+		for ( unsigned int i=0; i<strlen(fn); i++ ) 
 			if ( fn[i]=='\\' ) fn[i]='/';
 		((sshHost *)host)->scp_write(fn, rpath);
 		p0 = p1+1;
@@ -823,7 +838,7 @@ void Fl_Term::sftper()
 			*p1 = 0; 
 		strcpy(fn, "put ");
 		strncat(fn, p0, 251);
-		for ( int i=0; i<strlen(fn); i++ ) 
+		for ( unsigned int i=0; i<strlen(fn); i++ ) 
 			if ( fn[i]=='\\' ) fn[i]='/';
 		((sftpHost *)host)->sftp(fn);
 		p0 = p1+1;

@@ -1,11 +1,11 @@
 //
-// "$Id: Fl_Term.h 3760 2018-05-25 13:48:10 $"
+// "$Id: Fl_Term.h 3830 2018-05-25 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GUN LGPL 3.0,
+// This library is free software distributed under GNU LGPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -14,7 +14,7 @@
 //
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
-#include "Fl_Host.h"
+#include "Hosts.h"
 #include <FL/Fl.H>
 #include <FL/Fl_Draw.H>
 #include <thread>
@@ -59,13 +59,14 @@ class Fl_Term : public Fl_Widget {
 	int iPrompt;			//length of sPrompt
 	int bPrompt;			//if sPrompt was found after the last append
 	int bEnter;				//set when enter key is pressed, cleared at next key press 
+	int bEnter1;
 	int iTimeOut;			//time out in seconds while waiting for sPrompt
 	int recv0;				//cursor_x at the start of last command
 	
 	int bLogging;			//if logging is active 
 	FILE *fpLogFile;
 	int cursor;
-	int bGets;
+	int bGets, bWait;
 	int bReturn;
 	int bPassword;
 	char keys[256];
@@ -76,9 +77,11 @@ class Fl_Term : public Fl_Widget {
 	char script[4096];
 	
 protected: 
-	Fl_Host *host;
+	Fan_Host *host;
 	void draw();
 	void reader();
+	void scper();
+	void sftper();
 	void scripter();
 	void more_lines();
 	void more_chars();
@@ -94,7 +97,7 @@ public:
 	void clear();
 	int cursorx();
 
-	void set_host(Fl_Host *pHost);
+	void set_host(Fan_Host *pHost);
 	void start_reader();
 	void stop_reader();
 	void run_script(const char *text);
@@ -104,8 +107,9 @@ public:
 	void logg( const char *fn );
 	void save( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
-	int  command( const char *cmd, char **response );
 
+	int  waitfor(const char *word);
+	int  command( const char *cmd, char **response );
 	char *gets(const char *prompt, int echo);
 	void write(const char *buf);
 	void print(const char *fmt, ...);
