@@ -1,5 +1,5 @@
 //
-// "$Id: Fan_Host.cxx 20949 2018-05-25 21:55:10 $"
+// "$Id: Fan_Host.cxx 20777 2018-06-18 21:55:10 $"
 //
 // tcpHost ftpDaemon tftpDaemon comHost
 //
@@ -65,16 +65,15 @@ tcpHost::tcpHost(const char *address):Fan_Host()
 }
 int tcpHost::tcp()
 {
-    struct addrinfo *ainfo;    
-    if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
-	
-    int so = socket(ainfo->ai_family, SOCK_STREAM, 0);
-    struct sockaddr_in *addr_in = (struct sockaddr_in *)ainfo->ai_addr;
-    addr_in->sin_port = htons(port);
+	struct addrinfo *ainfo;
+	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
 
-    int rc = ::connect(so, ainfo->ai_addr, ainfo->ai_addrlen);
-    freeaddrinfo(ainfo);
-    
+	int so = socket(ainfo->ai_family, SOCK_STREAM, 0);
+	struct sockaddr_in *addr_in = (struct sockaddr_in *)ainfo->ai_addr;
+	addr_in->sin_port = htons(port);
+
+	int rc = ::connect(so, ainfo->ai_addr, ainfo->ai_addrlen);
+	freeaddrinfo(ainfo);
 	return rc==-1 ? -2 : so;
 }
 int tcpHost::connect()

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 22714 2018-05-29 23:48:10 $"
+// "$Id: Fl_Term.cxx 22723 2018-06-18 23:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //

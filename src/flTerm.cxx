@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 16563 2018-05-25 23:55:10 $"
+// "$Id: flTerm.cxx 14561 2018-06-18 23:55:10 $"
 //
 // flTerm -- A minimalist ssh terminal simulator
 //
@@ -474,13 +474,17 @@ int main() {
 }
 int http_callback( char *buf, char **preply)
 {
+	int rc=0;
 	if ( *buf=='?' ) buf++;
 	for ( char *p=buf; *p!=0; p++ ) {
 		if ( *p=='+' ) *p=' ';
+		if ( *p=='%' && isdigit(p[1]) ){
+			int a;
+			sscanf( p+1, "%02x", &a);
+			*p = a;
+			strcpy(p+1, p+3);
+		}
 	}
-	fl_decode_uri(buf);
-
-	int rc=0;
 	if ( strncmp(buf, "Cmd=", 4)==0 ) rc = term_cmd( buf+4, preply );
 	else if ( strncmp(buf, "Tab=", 4)==0 ) term_tab( buf+4 ); 
 	else if ( strncmp(buf, "New=", 4)==0 ) term_new( buf+4 );
@@ -556,68 +560,3 @@ void host_exit()
 	libssh2_exit();
 	closesocket(http_s0);
 }
-/*******************************************************************************
-#ifdef WIN32
-#define ID_CLEAR	70
-#define ID_SAVE		71
-#define ID_LOG		72
-#define ID_NEW		73
-int sys_menu_handler( void *event, void *data )
-{
-	MSG *msg = (MSG *)event;
-	if ( msg->message == WM_SYSCOMMAND ) {
-		switch ( msg->wParam ) {
-		case ID_CLEAR:	clear_callback(NULL, NULL); return 1;
-		case ID_SAVE:	save_callback(NULL, NULL); return 1;
-		case ID_LOG:	log_callback(NULL, NULL); return 1;
-		case ID_NEW:	new_callback(NULL, NULL); return 1;
-		default: return 0;
-		}
-	}
-	return 0;
-}	
-void sys_menu_insert()
-{
-	HMENU hSysMenu = GetSystemMenu(GetActiveWindow(), FALSE);
-	InsertMenu(hSysMenu, 0, MF_BYPOSITION|MF_SEPARATOR, 0, NULL);
-	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_CLEAR,"&Clear  \tAlt+C");
-	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_SAVE, "&Save...\tAlt+S");
-	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_LOG, 	"&Log... \tAlt+L");
-	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_NEW, 	"&New... \tAlt+N");
-}
-#endif //WIN32
-#ifdef WIN32
-	sys_menu_insert();
-	Fl::add_system_handler(sys_menu_handler, NULL);
-#endif
-#ifdef __APPLE__
-		fl_mac_set_about(about_callback, NULL);
-#endif //__APPLE__
-
-int shortcut_handler(int e)
-{
-	if ( e==FL_SHORTCUT && Fl::event_alt() )
-		switch ( Fl::event_key() ) {
-		case 's':	save_callback(NULL, NULL);	return 1;
-		case 'l':	log_callback(NULL, NULL);	return 1;
-		case 'n':	new_callback(NULL, NULL);	return 1;
-		case 'c':	clear_callback(NULL, NULL);	return 1;
-		case 't':	if ( Fl::focus()==pCmd ) {
-						pCmdWin->hide();
-						if ( acTerm!=pAbout ) acTerm->take_focus();
-					}
-					else {
-						int x = acTerm->cursorx();
-						pCmdWin->resize( pTermWin->x()+x, 
-										pTermWin->y()+pTermWin->h()-MARGIN,
-										pTermWin->w()-x, MARGIN );
-						pCmdWin->show();
-						pCmd->take_focus();
-					}
-					return 1;
-		}
-	return 0;
-}
-	Fl::add_handler(shortcut_handler);
-
-*******************************************************************************/

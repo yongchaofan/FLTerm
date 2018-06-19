@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 41064 2018-05-25 21:55:10 $"
+// "$Id: ssh2.cxx 42621 2018-06-18 21:55:10 $"
 //
 // sshHost sftpHost confHost
 //
