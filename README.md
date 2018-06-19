@@ -9,7 +9,7 @@ source files included:
   
     ssh2.h and ssh2.cxx implements ssh/scp/sftp/netconf protocol hosts using libssh2
   
-  flTerm.cxx combines Fl_Term, Hosts and ssh2 to create the simple terminal application
+    flTerm.cxx combines Fl_Term, Hosts and ssh2 to create the simple terminal application
   
 flTerm can be compiled on Windows using mingW, on MacOS using command line development tool and on Linux using gcc
 
