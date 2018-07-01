@@ -5,11 +5,11 @@ source files included:
 
     Fl_Term.h and Fl_Term.cxx implements a vt100 terminal widget using FLTK
   
-    Hosts.h and Hosts.cxx implements telnet and serial hosts plus ftp/tftp daemon
+    Hosts.h and Hosts.cxx implements telnet, ssh, netconf and serial hosts 
   
-    ssh2.h and ssh2.cxx implements ssh/scp/sftp/netconf protocol hosts using libssh2
+    ftp.h and ftp.cxx implements scp/sftp/ftpd/tftpd hosts
   
-    flTerm.cxx combines Fl_Term, Hosts and ssh2 to create the simple terminal application
+    flTerm.cxx combines Fl_Term, Hosts and ftp to create the simple terminal application
   
 flTerm can be compiled on Windows using mingW, on MacOS using command line development tool and on Linux using gcc
 
