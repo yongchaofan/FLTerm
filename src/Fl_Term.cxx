@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 22723 2018-06-18 23:48:10 $"
+// "$Id: Fl_Term.cxx 21622 2018-06-30 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -20,7 +20,8 @@
 #include <unistd.h>
 #include <ctype.h>
 #include "Fl_Term.h"
-#include "ssh2.h"
+#include "ftp.h"
+void term_copier(Fl_Term *pTerm, char *script);
 
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L) 
 {
@@ -79,10 +80,6 @@ void Fl_Term::resize( int X, int Y, int W, int H )
 	size_y = (h()-8)/iFontHeight;
 	size_x = w()/iFontWidth;
 	if ( host!=NULL ) host->send_size(size_x, size_y);
-}
-int Fl_Term::cursorx()
-{
-	return (cursor_x-line[cursor_y])*iFontWidth;
 }
 void Fl_Term::more_chars()
 {
@@ -268,11 +265,11 @@ int Fl_Term::handle( int e ) {
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE: 
 				if ( bReaderRunning ) {
-					if ( bDND ) {
+					if ( bDND ) {	//drag and drop to run as script
 						bDND = false;
 						run_script(Fl::event_text());
 					}
-					else
+					else			//paste to write to host directly
 						write(Fl::event_text()); 
 				}
 				else 
@@ -670,15 +667,17 @@ void Fl_Term::stop_reader()
 		while ( bReaderRunning ) usleep(100000);
 	}
 }
+/*
 void Fl_Term::print(const char *fmt, ...)
 {
-	char buff[4096];
+	char buff[32768];
 	va_list args;
 	va_start(args, (char *)fmt);
-	int len = vsnprintf(buff, 4096, (char *)fmt, args);
+	int len = vsnprintf(buff, 32768, (char *)fmt, args);
 	va_end(args);
 	if ( len>0 ) append(buff, len);
 }
+*/
 void Fl_Term::write(const char *buf)
  { 
 	if ( bGets ) {
@@ -750,16 +749,8 @@ int Fl_Term::command( const char *cmd, char **preply )
 			strncpy(sPrompt, cmd+7, 31); 
 			iPrompt=strlen(sPrompt);
 		}
-		else if ( strncmp(cmd,"scp ",4)==0  && host!=NULL ) {
-				if ( host->type()==HOST_SSH ) 
-					((sshHost*)host)->scp(cmd+4);
-		}
-		else if ( strncmp(cmd,"tunnel ",7)==0 && host!=NULL ) {
-				if ( host->type()==HOST_SSH ) 
-					((sshHost*)host)->tunnel(cmd+7);
-		}
 		else {
-			print("%s\n",cmd);
+			append(cmd, strlen(cmd));
 		}
 		return 0;
 	}
@@ -777,15 +768,13 @@ int Fl_Term::command( const char *cmd, char **preply )
 		return cursor_x-recv0;
 	}
 	else {
-		print("%s\n", cmd);
+		append(cmd, strlen(cmd));
 	}
 	return 0;
 }
-void Fl_Term::scripter()
+void Fl_Term::scripter(char *script)
 {
-	char *p0, *p1, *p2;
-	p0 = script;
-	
+	char *p0=script, *p1, *p2;	
 	do {
 		p2=p1=strchr(p0, 0x0a);
 		if ( p1==NULL ) 
@@ -797,78 +786,26 @@ void Fl_Term::scripter()
 		p0 = p1+1; 
 	}
 	while ( p2!=NULL );
-}
-void Fl_Term::scper()
-{
-	char *p0, *p1, *p2, fn[256], rpath[256];
-	command("pwd", &p2);
-	p1 = strchr(p2, 0x0a);
-	if ( p1==NULL ) return;
-	p2 = p1+1;
-	p1 = strchr(p2, 0x0a);
-	if ( p1==NULL ) return;
-	strncpy(rpath, p2, p1-p2);
-	rpath[p1-p2] = 0;
-	
-	p0 = script;
-	do {
-		p2=p1=strchr(p0, 0x0a);
-		if ( p1==NULL ) 
-			p1 = p0+strlen(p0);
-		else 
-			*p1 = 0; 
-		strncpy(fn, p0, 252);
-		for ( unsigned int i=0; i<strlen(fn); i++ ) 
-			if ( fn[i]=='\\' ) fn[i]='/';
-		((sshHost *)host)->scp_write(fn, rpath);
-		p0 = p1+1;
-	}
-	while ( p2!=NULL ); 
-	write("\015");
-}
-void Fl_Term::sftper()
-{
-	char *p0, *p1, *p2, fn[256];
-	p0 = script;
-	do {
-		p2=p1=strchr(p0, 0x0a);
-		if ( p1==NULL ) 
-			p1 = p0+strlen(p0);
-		else 
-			*p1 = 0; 
-		strcpy(fn, "put ");
-		strncat(fn, p0, 251);
-		for ( unsigned int i=0; i<strlen(fn); i++ ) 
-			if ( fn[i]=='\\' ) fn[i]='/';
-		((sftpHost *)host)->sftp(fn);
-		p0 = p1+1;
-	}
-	while ( p2!=NULL ); 
-	append("sftp > ", 7);
+	delete script;
 }
 void Fl_Term::run_script(const char *txt)
 {
-	strncpy(script, txt, 4095);
+	char *script = strdup(txt);	//script thread must delete this
+	if ( script==NULL ) return;
 
 	char *p0 = script;
 	char *p1=strchr(p0, 0x0a);
 	if ( p1!=NULL ) *p1=0;
 	struct stat sb;
-	int rc = stat(p0, &sb);
+	int rc = stat(p0, &sb);		//is this a list of files?
 	if ( p1!=NULL ) *p1=0x0a;
 
-	if ( rc!=-1 ) {
-		if ( host->type()==HOST_SSH ) {
-			std::thread scripterThread(&Fl_Term::scper, this);
-			scripterThread.detach();
-			return;
-		}
-		if ( host->type()==HOST_SFTP ) {
-			std::thread scripterThread(&Fl_Term::sftper, this);
-			scripterThread.detach();
-			return;
-		}
+	if ( rc==-1 ) {		//first line is not a file, run as script
+		std::thread scripterThread(&Fl_Term::scripter, this, script);
+		scripterThread.detach();
 	}
-	std::thread scripterThread(&Fl_Term::scripter, this);
-	scripterThread.detach();
+	else {				//first line is a filename, copy files to host
+		std::thread scripterThread(term_copier, this, script);
+		scripterThread.detach();
+	}
 }

@@ -1,7 +1,7 @@
 //
-// "$Id: Fan_Host.h 3599 2018-06-18 23:48:10 $"
+// "$Id: Hosts.h 3910 2018-06-29 13:48:10 $"
 //
-// tcpHost comHost ftpDaemon tftpDaemon
+// tcpHost sshHost confHost comHost
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
@@ -34,13 +34,14 @@
 #endif
 #include <stdio.h>
 #include <string.h>
-
+#include <libssh2.h>
+#include <mutex>
 
 #ifndef _FAN_HOST_H_
 #define _FAN_HOST_H_
 
-enum {  HOST_COM=1, HOST_TCP, 
-		HOST_SSH, HOST_SFTP, HOST_CONF,
+enum {  HOST_COM=1, HOST_TCP, HOST_SSH,
+		HOST_SCP, HOST_SFTP, HOST_CONF,
 		HOST_FTPD,HOST_TFTPD };
 		
 class Fl_Term;
@@ -85,48 +86,58 @@ public:
 	virtual void disconn();	
 };
 
-class ftpDaemon : public Fan_Host {
-private:
-	char rootDir[1023];
-	int ftp_s0;
-	int ftp_s1;
-	int ftp_s2;
-	int ftp_s3;
-	void sock_send(const char *reply );
+class sshHost : public tcpHost {
+protected:
+	char username[64];
+	char password[64];
+	char passphrase[64];
+	LIBSSH2_SESSION *session;
+	LIBSSH2_CHANNEL *channel;
+	std::mutex mtx;
+	
+	int wait_socket();
+	int ssh_knownhost();
+	int ssh_authentication();
 
 public:
-	ftpDaemon(const char *root) {
-		strncpy(rootDir, root, 1023);
+	sshHost(const char *address); 
+
+	void set_user_pass( const char *user, const char *pass ) { 
+		if ( *user ) strncpy(username, user, 31); 
+		if ( *pass ) strncpy(password, pass, 31); 
 	}
-	virtual const char *name(){ return "ftpd"; }
-	virtual int type() { return HOST_FTPD; }
+//	virtual const char *name();
+	virtual int type() { return HOST_SSH; }
 	virtual int connect();
 	virtual int read(char *buf, int len);
-	virtual void write(const char *buf, int len){};
-	virtual void send_size(int sx, int sy){};
-	virtual void disconn();	
+	virtual void write(const char *buf, int len);
+	virtual void send_size(int sx, int sy);
+//	virtual void disconn();				
 };
 
-class tftpDaemon : public Fan_Host {
-private:
-	char rootDir[1023];
-	int tftp_s0;
-	int tftp_s1;
-
-	int tftp_read(const char *fn);
-	int tftp_write(const char *fn);
-
+#define BUFLEN 65536*2
+class confHost : public sshHost {
+private: 
+	LIBSSH2_CHANNEL *channel2;
+	char notif[BUFLEN];
+	char reply[BUFLEN];
+	int rd;
+	int rd2;
+	int msg_id;
 public:
-	tftpDaemon(const char *root) {
-		strncpy(rootDir, root, 1023);
-	}
-	virtual const char *name(){ return "tftpd"; }
-	virtual int type() { return HOST_TFTPD; }
+	confHost(const char *address) : sshHost(address)
+	{
+		if ( port==22 ) port = 830;
+	}	
+
+//	virtual const char *name();
+	virtual int type() { return HOST_CONF; }
 	virtual int connect();
+	virtual int connect2();
 	virtual int read(char *buf, int len);
-	virtual void write(const char *buf, int len){};
-	virtual void send_size(int sx, int sy){};
-	virtual void disconn();	
+	virtual void write(const char *buf, int len);
+//	virtual void send_size(int sx, int sy);
+//	virtual void disconn();
 };
 
 #ifdef WIN32
@@ -148,6 +159,8 @@ public:
 	virtual void send_size(int sx, int sy){};
 	virtual void disconn();	
 };
+
+char *SHA( char *msg );
 #endif //WIN32
 
 #endif //_FAN_HOST_H_

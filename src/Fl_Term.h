@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 3830 2018-06-18 13:48:10 $"
+// "$Id: Fl_Term.h 3835 2018-06-30 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -40,7 +40,8 @@ class Fl_Term : public Fl_Widget {
 	int screen_y;			//the line at top of screen
 	int scroll_y;			//scroll offset for the current line at top of screen
 	int bMouseScroll;		//if mouse if dragged on scrollbar
-	int page_up_hold, page_down_hold;		//control of scroll speed
+	int page_up_hold; 		//control of scroll speed
+	int page_down_hold;
 	int roll_top, roll_bot;	//the range of lines that will scroll in vi
 	int sel_left, sel_right;//begin and end of selection on screen
 	int iFontWidth, iFontHeight;
@@ -74,19 +75,16 @@ class Fl_Term : public Fl_Widget {
 	std::thread readerThread;
 	int bReaderRunning;
 	int bDND;
-	char script[4096];
 	
 protected: 
 	Fan_Host *host;
 	void draw();
-	void reader();
-	void scper();
-	void sftper();
-	void scripter();
 	void more_lines();
 	void more_chars();
 	void append( const char *newtxt, int len );
 	const char *vt100_Escape( const char *sz );
+	void scripter(char *script);
+	void reader();
 
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
@@ -95,9 +93,9 @@ public:
 	void resize( int X, int Y, int W, int H );
 	void textsize( int pt );
 	void clear();
-	int cursorx();
 
 	void set_host(Fan_Host *pHost);
+	Fan_Host *get_host() { return host; }
 	void start_reader();
 	void stop_reader();
 	void run_script(const char *text);
@@ -112,6 +110,6 @@ public:
 	int  command( const char *cmd, char **response );
 	char *gets(const char *prompt, int echo);
 	void write(const char *buf);
-	void print(const char *fmt, ...);
+	void print(const char *s){ append(s, strlen(s)); }
 };
 #endif

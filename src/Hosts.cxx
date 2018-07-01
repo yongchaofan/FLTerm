@@ -1,7 +1,7 @@
 //
-// "$Id: Fan_Host.cxx 20777 2018-06-18 21:55:10 $"
+// "$Id: Hosts.cxx 21019 2018-05-25 21:55:10 $"
 //
-// tcpHost ftpDaemon tftpDaemon comHost
+// tcpHost sshHost confHost comHost
 //
 //	  host implementation for terminal simulator
 //    used with the Fl_Term widget in flTerm
@@ -29,20 +29,29 @@
 
 #include "Hosts.h"
 #include "Fl_Term.h"
+void term_print(Fl_Term *pTerm, const char *s);
+const char *term_gets(Fl_Term *pTerm, const char *prompt, int echo);
 
 const char *errmsgs[] = { 
-"TCP connected\n",
-"Address resolution failed\n",
-"TCP connection failed\n"};
+"TCP connected",
+"IP failure",
+"TCP failure",
+"Session failure",
+"Hostkey failure",
+"Authentication failure",
+"Channel failure",
+"Subsystem failure",
+"Shell failure",
+};
 
 void Fan_Host::print( const char *fmt, ... ) 
 {
-	char buff[1024];
+	char buff[4096];
 	va_list args;
 	va_start(args, (char *)fmt);
 	if ( term!=NULL ) {
-		vsnprintf(buff, 1024, (char *)fmt, args);
-		term->print(buff);
+		vsnprintf(buff, 4096, (char *)fmt, args);
+		term_print(term, buff);
 	}
 	else {
 		fprintf(stderr, "\n%s:", name());
@@ -59,21 +68,25 @@ tcpHost::tcpHost(const char *address):Fan_Host()
 	port = 23;
 	char *p = strchr(hostname, ':');
 	if ( p!=NULL ) {
-		port = atoi(p+1);
-		*p=0;
+		char *p1 = strchr(p+1, ':');
+		if ( p1==NULL ) { //ipv6 address if more than one ':'
+			port = atoi(p+1);
+			*p=0;
+		}
 	}
 }
 int tcpHost::tcp()
 {
-	struct addrinfo *ainfo;
-	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
+    struct addrinfo *ainfo;    
+    if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
+	
+    int so = socket(ainfo->ai_family, SOCK_STREAM, 0);
+    struct sockaddr_in *addr_in = (struct sockaddr_in *)ainfo->ai_addr;
+    addr_in->sin_port = htons(port);
 
-	int so = socket(ainfo->ai_family, SOCK_STREAM, 0);
-	struct sockaddr_in *addr_in = (struct sockaddr_in *)ainfo->ai_addr;
-	addr_in->sin_port = htons(port);
-
-	int rc = ::connect(so, ainfo->ai_addr, ainfo->ai_addrlen);
-	freeaddrinfo(ainfo);
+    int rc = ::connect(so, ainfo->ai_addr, ainfo->ai_addrlen);
+    freeaddrinfo(ainfo);
+    
 	return rc==-1 ? -2 : so;
 }
 int tcpHost::connect()
@@ -165,494 +178,479 @@ unsigned char *tcpHost::telnet_options( unsigned char *buf )
 	return p+1; 
 }
 
-int sock_select( int s, int secs )
+sshHost::sshHost(const char *address) : tcpHost(address)
 {
-	struct timeval tv = { 0, 0 };
-	tv.tv_sec = secs;
-	fd_set svrset;
-	FD_ZERO( &svrset );
-	FD_SET( s, &svrset );
-	return select( s+1, &svrset, NULL, NULL, &tv );
-}
-/**********************************TFTPd*******************************/
-int tftpDaemon::tftp_read(const char *fn)
-{
-	char dataBuf[516], ackBuf[516];
-	unsigned short nCnt, nRetry=0;
-	int nLen, len;
+	port = 0;
+	*username = 0; 
+	*password = 0;
+	*passphrase = 0;
 
-	FILE *fp = fopen(fn, "rb");
-    if ( fp==NULL ) return -1;
-	nCnt=1;
-	nLen = fread(dataBuf+4, 1, 512, fp);
-    len = nLen;
-    do {
-		dataBuf[0]=0; dataBuf[1]=3;
-		dataBuf[2]=(nCnt>>8)&0xff; dataBuf[3]=nCnt&0xff;
-		send(tftp_s1, dataBuf, nLen+4, 0);
-
-		if ( sock_select( tftp_s1, 5 ) == 1 ) {
-			if ( recv(tftp_s1, ackBuf, 516, 0)==-1 ) break;
-			if ( ackBuf[1]==4 && ackBuf[2]==dataBuf[2] && ackBuf[3]==dataBuf[3]) {
-				nRetry=0;
-				nCnt++;
-				len = nLen;
-				nLen = fread(dataBuf+4, 1, 512 , fp);
+	char options[256];
+	strncpy(options, address, 255);
+	char *p = options;
+	char *phost=NULL, *pport=NULL, *puser=NULL, *ppass=NULL, *pphrase=NULL;
+	while ( (p!=NULL) && (*p!=0) ) {
+		while ( *p==' ' ) p++;
+		if ( *p=='-' ) {
+			switch ( p[1] ) {
+			case 'l': p+=3; puser = p; break;
+			case 'p': if ( p[2]=='w' ) { p+=4; ppass = p; } 
+						if ( p[2]=='p' ) { p+=4; pphrase = p; }
+						break;
+			case 'P': p+=3; pport = p; break;
 			}
-			else if ( ++nRetry==5 ) break;
+			p = strchr( p, ' ' ); 
+			if ( p!=NULL ) *p++ = 0;
 		}
-		else if ( ++nRetry==5 ) break;
-	} while ( len==512 );
-    fclose(fp);
-    return 0;
-}
-int tftpDaemon::tftp_write(const char *fn)
-{
-	char dataBuf[516], ackBuf[516];
-	unsigned short ntmp, nCnt=0, nRetry=0;
-	int nLen=516;
-
-	FILE *fp = fopen(fn, "wb");
-    if ( fp==NULL ) return -1;
-	while ( nLen > 0 ) {
-		ackBuf[0]=0; ackBuf[1]=4;
-		ackBuf[2]=(nCnt>>8)&0xff; ackBuf[3]=nCnt&0xff;
-		send(tftp_s1, ackBuf, 4, 0);
-		if ( nLen!=516 ) break;
-		if ( sock_select( tftp_s1, 5) == 1 ) {
-			nLen = recv(tftp_s1, dataBuf, 516, 0);
-			if ( nLen == -1 ) break;
-			ntmp=dataBuf[2];
-			ntmp=(ntmp<<8)+dataBuf[3];
-			if ( dataBuf[1]==3 && ntmp==nCnt+1 ) {
-				fwrite(dataBuf+4, 1, nLen-4, fp);
-				nRetry=0;
-				nCnt++;
+		else { 
+			phost = p; 
+			p = strchr( phost, '@' );
+			if ( p!=NULL ) {
+				puser = phost; 
+				phost = p+1;
+				*p=0; 
 			}
-			else if ( ++nRetry==5 ) break;
-		}
-		else if ( ++nRetry==5 ) break;
-	} 
-    fclose(fp);
-    return 0;
-}
-int tftpDaemon::connect()
-{
-	struct sockaddr_in svraddr;
-	int addrsize=sizeof(svraddr);
-    bConnected = false;
-
-	tftp_s0 = socket(AF_INET, SOCK_DGRAM, 0);
-	tftp_s1 = socket(AF_INET, SOCK_DGRAM, 0);
-	memset(&svraddr, 0, addrsize);
-	svraddr.sin_family=AF_INET;
-	svraddr.sin_addr.s_addr=INADDR_ANY;
-	svraddr.sin_port=htons(69);
-	if ( bind(tftp_s0, (struct sockaddr*)&svraddr,
-							addrsize)!=-1 ) {
-		svraddr.sin_port=0;
-		if ( bind(tftp_s1, (struct sockaddr *)&svraddr,
-								addrsize)!=-1 ) {
-			bConnected = true;
-            print( "TFTPd started\n" );
-            return 0;
+			p = strchr(phost, ':');
+			if ( p!=NULL ) {
+				char *p1 = strchr(p+1, ':');
+				if ( p1==NULL ) { //ipv6 address if more than one ':'
+					pport = p+1;
+					*p=0;
+				}
+			}
+			break;
 		}
 	}
-	else
-		print( "Couldn't bind TFTPd port\n");
-    return -1;
-}
-void tftpDaemon::disconn()
+	if ( phost!=NULL ) strncpy(hostname, phost, 63);
+	if ( pport!=NULL ) port = atoi(pport);
+	if ( puser!=NULL ) strncpy(username, puser, 63);
+	if ( ppass!=NULL ) strncpy(password, ppass, 63);
+	if ( pphrase!=NULL ) strncpy(passphrase, pphrase, 63);
+	if ( port==0 ) port = 22;
+} 
+const char *knownhostfile=".ssh/known_hosts";
+const char *pubkeyfile=".ssh/id_rsa.pub";
+const char *privkeyfile=".ssh/id_rsa";
+const char *keytypes[]={"unknown", "ssh-rsa", "ssh-dss", "ssh-ecdsa"};
+int sshHost::ssh_knownhost()
 {
-	closesocket(tftp_s1);
-	closesocket( tftp_s0 );
-	tftp_s0 = -1;
-}
-int tftpDaemon::read(char *buf, int len)
-{
-	char dataBuf[516];
-	struct sockaddr_in clientaddr;
-	socklen_t addrsize=sizeof(clientaddr);
+    int type, check, buff_len;
+	size_t len;
+	char buff[256];
 
-	char fn[MAX_PATH];
-
-	int ret;
-	while ( (ret=sock_select( tftp_s0, 300 )) == 1 ) {
-		ret = recvfrom( tftp_s0, dataBuf, 516, 0, 
-                                    (struct sockaddr *)&clientaddr, &addrsize );
-		if ( ret<0 ) break;
-		::connect(tftp_s1, (struct sockaddr *)&clientaddr, addrsize);
-		if ( dataBuf[1]==1  || dataBuf[1]==2 ) {
-			int bRead = dataBuf[1]==1; 
-			print( "%cRQ %s from %s\n", bRead?'R':'W', dataBuf+2,
-									inet_ntoa(clientaddr.sin_addr) ); 
-			strcpy(fn, rootDir); 
-			strcat(fn, "/");
-            strcat(fn, dataBuf+2);
-			int rc = bRead ? tftp_read(fn) : tftp_write(fn);
-			if ( rc!=0 ) {
-				dataBuf[3]=dataBuf[1]; dataBuf[0]=0; dataBuf[1]=5; dataBuf[2]=0; 
-				int len = sprintf( dataBuf+4, "Couldn't open %s\n", 
-                                                        fn+strlen(rootDir) );
-				send( tftp_s1, dataBuf, len+4, 0 );
-			}
+	const char *key = libssh2_session_hostkey(session, &len, &type);
+	if ( key==NULL ) return -4;
+	buff_len=sprintf(buff, "%s fingerprint: ", keytypes[type]);
+	if ( type>0 ) type++;
+	
+	const char *fingerprint = libssh2_hostkey_hash(session, 
+										LIBSSH2_HOSTKEY_HASH_SHA1);	
+	if ( fingerprint==NULL ) return -4;
+	for( int i=0; i<20; i++, buff_len+=3) 
+		sprintf(buff+buff_len, "%02X ", (unsigned char)fingerprint[i] );
+    
+    LIBSSH2_KNOWNHOSTS *nh = libssh2_knownhost_init(session);
+	if ( nh==NULL ) return -4;
+	struct libssh2_knownhost *host;
+	libssh2_knownhost_readfile(nh, knownhostfile,
+                               LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+    check = libssh2_knownhost_check(nh, hostname, key, len,
+								LIBSSH2_KNOWNHOST_TYPE_PLAIN|
+								LIBSSH2_KNOWNHOST_KEYENC_RAW, &host);
+    if ( check==LIBSSH2_KNOWNHOST_CHECK_MISMATCH ) {
+		if ( type==((host->typemask&LIBSSH2_KNOWNHOST_KEY_MASK)
+								  >>LIBSSH2_KNOWNHOST_KEY_SHIFT) ) {
+			print("%s\n !!!host key changed, proceed with care!!!\n", buff);
 		}
+		else 
+			check=LIBSSH2_KNOWNHOST_CHECK_NOTFOUND;
 	}
-	print( ret==0 ? "TFTPD timed out" : "TFTPd stopped\n" );
-	return -1;
+ 
+	if ( check==LIBSSH2_KNOWNHOST_CHECK_NOTFOUND ) {
+		libssh2_knownhost_addc(nh, hostname, "", key, len, "**flTerm**", 10,
+								LIBSSH2_KNOWNHOST_TYPE_PLAIN|
+								LIBSSH2_KNOWNHOST_KEYENC_RAW|
+								(type<<LIBSSH2_KNOWNHOST_KEY_SHIFT), &host);
+		FILE *fp = fopen(knownhostfile, "a+");
+		if ( fp ) {
+			char buf[2048];
+			libssh2_knownhost_writeline(nh, host, buf, 2048, &len, 
+								LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+			fprintf(fp, "%s", buf );
+			fclose(fp);
+			print("%s host key added to .ssh/known_hosts.\n", buff);
+		} 
+		else 
+			print("couldn't open .ssh/known_hosts to add host key.\n\n");
+	}
+    libssh2_knownhost_free(nh);
+	return 0;
 }
-/**********************************FTPd*******************************/
-void ftpDaemon::sock_send(const char *reply )
+static void kbd_callback(const char *name, int name_len,
+                         const char *instruction, int instruction_len,
+                         int num_prompts,
+                         const LIBSSH2_USERAUTH_KBDINT_PROMPT *prompts,
+                         LIBSSH2_USERAUTH_KBDINT_RESPONSE *responses,
+                         void **abstract)
 {
-	send( ftp_s1, reply, strlen(reply), 0 );
-}
-int ftpDaemon::connect()
-{
-	struct sockaddr_in serveraddr;
-	int addrsize=sizeof(serveraddr);
-	ftp_s0 = socket(AF_INET, SOCK_STREAM, 0);
-	memset(&serveraddr, 0, addrsize);
-	serveraddr.sin_family=AF_INET;
-	serveraddr.sin_addr.s_addr=INADDR_ANY;
-	serveraddr.sin_port=htons(21);
-	if ( bind(ftp_s0, (struct sockaddr*)&serveraddr, 
-							addrsize) != -1 ) {
-		if ( listen(ftp_s0, 1) != -1 ) {
-			bConnected = true;
-            print( "FTPd started\n" );
-            return 0;
+//	(void)name;
+//	(void)name_len;
+//	(void)instruction;
+//	(void)instruction_len;
+    for ( int i=0; i<num_prompts; i++) {
+		char *prom = strdup(prompts[i].text);
+		prom[prompts[i].length] = 0;
+		const char *p = term_gets(NULL, prom, prompts[i].echo==0);
+		if ( p!=NULL ) {
+			responses[i].text = strdup(p);
+			responses[i].length = strlen(p);
 		}
+    }
+//	(void)prompts;
+//	(void)abstract;
+} 
+int sshHost::ssh_authentication()
+{
+	int rc = -5;
+	const char *p = NULL;
+	if ( *username==0 ) {
+		if ( term!=NULL ) p = term_gets(term, "username:", false);
+		if ( p==NULL ) return rc; 
+		strncpy(username, p, 31);
 	}
-	else 
-		print("Couldn't bind to FTP port\n");
-    return -1;
-}
-void ftpDaemon::disconn()
-{
-    if ( ftp_s2!=-1 ) closesocket(ftp_s2);
-    if ( ftp_s3!=-1 ) closesocket(ftp_s3);
-    closesocket( ftp_s1 );
-    closesocket( ftp_s0 );
-	ftp_s0 = -1;
-}
-
-int ftpDaemon::read(char *buf, int len)
-{
-	unsigned long  dwIp;
-	unsigned short wPort;
-	unsigned int c[6], ii[2];
-	char szBuf[MAX_PATH], workDir[MAX_PATH],fn[MAX_PATH];
-
-	struct sockaddr_in svraddr, clientaddr;		// for data connection
-    socklen_t addrsize=sizeof(clientaddr);
-	int iRootLen = strlen( rootDir ) - 1;
-	if ( rootDir[iRootLen]=='/' ) rootDir[iRootLen]=0;
-
-	int ret0, ret1;
-	while( (ret0=sock_select(ftp_s0, 900)) == 1 ) {
-		ftp_s1 = accept( ftp_s0, (struct sockaddr*)&clientaddr, &addrsize );
-		if ( ftp_s1 ==-1 ) continue;
-		ftp_s2=-1; 								// ftp_s2 data connection
-		ftp_s3=-1;								// ftp_s3 data listen
-
-		sock_send( "220 Welcome\n");
-		getpeername(ftp_s1, (struct sockaddr *)&clientaddr, &addrsize);
-		print("FTPd: connected from %s\n", inet_ntoa(clientaddr.sin_addr));
-		strcpy(workDir, "/");
-		
-		FILE *fp;
-		int bPassive = false;
-		int bUser=false, bPass=false;
-		while ( (ret1=sock_select(ftp_s1, 300)) == 1 ) {
-			int cnt=recv( ftp_s1, szBuf, 1024, 0 );
-			if ( cnt<=0 ) {
-				print( "FTPd: client disconnected\n");
-				break;
+	char *authlist=libssh2_userauth_list(session, username, strlen(username));
+	if ( authlist==NULL ) return 0;	// null authentication passed
+	if ( strstr(authlist, "publickey")!=NULL ) {
+		if ( !libssh2_userauth_publickey_fromfile(session, username, 
+										pubkeyfile, privkeyfile, passphrase) )
+			return 0;				// public key authentication passed
+	}
+	if ( term!=NULL && strstr(authlist, "keyboard-interactive")!=NULL ) {
+		for ( int i=0; i<3; i++ )
+			if (!libssh2_userauth_keyboard_interactive(session, username,
+                                              			&kbd_callback) )
+				return 0;	
+	}
+	else if ( strstr(authlist, "password")!=NULL ) {
+		if ( *password!=0 )
+			if ( !libssh2_userauth_password(session, username, password) )
+				return 0;				//password authentication passed
+		if ( term!=NULL ) for ( int i=0; i<3; i++ ) {
+			p = term_gets(term, "password:", true);
+			if ( p!=NULL ) {
+				strncpy(password, p, 31);
+				if ( !libssh2_userauth_password(session, username, password) )
+					return 0;				//password authentication passed
 			}
-
-			szBuf[cnt-2]=0;
-			print( "%s\n", szBuf); 
-			char *p = strchr(szBuf, ' ');
-			if ( p!=NULL ) 
-				*p++ = 0;
 			else 
-				p = szBuf+cnt-2;
-				
-			// *** Process FTP commands ***
-			if (strcmp("USER", szBuf) == 0){
-				sock_send( "331 Password required\n");
-				bUser = strcmp(p, "tiny")==0 ? true : false;
-				continue;
-			}
-			if (strcmp("PASS", szBuf) == 0){
-				bPass = bUser && strcmp(p, "term")==0;
-				sock_send( bPass ? "230 Logged in okay\n": 
-									"530 Login incorrect\n");
-				continue;
-			}
-			if ( !bPass ) {
-				sock_send( "530 Login required\n");
-				 continue;
-			}
-			if (strcmp("SYST", szBuf) ==0 ){
-				sock_send( "215 UNIX emulated by tinyTerm\n");
-				continue;
-			}
-			else if(strcmp("TYPE", szBuf) == 0){
-				sock_send( "200 Type can only be binary\n");
-				continue;
-			}
-			else if(strcmp("PWD", szBuf) == 0 || strcmp("XPWD", szBuf) == 0){
-				sprintf( szBuf, "257 \"%s\" is current directory\n", workDir );
-				sock_send( szBuf);
-				continue;
-			}
-			else if(strcmp("PORT", szBuf) == 0){
-				sscanf(p, "%d,%d,%d,%d,%d,%d", &c[0], &c[1], &c[2], 
-												&c[3], &c[4], &c[5]);
-				ii[0] = c[1]+(c[0]<<8);
-				ii[1] = c[3]+(c[2]<<8);
-				wPort = c[5]+(c[4]<<8);
-				dwIp = ii[1]+(ii[0]<<16);
-				clientaddr.sin_addr.s_addr = htonl(dwIp);
-				clientaddr.sin_port=htons(wPort);
-				sock_send( "200 PORT command successful\n");
-				continue;
-			}
-
-			strcpy(fn, rootDir);
-			if ( *p=='/' ) {
-				if ( p[1]!=0 ) strcat(fn, p);
-			}
-			else { 
-				strcat(fn, workDir);
-				if ( *p ) 
-					strcat(fn, p);
-				else
-					fn[strlen(fn)-1] = 0;
-			}
-            if ( strstr(p, ".." )!=NULL ) {
-				sock_send( "550 \"..\" is not allowed\n");
-				continue;                    
-            }
-
-			if(strcmp("CWD", szBuf) == 0){
-				struct stat statbuf;
-                int rc = stat(fn, &statbuf);
-				if ( rc==-1 || (!S_ISDIR(statbuf.st_mode)) ) 
-					sock_send( "550 No such directory\n");
-				else {
-					strcpy(workDir, fn+strlen(rootDir));
-					strcat(workDir, "/");
-					sock_send( "250 CWD command sucessful\n");
-				}
-			}
-			else if(strcmp("CDUP", szBuf) == 0){
-				char *p = strrchr(workDir, '/');
-				if ( p!=NULL ) {
-					*p = 0;
-					char *p1 = strrchr(workDir, '/');
-					if ( p1!=NULL ) {
-						p1[1]=0;
-						sock_send( "250 CWD command sucessful\n");
-						continue;
-					}
-					else 
-						*p = '/';
-				}
-				sock_send( "550 No such file or directory.\n");
-			}
-			else if(strcmp("PASV", szBuf)==0 || strcmp("EPSV", szBuf)==0 ){
-				getsockname(ftp_s1, (struct sockaddr *)&svraddr, &addrsize);
-				svraddr.sin_port = 0;
-				ftp_s3 = socket(AF_INET, SOCK_STREAM, 0);
-				bind(ftp_s3, (struct sockaddr *)&svraddr, addrsize);
-				listen(ftp_s3, 1);
-
-				getsockname(ftp_s3, (struct sockaddr *)&svraddr, &addrsize);
-				dwIp = svraddr.sin_addr.s_addr;
-				wPort = svraddr.sin_port;
-
-				if ( *szBuf=='p' || *szBuf=='P'  ) {
-					ii[1]=(dwIp>>16)&0xffff; ii[0]=(dwIp)&0xffff;
-					c[1]=(ii[0]>>8)&0xff; c[0]=(ii[0])&0xff;
-					c[3]=(ii[1]>>8)&0xff; c[2]=(ii[1])&0xff;
-					c[5]=(wPort>>8)&0xff; c[4]=(wPort)&0xff;
-					sprintf(szBuf, "227 PASV Mode (%d,%d,%d,%d,%d,%d)\n",
-										c[0], c[1], c[2], c[3], c[4], c[5]);
-				}
-				else sprintf(szBuf, "229 EPSV Mode (|||%d|)\n", ntohs(wPort));
-				sock_send( szBuf);
-				bPassive=true;
-			}
-			else if( strcmp("NLST", szBuf)==0 || strcmp("LIST", szBuf)==0 ){
-                char pattern[256] = "*";
-                char ldir[MAX_PATH];
-				DIR *dir;
-				struct dirent *dp;
-				struct stat statbuf;
-                int rc = stat(fn, &statbuf);
-				if ( rc==-1 || (!S_ISDIR(statbuf.st_mode)) ) {
-					p = strrchr(fn, '/');
-					if ( p!=NULL ) { 
-						*p++ = 0; 
-						strncpy(pattern, p, 255); 
-						strcpy(ldir, fn);
-					}
-					else {
-						strcpy(ldir, ".");
-						strncpy(pattern, fn, 255);
-					}
-                }
-                else 
-					strcpy(ldir, fn);
-
-                if ( (dir=opendir(ldir))==NULL ){
-					sock_send( "550 No such file or directory\n");
-					continue;
-				}
-				sock_send( "150 Opening ASCII connection for list\n");
-				if ( bPassive ) {
-					ftp_s2 = accept(ftp_s3, (struct sockaddr*)&clientaddr, &addrsize);
-				}
-				else {
-					ftp_s2 = socket(AF_INET, SOCK_STREAM, 0);
-					::connect(ftp_s2, (struct sockaddr *)&clientaddr, 
-														sizeof(clientaddr));
-				}
-				int bNlst = szBuf[0]=='N';
-				while ( (dp=readdir(dir)) != NULL ) {
-					if ( fnmatch(pattern, dp->d_name, 0)==0 ) {
-                        if ( bNlst ) {
-                            sprintf(szBuf, "%s\n", dp->d_name);
-                        }
-                        else {
-                            char buf[256];
-                            strcpy(fn, ldir);
-                            strcat(fn, "/");
-                            strcat(fn, dp->d_name);
-                            stat(fn, &statbuf);
-                            strcpy(buf, ctime(&statbuf.st_mtime));
-                            buf[24]=0;
-                            sprintf(szBuf, "%c%c%c%c%c%c%c%c%c%c %s\t% 8lld  %s\n", 
-                                          S_ISDIR(statbuf.st_mode)?'d':'-',
-                                         (statbuf.st_mode&S_IRUSR)?'r':'-',
-                                         (statbuf.st_mode&S_IWUSR)?'w':'-',
-                                         (statbuf.st_mode&S_IXUSR)?'x':'-',
-                                         (statbuf.st_mode&S_IRGRP)?'r':'-',
-                                         (statbuf.st_mode&S_IWGRP)?'w':'-',
-                                         (statbuf.st_mode&S_IXGRP)?'x':'-',
-                                         (statbuf.st_mode&S_IROTH)?'r':'-',
-                                         (statbuf.st_mode&S_IWOTH)?'w':'-',
-                                         (statbuf.st_mode&S_IXOTH)?'x':'-',
-                                         buf+4, statbuf.st_size, dp->d_name);
-                        }
-                        send(ftp_s2, szBuf, strlen(szBuf), 0);
-                    }
-				} 
-				sock_send( "226 Transfer complete.\n");
-				closesocket(ftp_s2);
-				ftp_s2 = -1;
-			}
-			else if(strcmp("STOR", szBuf) == 0){
-				fp = fopen(fn, "wb");
-				if(fp == NULL){
-					sock_send( "550 Unable to create file\n");
-					continue;
-				}
-				sock_send( "150 Opening BINARY data connection\n");
-				if ( bPassive ) {
-					ftp_s2 = accept(ftp_s3, (struct sockaddr*)&clientaddr, &addrsize);
-				}
-				else {
-					ftp_s2 = socket(AF_INET, SOCK_STREAM, 0);
-					::connect(ftp_s2, (struct sockaddr *)&clientaddr,
-														sizeof(clientaddr));
-				}
-				unsigned long  lSize = 0;
-				unsigned int   nLen=0;
-				char buff[4096];
-				do {
-					nLen = recv(ftp_s2, buff, 4096, 0);
-					if ( nLen>0 ) {
-						lSize += nLen;
-						fwrite(buff, nLen, 1, fp);
-					}
-				}while ( nLen!=0);
-				fclose(fp);
-				sock_send( "226 Transfer complete\n");
-				print( "FTPd %lu bytes received\n", lSize);
-				closesocket(ftp_s2);
-				ftp_s2 = -1;
-			}
-			else if(strcmp("RETR", szBuf) == 0){
-				fp = fopen(fn, "rb");
-				if(fp == NULL) {
-					sock_send( "550 No such file or directory\n");
-					continue;
-				}
-				sock_send( "150 Opening BINARY data connection\n");
-				if ( bPassive ) {
-					ftp_s2 = accept(ftp_s3, (struct sockaddr*)&clientaddr, 
-																&addrsize);
-				}
-				else {
-					ftp_s2 = socket(AF_INET, SOCK_STREAM, 0);
-					::connect(ftp_s2, (struct sockaddr *)&clientaddr, 
-														sizeof(clientaddr));
-				}
-				unsigned long  lSize = 0;
-				unsigned int   nLen=0;
-				char buff[4096];
-				do {
-					nLen = fread(buff, 1, 4096, fp);
-					if ( send(ftp_s2, buff, nLen, 0) == 0) break;
-					lSize += nLen;
-				}
-				while ( nLen==4096);
-				fclose(fp);
-				sock_send( "226 Transfer complete\n");
-				print( "FTPd %lu bytes sent\n", lSize);
-				closesocket(ftp_s2);
-				ftp_s2 = -1;
-			}
-			else if(strcmp("SIZE", szBuf) == 0){
-				struct stat statbuf;
-				if ( stat(fn, &statbuf)==-1 ) 
-					sock_send( "550 No such file or directory\n");
-				else {
-					sprintf(szBuf, "213 %lld\n", statbuf.st_size);
-					sock_send( szBuf );
-				}
-			}
-			else if(strcmp("MDTM", szBuf) == 0) {
-				struct stat statbuf;
-				if ( stat(fn, &statbuf)==-1 ) 
-					 sock_send( "550 No such file or directory\n");
-				else {
-					struct tm *t_mod = localtime( &statbuf.st_mtime);
-					sprintf(szBuf, "213 %4d%02d%02d%02d%02d%02d\n", 
-							t_mod->tm_year+1900,t_mod->tm_mon+1,t_mod->tm_mday, 
-							t_mod->tm_hour, t_mod->tm_min, t_mod->tm_sec);	
-					sock_send( szBuf );
-				}
-			}
-			else if(strcmp("QUIT", szBuf) == 0){
-				sock_send( "221 Bye!\n");
 				break;
-			}
-			else {
-				sock_send( "500 Command not supported\n");
-			}
 		}
-		if( ret1==0 ) {
-			sock_send( "500 Timeout\n");
-			print( "FTPd: client timed out\n");
-		}
-		closesocket(ftp_s1);
 	}
-	print( ret0==0? "FTPd timed out\n" : "FTPd stopped\n" );
+	*username=0; *password=0; *passphrase=0;
+	return rc;
+}
+int sshHost::connect()
+{
+	int rc =  tcp();
+	if ( rc>0 ) {
+		sock = rc;
+		session = libssh2_session_init();
+		if ( libssh2_session_handshake(session, sock)!=0 ) { 
+			rc=-3; goto Session_Close; 
+		}
+		if ( ssh_knownhost()!=0 ) { 
+			rc=-4; goto Session_Close; 
+		}
+		if ( ssh_authentication()!=0 ) { 
+			rc=-5; goto Session_Close; 
+		}
+
+	//	libssh2_keepalive_config(session, false, 60);  
+	//	FlashWave will close connection on keep alive
+		if ( !(channel=libssh2_channel_open_session(session)) ) 
+			{ rc=-6; goto Session_Close; }
+		if ( libssh2_channel_request_pty(channel, "xterm")) 
+			{ rc=-7; goto Session_Close; }
+		if ( libssh2_channel_shell(channel)) 
+			{ rc=-8; goto Session_Close; }
+
+		libssh2_session_set_blocking(session, 0); 
+		bConnected = true;
+		return 0;
+
+Session_Close:
+		libssh2_session_disconnect(session, "Normal Shutdown");
+		libssh2_session_free(session);
+	}
+	print("%s\n", errmsgs[-rc]);
+	return rc;
+}
+int sshHost::wait_socket() 
+{
+//	struct timeval timeout = {10,0};
+	fd_set rfd, wfd;
+	FD_ZERO(&rfd); FD_ZERO(&wfd);
+	int dir = libssh2_session_block_directions(session);
+	if ( dir & LIBSSH2_SESSION_BLOCK_INBOUND ) FD_SET(sock, &rfd);;
+	if ( dir & LIBSSH2_SESSION_BLOCK_OUTBOUND ) FD_SET(sock, &wfd);;
+	int	rc=select(sock+1, &rfd, &wfd, NULL, NULL );
+	if ( rc==-1 ) {
+		if ( errno==0 ) return 0;
+		fprintf(stderr, "select error %d %s\n", errno, strerror(errno));
+	}
+	return rc;
+}
+int sshHost::read(char *buf, int len)
+{
+	int cch=-1;
+	
+	if ( libssh2_channel_eof(channel)==0 ) {
+		while ( true ) {
+			mtx.lock();
+			cch=libssh2_channel_read(channel, buf, len);
+			mtx.unlock();
+			if ( cch==LIBSSH2_ERROR_EAGAIN ) {
+				if ( wait_socket()==-1 ) break;
+			}
+			else break;
+		}
+	}
+	if ( cch<0 ) {
+		libssh2_channel_close(channel);
+		libssh2_channel_free(channel);
+		libssh2_session_disconnect(session, "Normal Shutdown");
+		libssh2_session_free(session);	
+		*username = 0;
+		*password = 0;
+	}
+	return cch;
+}
+void sshHost::write(const char *buf, int len) {
+	if ( !bConnected ) return;
+	int total=0, cch=0;
+	while ( total<len ) {
+		mtx.lock();
+		cch=libssh2_channel_write(channel, buf+total, len-total); 
+		mtx.unlock();
+		if ( cch<0 ) {
+			if ( cch==LIBSSH2_ERROR_EAGAIN ) {
+				if ( wait_socket()==-1 ) break;
+			}
+			else break;
+		}
+		else total += cch; 
+	}
+	if ( cch<0 ) {
+		libssh2_channel_close(channel);
+		libssh2_channel_free(channel);
+	}
+}
+void sshHost::send_size(int sx, int sy) 
+{
+	if ( bConnected ) 
+		libssh2_channel_request_pty_size( channel, sx, sy );
+}
+
+/*********************************confHost*******************************/
+const char *ietf_hello="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<hello xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\
+  <capabilities>\
+    <capability>urn:ietf:params:netconf:base:1.0</capability>\
+  </capabilities>\
+</hello>\
+]]>]]>";
+const char *ietf_subscribe="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<rpc xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\" message-id=\"1\">\
+  <create-subscription xmlns=\"urn:ietf:params:xml:ns:netconf:notification:1.0\">\
+    <stream>NETCONF</stream>\
+  </create-subscription>\
+</rpc>\
+]]>]]>";
+const char *oroadm_subscribe="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<rpc xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\" message-id=\"1\">\
+  <create-subscription xmlns=\"urn:ietf:params:xml:ns:netconf:notification:1.0\">\
+    <stream>OPENROADM</stream>\
+  </create-subscription>\
+</rpc>\
+]]>]]>";
+const char *ietf_header="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<rpc xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\" message-id=\"%d\">";
+const char *ietf_footer="</rpc>]]>]]>";
+int confHost::connect()
+{
+	int rc = sock = tcp();
+	if ( rc<0 ) goto TCP_Close;
+	
+	bConnected = false;
+	session = libssh2_session_init();
+	if ( libssh2_session_handshake(session, sock)!=0 ) { 
+		rc=-3;	goto Channel_Close; 
+	}
+	if ( ssh_knownhost()!=0 ) { 
+		rc=-4; goto Channel_Close; 
+	}
+	if ( ssh_authentication()!=0 ) { 
+		rc=-5; goto Channel_Close; 
+	}
+	channel = libssh2_channel_open_session(session);
+	if ( !channel ) { 
+		rc=-6; goto Channel_Close; 
+	}
+	if ( libssh2_channel_subsystem(channel, "netconf") ) { 
+		rc=-7; goto Channel_Close; 
+	}
+	//must be nonblocking for 2 channels on the same session
+	libssh2_session_set_blocking(session, 0); 
+	int len;
+	for ( int i=0; i<100; i++ ) {
+		mtx.lock();
+		len=libssh2_channel_read(channel,reply, BUFLEN-1);
+		mtx.unlock();
+		if (len==LIBSSH2_ERROR_EAGAIN ) {
+			usleep(100000); continue;
+		}
+		else break;
+	}
+	if ( len<0 ) { rc = -8; goto Channel_Close; }
+	reply[len] = 0;
+	if ( strstr(reply, "interleave")!=NULL ) {
+		libssh2_channel_write( channel, ietf_hello, strlen(ietf_hello) );
+		if ( strstr(reply, "openroadm")!=NULL ) 
+			libssh2_channel_write( channel, oroadm_subscribe, strlen(oroadm_subscribe) );
+		else
+			libssh2_channel_write( channel, ietf_subscribe, strlen(ietf_subscribe) );
+		bConnected = true;
+		msg_id = 0;
+		rd = 0;
+		*reply = 0;
+		channel2 = NULL;
+		return 0;		//success
+	}
+	else {
+		libssh2_channel_close(channel);
+		libssh2_channel_free(channel);
+		channel = NULL;
+		libssh2_session_disconnect(session, "Reader Shutdown");
+		libssh2_session_free(session);
+		closesocket(sock);
+		return connect2();
+	} 
+Channel_Close:
+	libssh2_session_disconnect(session, "Normal Shutdown");
+	libssh2_session_free(session);
+TCP_Close:
+	print("%s\n", errmsgs[-rc]);
+	return rc;
+}
+int confHost::connect2()
+{
+	int rc = sock = tcp();
+	if ( rc<0 ) goto TCP_Close2;
+	
+	session = libssh2_session_init();
+	if ( libssh2_session_handshake(session, sock)!=0 ) { 
+		rc=-3;	goto Channel_Close2; 
+	}
+	if ( ssh_knownhost()!=0 ) { 
+		rc=-4; goto Channel_Close2; 
+	}
+	if ( ssh_authentication()!=0 ) { 
+		rc=-5; goto Channel_Close2; 
+	}
+	channel = libssh2_channel_open_session(session);
+	channel2 = libssh2_channel_open_session(session);
+	if ( !channel || !channel2 ) { 
+		rc=-6; goto Channel_Close2; 
+	}
+	if ( libssh2_channel_subsystem(channel, "netconf") 
+		|| libssh2_channel_subsystem(channel2, "netconf") ) { 
+		rc=-7; goto Channel_Close2; 
+	}
+	//must be nonblocking for 2 channels on the same session
+	libssh2_session_set_blocking(session, 0); 
+	bConnected = true;
+	msg_id = 0;
+	rd = rd2 = 0;
+	*reply = 0;
+	*notif = 0;
+	libssh2_channel_write( channel, ietf_hello, strlen(ietf_hello) );
+	libssh2_channel_write( channel2, ietf_hello, strlen(ietf_hello) );
+	libssh2_channel_write( channel2, ietf_subscribe, strlen(ietf_subscribe) );
+	return 0;		//success
+Channel_Close2:
+	libssh2_session_disconnect(session, "Normal Shutdown");
+	libssh2_session_free(session);
+TCP_Close2:
+	print("%s\n", errmsgs[-rc]);
+	return rc;
+}
+int confHost::read(char *buf, int buflen)
+{
+	int len, len2, rc; 
+again:
+	while ( true ) {
+		char *delim = strstr(reply, "]]>]]>");
+		if ( delim != NULL ) {
+			*delim=0; 
+			rc = delim - reply; 
+			memcpy(buf, reply, rc);
+			rd -= rc+6;
+			memmove(reply, delim+6, rd+1); 
+			return rc;
+		}
+		mtx.lock();
+		len=libssh2_channel_read(channel,reply+rd,buflen-rd);
+		mtx.unlock();
+		if ( len<=0 ) break;
+
+		rd += len; 
+		reply[rd] = 0;
+	}
+	while ( channel2!=NULL ) {
+		char *delim = strstr(notif, "]]>]]>");
+		if ( delim != NULL ) {
+			*delim=0;
+			rc = delim - notif; 
+			memcpy(buf, notif, rc);
+			rd2 -= rc+6;
+			memmove(notif, delim+6, rd2+1); 
+			return rc;
+		}
+		mtx.lock();
+		len2=libssh2_channel_read(channel2,notif+rd2,buflen-rd2);
+		mtx.unlock();
+		if ( len2<=0 ) break;
+
+		rd2 += len2; 
+		notif[rd2] = 0;
+	}
+
+	if ( len==LIBSSH2_ERROR_EAGAIN ) {
+		if ( wait_socket()>0 ) goto again;
+	}
+
+	if ( channel ) {
+		libssh2_channel_close(channel);
+		libssh2_channel_free(channel);
+	}
+	if ( channel2 ) {
+		libssh2_channel_close(channel2);
+		libssh2_channel_free(channel2);
+	}
+	libssh2_session_disconnect(session, "Reader Shutdown");
+	libssh2_session_free(session);
 	return -1;
+}
+void confHost::write(const char *msg, int len)
+{
+	if ( channel==NULL ) return;
+	char header[256];
+	sprintf(header, ietf_header, ++msg_id);
+	sshHost::write( header, strlen(header) );
+	sshHost::write( msg, len );
+	sshHost::write( "</rpc>]]>]]>", 12 );
+	if ( term!=NULL ) 
+		print("\n%s%s%s\n", header, msg, ietf_footer);
 }
 
 #ifdef WIN32
@@ -722,4 +720,30 @@ void comHost::disconn()
 {
 	SetEvent( hExitEvent );
 }
+
+#include <wincrypt.h>
+char * SHA ( char *msg )
+{
+const unsigned int ALGIDs[] = { CALG_SHA1, CALG_SHA_256, CALG_SHA_384, 0, CALG_SHA_512 };
+	static char result[256];
+	BYTE        bHash[64];
+	DWORD       dwDataLen = 0;
+	HCRYPTPROV  hProv = 0;
+	HCRYPTHASH  hHash = 0;
+
+	int algo = *msg - '1';
+	msg = strchr(msg, '=')+1;
+	CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT);
+	CryptCreateHash( hProv, ALGIDs[algo], 0, 0, &hHash);
+	CryptHashData( hHash, (BYTE *)msg, strlen(msg), 0);
+	CryptGetHashParam( hHash, HP_HASHVAL, NULL, &dwDataLen, 0);
+	CryptGetHashParam( hHash, HP_HASHVAL, bHash, &dwDataLen, 0);
+
+	if(hHash) CryptDestroyHash(hHash);    
+	if(hProv) CryptReleaseContext(hProv, 0);
+
+	for ( int i=0; i<dwDataLen; i++ ) sprintf(result+i*2, "%02x", bHash[i]);
+	return result;
+}
+
 #endif //WIN32

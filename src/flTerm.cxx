@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 14561 2018-06-18 23:55:10 $"
+// "$Id: flTerm.cxx 17165 2018-06-30 23:55:10 $"
 //
 // flTerm -- A minimalist ssh terminal simulator
 //
@@ -24,8 +24,8 @@ const char ABOUT_TERM[]="\n\n\n\
         * unlimited screen buffer size\n\n\
         * Select to copy, right click to paste\n\n\
         * Drag and Drop to run list of commands\n\n\
-        * Scripting interface \033[34mxmlhttp://127.0.0.1:%d\n\n\n\
-    \033[30mby yongchaofan@gmail.com		06-18-2018\n\n\
+        * Scripting interface \033[34mxmlhttp://127.0.0.1:%d\033[30m\n\n\n\
+    by yongchaofan@gmail.com		06-30-2018\n\n\
     https://github.com/zoudaokou/flTerm\n";
 
 #include <stdio.h>
@@ -35,7 +35,7 @@ const char ABOUT_TERM[]="\n\n\n\
 #include "acInput.h"
 #include "Fl_Term.h"
 #include "Hosts.h"
-#include "ssh2.h"
+#include "ftp.h"
 
 #define MARGIN 20
 #include <FL/x.H>               // needed for fl_display
@@ -51,7 +51,6 @@ const char ABOUT_TERM[]="\n\n\n\
 #include <FL/Fl_Native_File_Chooser.H>
 int host_init();
 void host_exit();
-void cmd_disp(const char *buf);
 
 static Fl_Native_File_Chooser fnfc;
 const char *file_chooser(const char *title, const char *filter)
@@ -80,11 +79,25 @@ Fl_Window *pDialog;
 Fl_Choice *pProtocol;
 Fl_Input *pHostname;
 Fl_Input *pPort;
-//Fl_Input *pUser;
-//Fl_Secret_Input *pPass;
 Fl_Button *pConnect;
 Fl_Button *pCancel;
 
+void term_print(Fl_Term *pTerm, const char *s)
+{
+	if ( pTerm!=NULL ) 
+		pTerm->print(s);
+	else 
+		fprintf(stderr, "%s", s);
+}
+const char *term_gets(Fl_Term* pTerm, const char *prompt, int echo)
+{
+	const char *p = NULL;
+	if ( pTerm != NULL ) 
+		p = pTerm->gets(prompt, echo);
+	else if ( acTerm!=pAbout ) 
+		p = acTerm->gets(prompt, echo);
+	return p;
+}
 void term_act(Fl_Term *pTerm)
 {
 	char label[32];
@@ -104,10 +117,6 @@ void term_act(Fl_Term *pTerm)
 	}
 	Fl::awake(pTermWin);
 }
-const char *term_get(const char *prompt, int echo)
-{
-	return acTerm==pAbout?NULL:acTerm->gets(prompt, echo);
-}
 void term_new(const char *host)
 {
 	Fan_Host *pHost = NULL;
@@ -116,7 +125,7 @@ void term_new(const char *host)
 		pHost = new tcpHost(host+7);
 	}
 	else if ( strncmp(host, "ssh ", 4)==0 ) {
-		pHost = new sshHost(host+4);
+		pHost = new scpHost(host+4);
 	}
 	else if ( strncmp(host, "sftp ", 5)==0 ) {
 		pHost = new sftpHost(host+5);
@@ -158,12 +167,30 @@ void term_tab(const char *host)
 		if ( strncmp(host, pTermTabs->child(i)->label(), strlen(host))==0 )
 			term_act((Fl_Term *)pTermTabs->child(i));
 }
+int term_cmd(const char *cmd, char** preply)
+{
+	if ( !acTerm->active() ) {
+		acTerm->print(cmd);
+		return 0;
+	}
+	if ( *cmd=='#' ) {
+		Fan_Host *host = acTerm->get_host();
+		if ( strncmp(cmd,"#scp ",5)==0  && host!=NULL ) {
+			if ( host->type()==HOST_SCP ) 
+				((scpHost*)host)->scp(cmd+5);
+		}
+		else if ( strncmp(cmd,"#tunnel ",8)==0 && host!=NULL ) {
+			if ( host->type()==HOST_SCP ) 
+				((scpHost*)host)->tunnel(cmd+8);
+		}
+		return 0;
+	}
+
+	return acTerm->command( cmd, preply );
+}
 int term_del()
 {
 	if ( acTerm->active() ) {
-		int confirm = fl_choice("Disconnect from %s?", "Yes", "No", 0, 
-														acTerm->label() );
-		if ( confirm==1 ) return false;
 		acTerm->stop_reader();
 		acTerm->set_host(NULL);
 	}
@@ -180,8 +207,13 @@ void tab_callback(Fl_Widget *w)
 	Fl_Term *pTerm = (Fl_Term *)pTermTabs->value();
 
 	if ( pTerm!=pAbout ) {
-		if ( pTerm==acTerm ) 	//clicking on active tab, delete it
-			term_del();
+		if ( pTerm==acTerm ) { 	//clicking on active tab, delete it
+			int confirm = 0;
+			if ( acTerm->active() ) 
+				confirm = fl_choice("Disconnect from %s?", "Yes", "No", 0, 
+														acTerm->label() );
+			if ( confirm==0 ) term_del();
+		}
 		else
 			term_act(pTerm);	//clicking on inactive tab, activate it
 	}
@@ -193,18 +225,6 @@ void tab_callback(Fl_Widget *w)
 		pDialog->show();		//then open connect dialog
 		pHostname->take_focus();
 	}
-}
-int term_cmd(const char *cmd, char** preply)
-{
-	int rc = 0;
-
-	cmd_disp(cmd);
-	if ( acTerm->active() ) 
-		rc = acTerm->command( cmd, preply );
-	else
-		term_new(cmd);
-
-	return rc;
 }
 void menu_callback(Fl_Widget *w, void *data)
 {
@@ -235,22 +255,17 @@ void menu_add(char *line)
 		}
 	}	
 }
-void cmd_disp(const char *buf)
-{
-	pCmd->value(buf); 
-	pCmd->position(0, strlen(buf));
-	Fl::awake(pCmd);
-}
 void cmd_callback(Fl_Widget *o) 
 {
 	char cmd[256];
 	strncpy(cmd, pCmd->value(), 255);
+	cmd[255] = 0;
 	pCmd->position(strlen(cmd), 0);
 	pCmd->add( cmd );
 	switch( *cmd ) {
 		case '/':  acTerm->srch(cmd+1); break;
 		case '\\': acTerm->srch(cmd+1, 1); break;
-		case '#':  acTerm->command(cmd, NULL); break;
+		case '#':  term_cmd(cmd, NULL); break;
 		default: if ( acTerm->active() ) {
 					acTerm->write(cmd); 
 					acTerm->write("\r");
@@ -268,10 +283,9 @@ void editor_callback(Fl_Widget *w, void *data)
 		if ( acTerm!=pAbout ) acTerm->take_focus();
 	}
 	else {
-		int x = acTerm->cursorx();
-		pCmdWin->resize( pTermWin->x()+x, 
+		pCmdWin->resize( pTermWin->x()+200, 
 						 pTermWin->y()+pTermWin->h()-MARGIN,
-						 pTermWin->w()-x, MARGIN );
+						 pTermWin->w()-200, MARGIN );
 		pCmdWin->show();
 		pCmd->take_focus();
 	}
@@ -290,11 +304,6 @@ void font_callback(Fl_Widget *w, void *data)
 {
 	acTerm->textsize(0);
 }
-void about_callback(Fl_Widget *w, void *data)
-{
-	pTermTabs->value(pAbout);
-	Fl::awake(pTermWin);
-}
 void clear_callback(Fl_Widget *w, void *data)
 {
 	acTerm->clear();
@@ -310,13 +319,26 @@ void log_callback(Fl_Widget *w, void *data)
 }
 void close_callback(Fl_Widget *w, void *data)
 {
-	while ( acTerm!=pAbout )
-		if ( !term_del() ) return;
+	int active = false;
+	for ( int i=0; i<pTermTabs->children(); i++ ) {
+		Fl_Term *pTerm = (Fl_Term *)pTermTabs->child(i);
+		if ( pTerm->active() ) {
+			active = true;
+			break;
+		}
+	}
+	
+	if ( active ) {
+		int confirm = fl_choice("Disconnect all and exit?", "Yes", "No", 0);
+		if ( confirm==1 ) return;
+	}
+	while ( acTerm!=pAbout ) term_del();
 	pCmdWin->hide();
 	pTermWin->hide();
 }
 
-const char *protocols[]={"telnet ","ssh ","sftp ","netconf ","serial ","ftpd ", "tftpd "};
+const char *protocols[]={"telnet ", "ssh ","sftp ","netconf ",
+									"serial ","ftpd ", "tftpd "};
 const char *ports[]={"23", "22", "22", "830","9600,n,8,1","21", "61"};
 void new_callback(Fl_Widget *, void *data)
 {
@@ -330,19 +352,6 @@ void connect_callback(Fl_Widget *w)
 	strcpy(buf, protocols[proto]);
 	const char *p;
 
-/*	p = pUser->value();
-	if ( *p ) {
-		strcat(buf, "-l ");
-		strcat(buf, p );
-		strcat(buf, " ");
-	}
-	p = pPass->value();	
-	if ( *p ) {
-		strcat(buf, "-pw ");
-		strcat(buf, p );
-		strcat(buf, " ");
-	}
-*/
 	strcat(buf, pHostname->value());
 	p = pPort->value();
 	if ( *p && strcmp(p, ports[proto])!=0 ) {
@@ -376,6 +385,9 @@ void protocol_callback(Fl_Widget *w)
 }
 int main() {
 	int http_port = host_init();
+	char buf[4096];
+	sprintf(buf, ABOUT_TERM, http_port);
+
 	pTermWin = new Fl_Double_Window(800, 640, "Fl_Term");
 	{
 		pMenu=new Fl_Sys_Menu_Bar(0,0,pTermWin->w(),MARGIN);
@@ -397,7 +409,7 @@ int main() {
 			pAbout = new Fl_Term(0, pTermTabs->y()+MARGIN, pTermTabs->w(),
 														pTermTabs->h(), "+");
 			pAbout->textsize(20);
-			pAbout->print(ABOUT_TERM, http_port);
+			pAbout->print(buf);
 			acTerm = pAbout;
 		pTermTabs->resizable(pAbout);
 		pTermTabs->selection_color(FL_CYAN);
@@ -407,7 +419,7 @@ int main() {
 	pTermWin->callback(close_callback);
 	pTermWin->end();
 
-	pCmdWin = new Fl_Double_Window(800, MARGIN, "Command Center");
+	pCmdWin = new Fl_Double_Window(800, MARGIN, "Cmd");
 	pCmdWin->border(0);
 	  	pCmd = new acInput(0, 0, pCmdWin->w()-0, MARGIN, "");
 	  	pCmd->color(FL_GREEN);
@@ -439,10 +451,6 @@ int main() {
 		pProtocol->textsize(16); pProtocol->labelsize(16);
 		pHostname->textsize(16); pHostname->labelsize(16);
 		pPort->textsize(16); pPort->labelsize(16);
-//		pUser = new Fl_Input(300,60,128,24, "Username:");
-//		pPass = new Fl_Secret_Input(300,100,128,24, "Password:");
-//		pUser->textsize(16); pUser->labelsize(16);
-//		pPass->textsize(16); pPass->labelsize(16);
 		pConnect->labelsize(16);
 		pConnect->shortcut(FL_Enter);
 		pProtocol->add("telnet|ssh|sftp|netconf");
@@ -472,24 +480,6 @@ int main() {
 	host_exit();
 	return 0;
 }
-int http_callback( char *buf, char **preply)
-{
-	int rc=0;
-	if ( *buf=='?' ) buf++;
-	for ( char *p=buf; *p!=0; p++ ) {
-		if ( *p=='+' ) *p=' ';
-		if ( *p=='%' && isdigit(p[1]) ){
-			int a;
-			sscanf( p+1, "%02x", &a);
-			*p = a;
-			strcpy(p+1, p+3);
-		}
-	}
-	if ( strncmp(buf, "Cmd=", 4)==0 ) rc = term_cmd( buf+4, preply );
-	else if ( strncmp(buf, "Tab=", 4)==0 ) term_tab( buf+4 ); 
-	else if ( strncmp(buf, "New=", 4)==0 ) term_new( buf+4 );
-	return rc;
-}
 /**********************************HTTPd**************************************/
 const char HEADER[]="HTTP/1.1 %s\
 					\nServer: flTerm-httpd\
@@ -502,7 +492,7 @@ void httpd( int s0 )
 {
 	struct sockaddr_in cltaddr;
 	socklen_t addrsize=sizeof(cltaddr);
-	char buf[4096], *cmd, *reply=buf;
+	char buf[4096], *cmd, *reply;
 	int cmdlen, replen, http_s1;
 
 	while ( (http_s1=accept(s0,(struct sockaddr*)&cltaddr,&addrsize ))!=-1 ) {
@@ -513,17 +503,33 @@ void httpd( int s0 )
 				char *p = strchr(cmd, ' ');
 				if ( p!=NULL ) *p = 0;
 				if ( *cmd=='?' ) {
-					replen = http_callback(cmd, &reply);
+					for ( char *p=++cmd; *p!=0; p++ )
+						if ( *p=='+' ) *p=' ';
+					fl_decode_uri(cmd);
+					
+					replen = 0;
+					if ( strncmp(cmd, "New=", 4)==0 ) 
+						term_new( cmd+4 );
+					else if ( strncmp(cmd, "Tab=", 4)==0 ) 
+						term_tab( cmd+4 ); 
+					else if ( strncmp(cmd, "Cmd=", 4)==0 ) 
+						replen = term_cmd( cmd+4, &reply );
+#ifdef WIN32
+					else if ( strncmp(cmd, "SHA", 3)==0 ) {
+						reply = SHA(cmd+3);
+						replen = strlen(reply);
+					}
+#endif	
 					int len = sprintf( buf, HEADER, "200 OK", replen );
 					send( http_s1, buf, len, 0 );
 					if ( replen>0 ) send( http_s1, reply, replen, 0 );
 				}
 			}
 		}
+		closesocket(http_s1);
 	}
-	closesocket(http_s1);
 }
-static int http_s0 = 01;
+static int http_s0 = -1;
 int host_init()
 {
 #ifdef WIN32
@@ -560,3 +566,98 @@ void host_exit()
 	libssh2_exit();
 	closesocket(http_s0);
 }
+
+/** taken out of Fl_Term.cxx so that neTables don't have to do this    **/
+void term_copier(Fl_Term *term, char *script)
+{
+	char *p0, *p1, *p2, fn[1024];
+	Fan_Host *host = term->get_host();
+
+	if ( host->type()==HOST_SCP ) {
+		char rpath[1024];
+		term->command("pwd", &p2);
+		p1 = strchr(p2, 0x0a);
+		if ( p1==NULL ) goto done;
+		p2 = p1+1;
+		p1 = strchr(p2, 0x0a);
+		if ( p1==NULL ) goto done;
+		strncpy(rpath, p2, p1-p2);
+		rpath[p1-p2] = 0;
+		
+		p0 = script;
+		do {
+			p2=p1=strchr(p0, 0x0a);
+			if ( p1==NULL ) 
+				p1 = p0+strlen(p0);
+			else 
+				*p1 = 0; 
+			strncpy(fn, p0, 1020);
+			for ( unsigned int i=0; i<strlen(fn); i++ ) 
+				if ( fn[i]=='\\' ) fn[i]='/';
+			((scpHost *)host)->scp_write(fn, rpath);
+			p0 = p1+1;
+		}
+		while ( p2!=NULL ); 
+		host->write("\015", 1);
+	}
+	if ( host->type()==HOST_SFTP ){
+		p0 = script;
+		do {
+			p2=p1=strchr(p0, 0x0a);
+			if ( p1==NULL ) 
+				p1 = p0+strlen(p0);
+			else 
+				*p1 = 0; 
+			strcpy(fn, "put ");
+			strncat(fn, p0, 1020);
+			for ( unsigned int i=0; i<strlen(fn); i++ ) 
+				if ( fn[i]=='\\' ) fn[i]='/';
+			((sftpHost *)host)->sftp(fn);
+			p0 = p1+1;
+		}
+		while ( p2!=NULL ); 
+		term->print("sftp > ");
+	}
+done:
+	delete script;
+}
+
+/*******************************************************************************
+#ifdef WIN32
+#define ID_CLEAR	70
+#define ID_SAVE		71
+#define ID_LOG		72
+#define ID_NEW		73
+int sys_menu_handler( void *event, void *data )
+{
+	MSG *msg = (MSG *)event;
+	if ( msg->message == WM_SYSCOMMAND ) {
+		switch ( msg->wParam ) {
+		case ID_CLEAR:	clear_callback(NULL, NULL); return 1;
+		case ID_SAVE:	save_callback(NULL, NULL); return 1;
+		case ID_LOG:	log_callback(NULL, NULL); return 1;
+		case ID_NEW:	new_callback(NULL, NULL); return 1;
+		default: return 0;
+		}
+	}
+	return 0;
+}	
+void sys_menu_insert()
+{
+	HMENU hSysMenu = GetSystemMenu(GetActiveWindow(), FALSE);
+	InsertMenu(hSysMenu, 0, MF_BYPOSITION|MF_SEPARATOR, 0, NULL);
+	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_CLEAR,"&Clear  \tAlt+C");
+	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_SAVE, "&Save...\tAlt+S");
+	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_LOG, 	"&Log... \tAlt+L");
+	InsertMenu(hSysMenu, 0, MF_BYPOSITION, ID_NEW, 	"&New... \tAlt+N");
+}
+#endif //WIN32
+#ifdef WIN32
+	sys_menu_insert();
+	Fl::add_system_handler(sys_menu_handler, NULL);
+#endif
+#ifdef __APPLE__
+		fl_mac_set_about(about_callback, NULL);
+#endif //__APPLE__
+
+*******************************************************************************/

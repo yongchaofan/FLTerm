@@ -1,11 +1,11 @@
 //
-// "$Id: Fl_Host.h 1825 2018-05-08 23:48:10 $"
+// "$Id: acInput.cxx 2269 2018-06-29 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion 
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GUN LGPL 3.0,
+// This library is free software distributed under GNU LGPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
