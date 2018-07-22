@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 21622 2018-06-30 13:48:10 $"
+// "$Id: Fl_Term.cxx 21475 2018-06-30 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -15,14 +15,9 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 
-#include <stdio.h>
-#include <stdarg.h>
 #include <unistd.h>
 #include <ctype.h>
 #include "Fl_Term.h"
-#include "ftp.h"
-void term_copier(Fl_Term *pTerm, char *script);
-
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L) 
 {
 	bInsert = bAlterScreen = bAppCursor = false;
@@ -40,6 +35,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bPrompt = true;
 	bGets = bEnter = bEnter1 = false;
 	bDND = bReaderRunning = false;
+	dnd_cb = NULL;
 	
 	host = NULL;
 	line = NULL;
@@ -267,7 +263,8 @@ int Fl_Term::handle( int e ) {
 				if ( bReaderRunning ) {
 					if ( bDND ) {	//drag and drop to run as script
 						bDND = false;
-						run_script(Fl::event_text());
+						if ( dnd_cb!=NULL ) 
+							dnd_cb(this, Fl::event_text());
 					}
 					else			//paste to write to host directly
 						write(Fl::event_text()); 
@@ -347,7 +344,8 @@ void Fl_Term::append( const char *newtext, int len ){
 		case 0x07: if ( bTitle ) {
 						bTitle=false;
 						buff[cursor_x]=0;
-						cursor_x = line[cursor_y]; 
+						cursor_x=line[cursor_y];
+						line[cursor_y+1]=cursor_x;
 						//copy_label(buff+cursor_x);
 					}
 					break;
@@ -630,29 +628,21 @@ void Fl_Term::set_host(Fan_Host *pHost)
 	if ( host!=NULL ) delete host;
 	if ( (host=pHost)!=NULL ) {
 		copy_label(host->name());
-		host->set_term(this); 
 	}
 }
 void Fl_Term::reader()
 {
-	int len, rc;
-	char buf[65536];
-
-	if ( (rc=host->connect()) == 0 ) {
+	bReaderRunning = true;
+	if ( host->connect() == 0 ) {
 		host->send_size(size_x, size_y);
-		do {
-			len=host->read(buf, 65535);
-			if ( len>0 ) append(buf, len);
-		} while ( len>=0 );
+		host->read(NULL, this); 
 	}
-	host->disconn();
-	append("\n****Disconnected, press Enter to restart****\n\n", 48);
 	bReaderRunning = false;
+	append("\n****Disconnected, press Enter to restart****\n\n", 48);
 }
 void Fl_Term::start_reader()
 {
 	if ( !bReaderRunning && host!=NULL ) {
-		bReaderRunning = true;
 		std::thread th(&Fl_Term::reader, this);
 		readerThread.swap(th);
 		if ( th.joinable() ) th.detach();
@@ -667,17 +657,6 @@ void Fl_Term::stop_reader()
 		while ( bReaderRunning ) usleep(100000);
 	}
 }
-/*
-void Fl_Term::print(const char *fmt, ...)
-{
-	char buff[32768];
-	va_list args;
-	va_start(args, (char *)fmt);
-	int len = vsnprintf(buff, 32768, (char *)fmt, args);
-	va_end(args);
-	if ( len>0 ) append(buff, len);
-}
-*/
 void Fl_Term::write(const char *buf)
  { 
 	if ( bGets ) {
@@ -706,13 +685,12 @@ void Fl_Term::write(const char *buf)
 			host->write(buf, strlen(buf)); 
 	}
 }	
-char* Fl_Term::gets( const char *prompt, int echo )
+char* Fl_Term::gets( int echo )
 {
 	cursor=0;
 	bGets = true;
 	bReturn = false; 
-	bPassword = echo;
-	append(prompt, strlen(prompt));
+	bPassword = !echo;
 	int old_cursor = cursor;
 	for ( int i=0; i<iTimeOut*10&&bGets; i++ ) {
 		if ( bReturn ) { bGets = false; return keys; }
@@ -721,6 +699,14 @@ char* Fl_Term::gets( const char *prompt, int echo )
 	}
 	bGets = false;
 	return NULL;
+}
+void Fl_Term::puts(const char *buf)
+{
+	append(buf, strlen(buf));
+}
+void Fl_Term::puts(const char *buf, int len)
+{
+	append(buf, len);
 }
 int Fl_Term::waitfor(const char *word)
 {
@@ -772,40 +758,56 @@ int Fl_Term::command( const char *cmd, char **preply )
 	}
 	return 0;
 }
-void Fl_Term::scripter(char *script)
+void Fl_Term::putxml(const char *msg)
 {
-	char *p0=script, *p1, *p2;	
-	do {
-		p2=p1=strchr(p0, 0x0a);
-		if ( p1==NULL ) 
-			p1 = p0+strlen(p0);
-		else 
-			*p1 = 0;
-		if (p1!=p0) command( p0, NULL );
-		*p1 = 0x0a;
-		p0 = p1+1; 
+	int indent=-1, previousIsOpen=true;
+	const char *p=msg, *q;
+	char spaces[256];
+	memset(spaces, ' ', 256);
+	spaces[0] = '\n';
+	while ( *p ) {
+		while (*p==0x0d || *p==0x0a || *p=='\t' || *p==' ' ) p++;
+		if ( *p=='<' ) { //tag
+			if ( p[1]=='/' ) {
+				if ( !previousIsOpen ) {
+					indent -= 2;
+					append(spaces, indent);
+				}
+				previousIsOpen = false;
+			}
+			else {
+				if ( previousIsOpen ) indent+=2;
+				append(spaces, indent);
+				previousIsOpen = true;
+			}
+			q = strchr(p, '>');
+			if ( q!=NULL ) {
+				append("\033[32m",5);
+				const char *r = strchr(p, ' ');
+				if ( r!=NULL && r<q ) {
+					append(p, r-p);
+					append("\033[35m",5);
+					append(r, q-r);
+				}
+				else
+					append(p, q-p);
+				append("\033[32m>",6);
+				if ( q[-1]=='/' ) previousIsOpen = false;
+				p = q+1;
+			}
+			else 
+				break;
+		}
+		else {			//data
+			q = strchr(p, '<');
+			if ( q!=NULL ) {
+				append("\033[33m",5);
+				append(p, q-p);
+				p = q;
+			}
+			else 
+				break;
+		}	
 	}
-	while ( p2!=NULL );
-	delete script;
-}
-void Fl_Term::run_script(const char *txt)
-{
-	char *script = strdup(txt);	//script thread must delete this
-	if ( script==NULL ) return;
-
-	char *p0 = script;
-	char *p1=strchr(p0, 0x0a);
-	if ( p1!=NULL ) *p1=0;
-	struct stat sb;
-	int rc = stat(p0, &sb);		//is this a list of files?
-	if ( p1!=NULL ) *p1=0x0a;
-
-	if ( rc==-1 ) {		//first line is not a file, run as script
-		std::thread scripterThread(&Fl_Term::scripter, this, script);
-		scripterThread.detach();
-	}
-	else {				//first line is a filename, copy files to host
-		std::thread scripterThread(term_copier, this, script);
-		scripterThread.detach();
-	}
+	append("\033[30m",5);
 }

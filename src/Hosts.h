@@ -1,7 +1,7 @@
 //
-// "$Id: Hosts.h 3910 2018-06-29 13:48:10 $"
+// "$Id: Hosts.h 3869 2018-06-29 13:48:10 $"
 //
-// tcpHost sshHost confHost comHost
+// tcpHost sshHost confHost
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
@@ -30,7 +30,6 @@
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#define closesocket close
-	#define MAX_PATH 4096
 #endif
 #include <stdio.h>
 #include <string.h>
@@ -43,26 +42,32 @@
 enum {  HOST_COM=1, HOST_TCP, HOST_SSH,
 		HOST_SCP, HOST_SFTP, HOST_CONF,
 		HOST_FTPD,HOST_TFTPD };
-		
-class Fl_Term;
+
+typedef const char* (*gets_callback_t)(void *, int);
+typedef void (*parse_callback_t)(void *, const char *, int);
 
 class Fan_Host {
 protected:
-	Fl_Term *term;
 	int bConnected;
+	void *puts_data;
+	void *gets_data;
+	parse_callback_t puts_cb;
+	gets_callback_t gets_cb;
 
 public: 
+	Fan_Host();
 	virtual ~Fan_Host(){}
 	virtual const char *name()					=0;
 	virtual int type()							=0;
 	virtual	int connect()						=0;
-	virtual	int read(char *buf, int len)		=0;
-	virtual	void write(const char *buf, int len)=0;
+	virtual	int read(parse_callback_t, void *)	=0;
+	virtual	int write(const char *buf, int len)	=0;
 	virtual void send_size(int sx, int sy)		=0;
 	virtual	void disconn()						=0;	
 
-	void set_term(Fl_Term *pTerm){ term=pTerm; }
 	int connected() { return bConnected; }
+	void gets_callback(gets_callback_t cb, void *data);
+	void puts_callback(parse_callback_t cb, void *data);
 	void print(const char *fmt, ...);
 };
 
@@ -71,17 +76,17 @@ protected:
 	char hostname[64];
 	short port;
 	int sock;
-	unsigned char *telnet_options(unsigned char *buf);
 	int tcp();
+	unsigned char *telnet_options(unsigned char *buf);
 
 public:
-	tcpHost(const char *address);
+	tcpHost(const char *name);
 	
 	virtual const char *name(){ return hostname; }
 	virtual int type() { return HOST_TCP; }
 	virtual int connect();
-	virtual int read(char *buf, int len);
-	virtual void write(const char *buf, int len);
+	virtual	int read(parse_callback_t, void *);
+	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
 	virtual void disconn();	
 };
@@ -94,73 +99,55 @@ protected:
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
 	std::mutex mtx;
+	int tunStarted;
+	char path[1024];
 	
 	int wait_socket();
 	int ssh_knownhost();
 	int ssh_authentication();
 
 public:
-	sshHost(const char *address); 
+	sshHost(const char *name); 
 
+//	virtual const char *name();
+	virtual int type() { return HOST_SSH; }
+	virtual int connect();
+	virtual	int read(parse_callback_t, void *);
+	virtual int write(const char *buf, int len);
+	virtual void send_size(int sx, int sy);
+	virtual void disconn();				
 	void set_user_pass( const char *user, const char *pass ) { 
 		if ( *user ) strncpy(username, user, 31); 
 		if ( *pass ) strncpy(password, pass, 31); 
 	}
-//	virtual const char *name();
-	virtual int type() { return HOST_SSH; }
-	virtual int connect();
-	virtual int read(char *buf, int len);
-	virtual void write(const char *buf, int len);
-	virtual void send_size(int sx, int sy);
-//	virtual void disconn();				
+	int scp_read(const char *rpath, const char *lpath);
+	int scp_write(const char *lpath, const char *rpath);
+	int tun(const char *cmd);
+	int tun_local(const char *lpath, const char *rpath);
+	int tun_remote(const char *rpath,const char *lpath);
 };
 
-#define BUFLEN 65536*2
+#define BUFLEN 65536*2-1
 class confHost : public sshHost {
 private: 
 	LIBSSH2_CHANNEL *channel2;
-	char notif[BUFLEN];
-	char reply[BUFLEN];
+	char notif[BUFLEN+1];
+	char reply[BUFLEN+1];
 	int rd;
 	int rd2;
 	int msg_id;
+
 public:
-	confHost(const char *address) : sshHost(address)
-	{
-		if ( port==22 ) port = 830;
-	}	
+	confHost(const char *name);
 
 //	virtual const char *name();
 	virtual int type() { return HOST_CONF; }
 	virtual int connect();
-	virtual int connect2();
-	virtual int read(char *buf, int len);
-	virtual void write(const char *buf, int len);
-//	virtual void send_size(int sx, int sy);
-//	virtual void disconn();
-};
-
-#ifdef WIN32
-class comHost : public Fan_Host {
-private:
-	char portname[32];
-	char settings[32];
-	HANDLE hCommPort;
-	HANDLE hExitEvent;
-
-public:
-	comHost(const char *address);
-	
-	virtual const char *name(){ return portname+4; }
-	virtual int type() { return HOST_COM; }
-	virtual int connect();
-	virtual int read(char *buf, int len);
-	virtual void write(const char *buf, int len);
+	virtual	int read(parse_callback_t, void *);
+	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
-	virtual void disconn();	
+	virtual void disconn();
+	int write2(const char *buf, int len);
 };
-
-char *SHA( char *msg );
-#endif //WIN32
 
 #endif //_FAN_HOST_H_

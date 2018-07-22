@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 3835 2018-06-30 13:48:10 $"
+// "$Id: Fl_Term.h 3936 2018-06-30 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -18,6 +18,7 @@
 #include <FL/Fl.H>
 #include <FL/Fl_Draw.H>
 #include <thread>
+#include <mutex>
 
 #ifdef __APPLE__ 
 	#define TERMFONT "Monaco"
@@ -27,6 +28,7 @@
 
 #ifndef _FL_TERM_H_
 #define _FL_TERM_H_
+typedef void (*dnd_callback)(void *, const char *);
 class Fl_Term : public Fl_Widget {
 	char c_attr;			//current character attribute(color)
 	char *buff, *attr;		//buffer for characters and attributes, one byte per char
@@ -75,7 +77,7 @@ class Fl_Term : public Fl_Widget {
 	std::thread readerThread;
 	int bReaderRunning;
 	int bDND;
-	
+	dnd_callback dnd_cb;
 protected: 
 	Fan_Host *host;
 	void draw();
@@ -83,7 +85,6 @@ protected:
 	void more_chars();
 	void append( const char *newtxt, int len );
 	const char *vt100_Escape( const char *sz );
-	void scripter(char *script);
 	void reader();
 
 public:
@@ -96,20 +97,22 @@ public:
 
 	void set_host(Fan_Host *pHost);
 	Fan_Host *get_host() { return host; }
+	void callback(dnd_callback cb) { dnd_cb = cb; }
+	int active() { return bReaderRunning; }
 	void start_reader();
 	void stop_reader();
-	void run_script(const char *text);
-	int active() { return bReaderRunning; }
 
 	int  logging() { return bLogging; }
 	void logg( const char *fn );
 	void save( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
 
+	char *gets(int echo);
+	void puts(const char *buf);
+	void putxml(const char *msg);
+	void puts(const char *buf, int len);
+	void write(const char *buf);
 	int  waitfor(const char *word);
 	int  command( const char *cmd, char **response );
-	char *gets(const char *prompt, int echo);
-	void write(const char *buf);
-	void print(const char *s){ append(s, strlen(s)); }
 };
 #endif
