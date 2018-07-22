@@ -1,4 +1,4 @@
-HEADERS = src/sqlTable.h src/Fl_Term.h src/Hosts.h  src/ftp.h
+HEADERS = src/sqlTable.h src/Fl_Term.h src/Hosts.h  src/sftp.h
 LIBS =  /mingw64/lib/libssh2.a /mingw64/lib/libz.a /mingw64/lib/binutils/libiberty.a
 LDFLAGS = -s $(shell fltk-config --ldstaticflags) -lws2_32 -lcrypt32 -lbcrypt -static-libstdc++ -Wl,-Bstatic -lstdc++ -Wl,-gc-sections
 CFLAGS = -Os -std=c++11 $(shell fltk-config --cxxflags) -ffunction-sections -fdata-sections -fno-rtti -fno-exceptions
@@ -6,11 +6,11 @@ RC = windres
 
 all: flTerm.exe
 
-flTerm.exe: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/ftp.o obj/flTerm_rc.o 
+flTerm.exe: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/sftp.o obj/flTerm_rc.o 
 	cc -Wall -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/ftp.o obj/flTerm_rc.o ${LIBS} ${LDFLAGS}
 
 obj/%.o: src/%.cxx ${HEADERS}
-	${CC} ${CFLAGS} ${INCLUDE_DIRS} -c $< -o $@
+	${CC} ${CFLAGS} -c $< -o $@
 
 obj/flTerm_rc.o: res\flTerm.rc res\fltk.manifest res\Fl.ico 
 	${RC} -I. -I.\res -i $< -o $@
