@@ -1,4 +1,4 @@
-HEADERS = Fl_Term.h Hosts.h ftp.h acInput.h
+HEADERS = Fl_Term.h Hosts.h sftp.h acInput.h
 LIBS =  /usr/local/lib/libssh2.a -L/usr/local/lib
 INCLUDE = -I.
 
@@ -7,7 +7,7 @@ LDFLAGS = ${shell fltk-config --ldstaticflags} -lc++ -lz -lssl -lcrypto
 
 all: flTerm
 
-flTerm: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/ftp.o
+flTerm: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/sftp.o
 	cc -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/ftp.o ${LIBS} ${LDFLAGS}
 
 obj/%.o: src/%.cxx 
