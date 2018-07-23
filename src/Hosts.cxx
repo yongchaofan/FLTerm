@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 31307 2018-05-25 21:55:10 $"
+// "$Id: Hosts.cxx 31174 2018-05-25 21:55:10 $"
 //
 // tcpHost sshHost confHost
 //
@@ -129,7 +129,11 @@ int tcpHost::write(const char *buf, int len )
 void tcpHost::disconn()
 {
 	if ( bConnected ) {
+#ifdef WIN32
 		closesocket(sock);
+#else
+	shutdown(sock, SHUT_RD);
+#endif
 		bConnected = false;
 	}
 }
@@ -458,13 +462,6 @@ void sshHost::send_size(int sx, int sy)
 	if ( bConnected ) 
 		libssh2_channel_request_pty_size( channel, sx, sy );
 }
-void sshHost::disconn()
-{
-	if ( bConnected ) {
-		closesocket(sock);
-		bConnected = false;
-	}
-}
 int sshHost::scp_read(const char *rpath, const char *lpath)
 {
 	LIBSSH2_CHANNEL *scp_channel;
@@ -475,7 +472,7 @@ int sshHost::scp_read(const char *rpath, const char *lpath)
 		mtx.unlock();
         if (!scp_channel) {
             if ( libssh2_session_last_errno(session) != LIBSSH2_ERROR_EAGAIN) {
-                print("\n\033[31mSCP: couldn't open remote file\033[32m%s\033[30m", rpath);
+                print("\n\033[31mSCP: couldn't open remote file\033[32m%s\033[37m", rpath);
                 return -1;
             }
             else 
@@ -485,10 +482,10 @@ int sshHost::scp_read(const char *rpath, const char *lpath)
 
 	FILE *fp = fopen(lpath, "wb");
 	if ( fp==NULL ) {
-		print("\n\033[31mSCP: couldn't write local file \033[32m%s\033[30m", lpath);
+		print("\n\033[31mSCP: couldn't write local file \033[32m%s\033[37m", lpath);
 		return -2;
 	}
-	print("\n\033[32mSCP: %s\t\033[30m ", lpath);
+	print("\n\033[32mSCP: %s\t\033[37m ", lpath);
 
 	time_t start = time(NULL);
     libssh2_struct_stat_size got = 0;
@@ -525,7 +522,7 @@ int sshHost::scp_write(const char *lpath, const char *rpath)
 	struct stat fileinfo;
     FILE *fp =fopen(lpath, "rb");
 	if ( !fp ) {
-		print("\n\033[31mSCP: couldn't read local file\033[32m%s\033[30m", lpath);
+		print("\n\033[31mSCP: couldn't read local file\033[32m%s\033[37m", lpath);
 		return -1;
 	}
     stat(lpath, &fileinfo);	//fl_stat causes wrong file size been sent on windows
@@ -537,12 +534,13 @@ int sshHost::scp_write(const char *lpath, const char *rpath)
 		mtx.unlock();
         if ( (!scp_channel) && 
 			 (libssh2_session_last_errno(session)!=LIBSSH2_ERROR_EAGAIN)) {
-            print("\n\033[31mSCP: couldn't open remote file \033[32m%s\033[30m",rpath );
+            print("\n\033[31mSCP: couldn't open remote file \033[32m%s\033[37m",rpath );
+			fclose(fp);
             return -2;
         }
     } while ( !scp_channel );
  
-    print("\n\033[32mSCP: %s\t\033[30m", rpath);
+    print("\n\033[32mSCP: %s\t\033[37m", rpath);
 	time_t start = time(NULL);
 	size_t nread = 0, total = 0;
 	int rc, nmeg = 0;
@@ -562,7 +560,7 @@ int sshHost::scp_write(const char *lpath, const char *rpath)
 				continue;
             }
             if ( rc<0 ) {
-                print("\033[31minterrupted at %ld bytes\033[30m", total);
+                print("\033[31minterrupted at %ld bytes\033[37m", total);
                 break;
             }
             else {
@@ -1043,13 +1041,6 @@ int confHost::write(const char *msg, int len)
 	else 
 		return msg_id;
 } 
-void confHost::disconn()
-{
-	if ( bConnected ) {
-		closesocket(sock);
-		bConnected = false;
-	}
-}
 int confHost::write2(const char *msg, int len)
 {
 	if ( !bConnected ) return 0;
@@ -1060,7 +1051,7 @@ int confHost::write2(const char *msg, int len)
 		mtx.unlock();
         if ( !channel2 && 
 			 (libssh2_session_last_errno(session)!=LIBSSH2_ERROR_EAGAIN)) {
-            print("\n\033[31mcouldn't open channel2\033[30m" );
+            print("\n\033[31mcouldn't open channel2\033[37m" );
             return -1;
         }
     } while ( !channel2 );
@@ -1072,7 +1063,7 @@ int confHost::write2(const char *msg, int len)
 		mtx.unlock();
 		if ( rc && 
 			 (libssh2_session_last_errno(session)!=LIBSSH2_ERROR_EAGAIN)) {
-            print("\n\033[31mcouldn't netconf channel2\033[30m" );
+            print("\n\033[31mcouldn't netconf channel2\033[37m" );
 			return -2; 
 		}
 	} while ( rc );

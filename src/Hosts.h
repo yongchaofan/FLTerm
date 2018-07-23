@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 3869 2018-06-29 13:48:10 $"
+// "$Id: Hosts.h 3911 2018-06-29 13:48:10 $"
 //
 // tcpHost sshHost confHost
 //
@@ -115,7 +115,7 @@ public:
 	virtual	int read(parse_callback_t, void *);
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
-	virtual void disconn();				
+//	virtual void disconn();			//use from tcpHost	
 	void set_user_pass( const char *user, const char *pass ) { 
 		if ( *user ) strncpy(username, user, 31); 
 		if ( *pass ) strncpy(password, pass, 31); 
@@ -146,7 +146,7 @@ public:
 	virtual	int read(parse_callback_t, void *);
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
-	virtual void disconn();
+//	virtual void disconn();		//use from tcpHost
 	int write2(const char *buf, int len);
 };
 

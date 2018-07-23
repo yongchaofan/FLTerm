@@ -63,7 +63,7 @@ void Fl_Term::clear()
 	screen_y = -1;
 	scroll_y = 0;
 	page_up_hold = page_down_hold = 0;
-	c_attr = 0;
+	c_attr = 7;
 	sel_left = 0;
 	sel_right= 0;
 	recv0 = 0;
@@ -114,8 +114,8 @@ void Fl_Term::textsize( int pt )
 	redraw();
 }	
 
-const int VT_attr[8]={FL_WHITE, FL_RED, FL_GREEN, FL_YELLOW, 
-					 FL_BLUE, FL_MAGENTA, FL_CYAN, FL_BLACK};
+const int VT_attr[8]={FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW, 
+					 FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE};
 void Fl_Term::draw()
 {
 	fl_color(color());
@@ -578,7 +578,7 @@ const char *Fl_Term::vt100_Escape( const char *sz )
 				}
 				break;
 			case 'm': //text style, color attributes 
-				if ( n0<10 ) c_attr = 0;
+				if ( n0<10 ) c_attr = 7;
 				if ( int(n0/10)==3 ) c_attr = n0%10;
 				if ( n1==1 && n2/10==3 ) c_attr = n2%10; 
 				break;	
@@ -760,11 +760,10 @@ int Fl_Term::command( const char *cmd, char **preply )
 }
 void Fl_Term::putxml(const char *msg)
 {
-	int indent=-1, previousIsOpen=true;
+	int indent=0, previousIsOpen=true;
 	const char *p=msg, *q;
-	char spaces[256];
-	memset(spaces, ' ', 256);
-	spaces[0] = '\n';
+	const char spaces[256]="\r\n                                               \
+                                                                              ";
 	while ( *p ) {
 		while (*p==0x0d || *p==0x0a || *p=='\t' || *p==' ' ) p++;
 		if ( *p=='<' ) { //tag
@@ -805,9 +804,11 @@ void Fl_Term::putxml(const char *msg)
 				append(p, q-p);
 				p = q;
 			}
-			else 
+			else { //not xml or incomplete xml
+				append(p, strlen(p));
 				break;
+			}
 		}	
 	}
-	append("\033[30m",5);
+	append("\033[37m",5);
 }

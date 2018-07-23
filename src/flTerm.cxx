@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 20555 2018-06-30 23:55:10 $"
+// "$Id: flTerm.cxx 20615 2018-06-30 23:55:10 $"
 //
 // flTerm -- A minimalist ssh terminal simulator
 //
@@ -104,12 +104,13 @@ const char *term_gets(void *pTerm, int echo)
 void term_puts(void *pTerm, const char *buf, int len)
 {
 	Fl_Term *term = (Fl_Term *)pTerm;
-	if ( strncmp(buf, "<?xml", 5)==0 ) 
-		term->putxml(buf);
-	else
-		term->puts(buf, len);
+	term->puts(buf, len);
 }
-
+void term_putxml(void *pTerm, const char *msg, int len)
+{
+	Fl_Term *term = (Fl_Term *)pTerm;
+	term->putxml(msg);
+}
 void term_act(Fl_Term *pTerm)
 {
 	char label[32];
@@ -127,19 +128,19 @@ void term_act(Fl_Term *pTerm)
 		strcat(label, "  x");
 		acTerm->copy_label(label);
 	}
-	Fl::awake(pTermTabs);
+	pTermTabs->redraw();
 }
 void term_new(const char *host)
 {
-	Fan_Host *pHost = NULL;
 	Fl_Term *pTerm = acTerm;
 	if ( (acTerm==pAbout) | (acTerm->active()) ) { 
 		pTerm=new Fl_Term(0, pTermTabs->y()+MARGIN, pTermTabs->w(), 
 										pTermTabs->h()-MARGIN, "term");
 		pTerm->labelsize(16);
 		pTermTabs->insert(*pTerm, pTermTabs->children()-1);
-		term_act(pTerm);
 	}
+
+	Fan_Host *pHost = NULL;
 	if ( strncmp(host, "telnet ", 7)==0 ) {
 		pHost = new tcpHost(host+7);
 	}
@@ -148,7 +149,7 @@ void term_new(const char *host)
 	}
 	else if ( strncmp(host, "sftp ", 5)==0 ) {
 		pHost = new sftpHost(host+5);
-		acTerm->command("#Timeout 300", NULL);
+		pTerm->command("#Timeout 300", NULL);
 	}
 	else if ( strncmp(host, "netconf ", 8)==0 ) {
 		pHost = new confHost(host+8);
@@ -167,11 +168,12 @@ void term_new(const char *host)
 	}
 #endif
 	if ( !pHost ) return;
-	pHost->gets_callback(term_gets, acTerm);
-	pHost->puts_callback(term_puts, acTerm);
-	acTerm->set_host(pHost);
-	acTerm->callback(dnd_cb);
-	acTerm->start_reader();		
+	pHost->gets_callback(term_gets, pTerm);
+	pHost->puts_callback(pHost->type()==HOST_CONF?term_putxml:term_puts, pTerm);
+	pTerm->set_host(pHost);
+	pTerm->callback(dnd_cb);
+	pTerm->start_reader();		
+	term_act(pTerm);
 }
 void term_tab(const char *host)
 {
@@ -201,19 +203,18 @@ int term_cmd(char *cmd, char** preply)
 
 	return acTerm->command( cmd, preply );
 }
-int term_del()
+void term_del()
 {
-	if ( acTerm->active() ) {
-		acTerm->stop_reader();
-		acTerm->set_host(NULL);
-	}
 	if ( acTerm!=pAbout ) {
+		if ( acTerm->active() ) {
+			acTerm->stop_reader();
+			acTerm->set_host(NULL);
+		}
 		pTermTabs->remove(acTerm);
 //		Fl::delete_widget(acTerm);  //crash if delete tab with active connection
 		acTerm = NULL;
 		term_act((Fl_Term *)pTermTabs->child(0));
 	}
-	return true;
 }
 void tab_callback(Fl_Widget *w) 
 {
@@ -596,8 +597,7 @@ void scp_writer(Fl_Term *pTerm, char *script)
 	if ( p1==NULL ) goto done;
 	rpath_len = p1-p2;
 	strncpy(rfile, p2, rpath_len);
-	strcat(rfile, "/");
-	rpath_len++;
+	rfile[rpath_len++]='/';
 
 	p0 = script;
 	do {
