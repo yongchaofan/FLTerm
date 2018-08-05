@@ -262,12 +262,11 @@ int Fl_Term::handle( int e ) {
 			else					//right click to paste
 				Fl::paste(*this, 1);
 			return 1; 
-		case FL_DND_RELEASE:
-		case FL_DND_ENTER: 
-		case FL_DND_DRAG:  
-		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:  write(Fl::event_text(), Fl::event_length()); 
-						return 1;
+		case FL_DND_DRAG:  
+		case FL_DND_ENTER: 
+		case FL_DND_LEAVE:  
+		case FL_DND_RELEASE:return 1;
 		case FL_KEYUP:  if ( Fl::event_state(FL_ALT)==0 ) {
 				int key = Fl::event_key();
 				switch ( key ) {
