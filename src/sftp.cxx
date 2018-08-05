@@ -25,6 +25,7 @@
 #include <dirent.h>
 #include <fnmatch.h>
 #include "sftp.h"
+extern const char *errmsgs[];
 
 /*******************sftpHost*******************************/
 int sftpHost::sftp_lcd(char *cmd)
@@ -225,38 +226,6 @@ int sftpHost::sftp_put_one(char *src, char *dst)
     libssh2_sftp_close(sftp_handle);	
 	return 0;
 }
-int sftpHost::connect()
-{
-	int rc = tcp();
-	if ( rc!=0 ) goto TCP_Close;
-	
-	session = libssh2_session_init();
-	if ( !session ) { rc=-2;  goto sftp_Close; }
-	if ( libssh2_session_handshake(session, sock)!=0 ) { 
-		rc=-3;  goto sftp_Close; 
-	}
-	if ( ssh_knownhost()!=0 ) { 
-		rc=-4; goto sftp_Close; 
-	}
-	if ( ssh_authentication()!=0 ) { 
-		rc=-5; goto sftp_Close; 
-	}
-	if ( !(sftp_session=libssh2_sftp_init(session)) ) { 
-		rc = -9; goto sftp_Close; 
-	}
-	if ( libssh2_sftp_realpath(sftp_session, ".", realpath, 1024)<0 )
-		*realpath=0;
-	strcpy( homepath, realpath );
-	bConnected = true;
-	return 0;
-
-sftp_Close:
-	libssh2_session_disconnect(session, "Normal Shutdown");
-	libssh2_session_free(session);
-TCP_Close:
-	closesocket(sock);
-	return rc;
-}
 int sftpHost::sftp(char *p){
 	char *p1, *p2, src[1024], dst[1024];
 	p1 = strchr(p, ' ');		//p1 is first parameter of the command
@@ -307,22 +276,58 @@ int sftpHost::sftp(char *p){
 				"ls, dir, get, put, ren, rm, del, mkdir, rmdir, bye");
 	return 0;
 }
-int sftpHost::read(parse_callback_t parse_cb, void *data)
+int sftpHost::read()
 {
-	while ( bConnected ) {
-		puts_cb(puts_data, "sftp> ", 6);
-		const char *p=gets_cb(gets_data, true);
-		if ( p==NULL ) break;
+	do_callback("Connecting", 0);
+	int rc = tcp();
+	if ( rc!=0 ) goto TCP_Close;
+	
+	session = libssh2_session_init();
+	if ( !session ) { rc=-2;  goto sftp_Close; }
+	if ( libssh2_session_handshake(session, sock)!=0 ) { 
+		rc=-3;  goto sftp_Close; 
+	}
+	if ( ssh_knownhost()!=0 ) { 
+		rc=-4; goto sftp_Close; 
+	}
+	if ( ssh_authentication()!=0 ) { 
+		rc=-5; goto sftp_Close; 
+	}
+	if ( !(sftp_session=libssh2_sftp_init(session)) ) { 
+		rc = -6; goto sftp_Close; 
+	}
+	if ( libssh2_sftp_realpath(sftp_session, ".", realpath, 1024)<0 )
+		*realpath=0;
+	strcpy( homepath, realpath );
+	bConnected = true;
+
+	const char *p;
+	while ( (p=ssh_gets("sftp> ", true))!=NULL ) {
 		if ( *p==0 ) continue;
 		if ( sftp((char *)p)==-1 ) break;
 	} 
 	
 	libssh2_sftp_shutdown(sftp_session);
+	bConnected = false;
+	readerThread = 0;
+	*username = 0;
+	*password = 0;
+
+sftp_Close:
 	libssh2_session_disconnect(session, "Normal Shutdown");
 	libssh2_session_free(session);
+TCP_Close:
 	closesocket(sock);
-	bConnected = false;
-	return -1;
+	do_callback(errmsgs[-rc], -1);
+	return rc;
+}
+int sftpHost::write(const char *buf, int len)
+{
+	if ( readerThread!=0 ) 
+		write_keys(buf, len);
+	else
+		if ( *buf=='\r' ) connect();
+	return 0;
 }
 int sftpHost::sftp_get(char *src, char *dst)
 {

@@ -44,13 +44,13 @@ protected:
 
 public:
 	sftpHost(const char *name) : sshHost(name) {}
-//	virtual const char *name();
 	virtual int type() { return HOST_SFTP; }
-	virtual int connect();
-	virtual int read(parse_callback_t, void *);
-	virtual int write(const char *buf, int len){return 0;}
+//	virtual const char *name();
+//	virtual int connect();
+	virtual int read();
+	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){}
-	virtual void disconn(){ bConnected=false; };	
+//	virtual void disconn();		//from sshHost	
 	int sftp(char *p);
 };
 

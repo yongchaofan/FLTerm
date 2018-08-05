@@ -27,33 +27,36 @@
 #include <dirent.h>
 #include <fnmatch.h>
 #include "Hosts.h"
-#include <thread>
+
+const char *errmsgs[] = { 
+"Disconnected",
+"Connection",
+"SSH Session",
+"Verification",
+"Authentication",
+"Channel",
+"Subsystem",
+"Shell"};
 
 const char *kb_gets(const char *prompt, int echo);
-Fan_Host::Fan_Host()
+void* host_reader(void *p)
 {
-	bConnected = false;
-	gets_cb = NULL;
-	puts_cb = NULL;
+	((Fan_Host *)p)->read();
+	return NULL;
 }
-void Fan_Host::puts_callback(parse_callback_t cb, void *data)
+int Fan_Host::connect()
 {
-	puts_cb = cb;
-	puts_data = data;
-}
-void Fan_Host::gets_callback(gets_callback_t cb, void *data)
-{
-	gets_cb = cb;
-	gets_data = data;
+	return pthread_create(&readerThread, NULL, host_reader, this);
 }
 void Fan_Host::print( const char *fmt, ... ) 
 {
+	assert(host_cb!=NULL);
 	char buff[4096];
 	va_list args;
 	va_start(args, (char *)fmt);
 	int len = vsnprintf(buff, 4096, (char *)fmt, args);
 	va_end(args);
-	if ( puts_cb!=NULL ) puts_cb(puts_data, buff, len);
+	do_callback(buff, len);
 }
 /**********************************tcpHost******************************/
 tcpHost::tcpHost(const char *name):Fan_Host() 
@@ -85,22 +88,17 @@ int tcpHost::tcp()
     
 	return rc;
 }
-int tcpHost::connect()
+int tcpHost::read()
 {
+	do_callback("Connecting", 0);	//indicates connecting
 	int rc = tcp();
-	if ( rc==0 ) 
-		bConnected = true;
-	else
-		closesocket(sock);
-	return rc;
-}
-int tcpHost::read(parse_callback_t parse_cb, void *data)
-{
+	if ( rc<0 ) goto TCP_Close;
+
+	bConnected = true;
+	do_callback("Connected", 0);	//indicates connected
 	int cch;
 	char buf[1536];
-	if ( parse_cb==NULL ) parse_cb = puts_cb;
 	while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
-		buf[cch]=0;			
 		char *p=buf;
 		while ( (p=strchr(p, 0xff))!=NULL ) {
 			char *p1 = buf+cch+1;
@@ -108,33 +106,41 @@ int tcpHost::read(parse_callback_t parse_cb, void *data)
 			memcpy(p, p0, p1-p0);
 			cch -= p0-p;	//cch could become 0 after this
 		}
-		if ( cch>0 ) parse_cb(data, buf, cch);
+		if ( cch>0 ) do_callback(buf, cch);
 	}
-	disconn();
-	return cch;
+	bConnected = false;
+
+TCP_Close:
+	closesocket(sock);
+	do_callback(errmsgs[-rc], -1);	//indicates disconnected
+	readerThread = 0;
+	return rc;
 }
 int tcpHost::write(const char *buf, int len ) 
 {
-	int total=0, cch=0;
-	while ( total<len ) {
-		cch = send( sock, buf+total, len-total, 0); 
-		if ( cch<0 ) {
-			disconn();
-			return cch;
+	if ( bConnected ) {
+		int total=0, cch=0;
+		while ( total<len ) {
+			cch = send( sock, buf+total, len-total, 0); 
+			if ( cch<0 ) {
+				disconn();
+				return cch;
+			}
+			total+=cch;
 		}
-		total+=cch;
+		return total;
 	}
-	return total;
+	else {
+		if ( readerThread==0 && *buf=='\r' )
+			return connect();
+	}
+	return 0;
 }
 void tcpHost::disconn()
 {
 	if ( bConnected ) {
-#ifdef WIN32
-		closesocket(sock);
-#else
-	shutdown(sock, SHUT_RD);
-#endif
-		bConnected = false;
+		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
+		pthread_join(readerThread, NULL);
 	}
 }
 #define TNO_IAC		0xff
@@ -317,13 +323,49 @@ static void kbd_callback(const char *name, int name_len,
 		}
     }
 } 
+void sshHost::write_keys(const char *buf, int len)
+{ 
+	for ( int i=0; i<len&&bGets; i++ ) {
+		if ( buf[i]=='\015' ) {
+			keys[cursor++]=0; 
+			bReturn=true; 
+			do_callback("\n", 1);
+		}
+		else if ( buf[i]=='\177' ) {
+			if ( cursor>0 ) {
+				cursor--; 
+				if ( !bPassword ) 
+					do_callback("\010 \010", 3);									
+			}
+		}
+		else {
+			keys[cursor++]=buf[i]; 
+			if ( cursor>63 ) cursor=63;
+			if ( !bPassword ) do_callback(buf+i, 1);
+		}
+	}	
+}
+char* sshHost::ssh_gets( const char *prompt, int echo )
+{
+	do_callback(prompt, strlen(prompt));
+	cursor=0;
+	bGets = true;
+	bReturn = false; 
+	bPassword = !echo;
+	int old_cursor = cursor;
+	for ( int i=0; i<300&&bGets; i++ ) {
+		if ( bReturn ) return keys;
+		if ( cursor>old_cursor ) { old_cursor=cursor; i=0; }
+		usleep(100000);
+	}
+	return NULL;
+}
+
 int sshHost::ssh_authentication()
 {
 	int rc = -5;
-	const char *p = NULL;
 	if ( *username==0 ) {
-		if ( puts_cb!=NULL ) puts_cb(puts_data, "username:", 9);
-		if ( gets_cb!=NULL ) p = gets_cb(gets_data, true);
+		const char *p = ssh_gets("username:", true);
 		if ( p==NULL ) return rc; 
 		strncpy(username, p, 31);
 	}
@@ -334,33 +376,53 @@ int sshHost::ssh_authentication()
 										pubkeyfile, privkeyfile, passphrase) )
 			return 0;				// public key authentication passed
 	}
+	if ( strstr(authlist, "password")!=NULL ) {
+		if ( *password ) {			// password provided, it either works or not
+			if ( !libssh2_userauth_password(session, username, password) )
+				return 0;			//password authentication passed
+			else
+				return rc;			//no need to get password interactively
+		}
+		else {						//password was not set 
+				for ( int i=0; i<3; i++ ) {	//get it interactively 
+				const char *p = ssh_gets("password:", false);
+				if ( p!=NULL ) {
+					strncpy(password, p, 31);
+					if ( !libssh2_userauth_password(session,username,password) )
+						return 0;				//password authentication passed
+				}
+				else 
+					break;
+			}
+		}
+	}
 	if ( strstr(authlist, "keyboard-interactive")!=NULL ) {
 		for ( int i=0; i<3; i++ )
 			if (!libssh2_userauth_keyboard_interactive(session, username,
                                               			&kbd_callback) )
 				return 0;	
 	}
-	else if ( strstr(authlist, "password")!=NULL ) {
-		if ( *password!=0 )
-			if ( !libssh2_userauth_password(session, username, password) )
-				return 0;				//password authentication passed
-		if ( gets_cb!=NULL ) for ( int i=0; i<3; i++ ) {
-			puts_cb(puts_data, "password:", 9);
-			p = gets_cb(gets_data, false);
-			if ( p!=NULL ) {
-				strncpy(password, p, 31);
-				if ( !libssh2_userauth_password(session, username, password) )
-					return 0;				//password authentication passed
-			}
-			else 
-				break;
-		}
-	}
 	*username=0; *password=0; *passphrase=0;
 	return rc;
 }
-int sshHost::connect()
+int sshHost::wait_socket() 
 {
+//	struct timeval timeout = {10,0};
+	fd_set rfd, wfd;
+	FD_ZERO(&rfd); FD_ZERO(&wfd);
+	int dir = libssh2_session_block_directions(session);
+	if ( dir & LIBSSH2_SESSION_BLOCK_INBOUND ) FD_SET(sock, &rfd);;
+	if ( dir & LIBSSH2_SESSION_BLOCK_OUTBOUND ) FD_SET(sock, &wfd);;
+	int	rc=select(sock+1, &rfd, &wfd, NULL, NULL );
+	if ( rc==-1 ) {
+		if ( errno==0 ) return 0;
+		fprintf(stderr, "select error %d %s\n", errno, strerror(errno));
+	}
+	return rc;
+}
+int sshHost::read()
+{
+	do_callback("Connecting", 0);	//indicates connecting
 	int rc =  tcp();
 	if ( rc<0 ) goto TCP_Close;
 
@@ -386,7 +448,24 @@ int sshHost::connect()
 
 	libssh2_session_set_blocking(session, 0); 
 	bConnected = true;
-	return 0;
+	do_callback("Connected", 0);
+	while ( libssh2_channel_eof(channel)==0 ) {
+		int cch;
+		char buf[4096];
+		mtx.lock();
+		cch=libssh2_channel_read(channel, buf, 4096);
+		mtx.unlock();
+		if ( cch>=0 ) {
+			if ( cch>0 ) do_callback(buf, cch);
+		}
+		else {	//cch<0
+			if ( cch!=LIBSSH2_ERROR_EAGAIN ) break;
+			if ( wait_socket()==-1 ) break;
+		}
+	}
+	bConnected = false;
+	*username = 0;
+	*password = 0;
 
 Channel_Close:
 	libssh2_channel_free(channel);
@@ -395,72 +474,49 @@ Session_Close:
 	libssh2_session_free(session);
 TCP_Close:	
 	closesocket(sock);
+	do_callback(errmsgs[-rc], -1);
+	readerThread = 0;
 	return rc;
 }
-int sshHost::wait_socket() 
+int sshHost::write(const char *buf, int len) 
 {
-//	struct timeval timeout = {10,0};
-	fd_set rfd, wfd;
-	FD_ZERO(&rfd); FD_ZERO(&wfd);
-	int dir = libssh2_session_block_directions(session);
-	if ( dir & LIBSSH2_SESSION_BLOCK_INBOUND ) FD_SET(sock, &rfd);;
-	if ( dir & LIBSSH2_SESSION_BLOCK_OUTBOUND ) FD_SET(sock, &wfd);;
-	int	rc=select(sock+1, &rfd, &wfd, NULL, NULL );
-	if ( rc==-1 ) {
-		if ( errno==0 ) return 0;
-		fprintf(stderr, "select error %d %s\n", errno, strerror(errno));
-	}
-	return rc;
-}
-int sshHost::read(parse_callback_t parse_cb, void *data)
-{
-	int cch;
-	char buf[8192];
-	if ( parse_cb==NULL ) parse_cb = puts_cb;
-	while ( libssh2_channel_eof(channel)==0 ) {
-		mtx.lock();
-		cch=libssh2_channel_read(channel, buf, 8192);
-		mtx.unlock();
-		if ( cch>0 ) {
-			buf[cch] = 0;
-			parse_cb(data, buf, cch);
-		}
-		else {
-			if ( cch!=LIBSSH2_ERROR_EAGAIN ) break;
-			if ( wait_socket()==-1 ) break;
-		}
-	}
-	mtx.lock();
-	libssh2_channel_free(channel);
-	libssh2_session_disconnect(session, "Shutdown");
-	libssh2_session_free(session);
-	mtx.unlock();
-	disconn();
-	*username = 0;
-	*password = 0;
-	return cch;
-}
-int sshHost::write(const char *buf, int len) {
-	int total=0, cch=0;
-	while ( total<len ) {
-		mtx.lock();
-		cch=libssh2_channel_write(channel, buf+total, len-total); 
-		mtx.unlock();
-		if ( cch<0 ) {
-			if ( cch==LIBSSH2_ERROR_EAGAIN ) {
-				if ( wait_socket()==-1 ) break;
+	if ( bConnected ) {
+		int total=0, cch=0;
+		while ( total<len ) {
+			mtx.lock();
+			cch=libssh2_channel_write(channel, buf+total, len-total); 
+			mtx.unlock();
+			if ( cch<0 ) {
+				if ( cch==LIBSSH2_ERROR_EAGAIN ) {
+					if ( wait_socket()==-1 ) break;
+				}
+				else break;
 			}
-			else break;
+			else total += cch; 
 		}
-		else total += cch; 
+		if ( cch<0 ) { disconn(); total = cch; }
+		return total;
 	}
-	if ( cch<0 ) { disconn(); total = cch; }
-	return cch;
+	else {
+		if ( readerThread!=0 ) 
+			write_keys(buf, len);
+		else
+			if ( *buf=='\r' ) connect();
+	}
+	return 0;
 }
 void sshHost::send_size(int sx, int sy) 
 {
 	if ( bConnected ) 
 		libssh2_channel_request_pty_size( channel, sx, sy );
+}
+void sshHost::disconn()
+{
+	if ( readerThread!=0 ) {
+		shutdown(sock, 1);
+		bGets = false;
+		pthread_join(readerThread, NULL);
+	}
 }
 int sshHost::scp_read(const char *rpath, const char *lpath)
 {
@@ -883,33 +939,6 @@ shutdown:
     if (listener) libssh2_channel_forward_cancel(listener);
 	return 0;
 }
-int sshHost::tun(const char *cmd)
-{
-	if ( !bConnected ) return 0;
-	if ( *cmd==0 ) { 	//list tunnels
-		return 0;
-	}
-	
-	while ( *cmd==' ' ) cmd++;
-	strncpy(path, cmd, 255);
-	char *p = strchr(path, ' ');
-	if ( p==NULL ) { 	//close tunnel
-		return 0;
-	}
-	*p=0; p++; 
-
-	tunStarted = false;
-	if ( *path=='R' ) { //start remote tunnel
-		std::thread tun_thread(&sshHost::tun_remote, this, path+1, p);
-		tun_thread.detach();
-	}
-	else {				//start local tunnel
-		std::thread tun_thread(&sshHost::tun_local, this, path, p);
-		tun_thread.detach();
-	}
-	while ( !tunStarted ) usleep(100000);
-	return 0;
-}
 
 /*********************************confHost*******************************/
 const char *IETF_HELLO="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
@@ -924,8 +953,9 @@ confHost::confHost(const char *name):sshHost(name)
 	if ( port==22 ) port = 830;
 }	
 
-int confHost::connect()
+int confHost::read()
 {
+	do_callback("Connecting", 0);	//indicates connecting
 	int rc = tcp();
 	if ( rc<0 ) goto TCP_Close;
 	
@@ -954,96 +984,99 @@ int confHost::connect()
 	*reply = *notif = 0;
 	channel2 = NULL;
 	bConnected = true;
-	return 0;		//success
-
-Channel_Close:
-	libssh2_channel_free(channel);
-Session_Close:
-	libssh2_session_disconnect(session, "Shutdown");
-	libssh2_session_free(session);
-TCP_Close:
-	closesocket(sock);
-	return rc;
-}
-int confHost::read(parse_callback_t parse_cb, void *data)
-{
+	do_callback("Connected", 0);
+	char *delim;
 	int len, len2;
-	if ( parse_cb==NULL ) parse_cb = puts_cb;
-	while ( bConnected ) {
-		char *delim;
+	while ( libssh2_channel_eof(channel)==0 ) {
 		if ( wait_socket()==-1 ) break;
 		mtx.lock();
 		len=libssh2_channel_read(channel,reply+rd,BUFLEN-rd);
 		mtx.unlock();
-		if ( len==0 || (len<0 && len!=LIBSSH2_ERROR_EAGAIN) ) break;	
 		if ( len>0 ) {
 			rd += len; if ( rd==BUFLEN ) rd = 0;
 			reply[rd] = 0;
 			while ( (delim=strstr(reply, "]]>]]>")) != NULL ) {
 				*delim=0; 
-				parse_cb(data, reply, delim-reply);
+				do_callback(reply, delim-reply);
 				delim+=6;
 				rd -= delim-reply;
 				memmove(reply, delim, rd+1); 
 			}
 		}
-		
+		else 
+			if ( len!=LIBSSH2_ERROR_EAGAIN ) break;	//len<=0
+			
 		if ( channel2==NULL ) continue;
 		mtx.lock();
 		len2=libssh2_channel_read(channel2,notif+rd2,BUFLEN-rd2);
 		mtx.unlock();
-		if ( len2==0 || (len2<0 && len2!=LIBSSH2_ERROR_EAGAIN) ) break;	
 		if ( len2>0 ) {
 			rd2 += len2; if ( rd2==BUFLEN ) rd2 = 0;
 			notif[rd2] = 0;
 			while( (delim=strstr(notif, "]]>]]>")) != NULL ) {
 				*delim=0;
-				parse_cb(data, notif, delim-notif);
+				do_callback(notif, delim-notif);
 				delim+=6;
 				rd2 -= delim - notif;
 				memmove(notif, delim, rd2+1); 
 			}
 		}
+		else 
+			if ( len2!=LIBSSH2_ERROR_EAGAIN ) break;//len2<=0	
 	}
-	mtx.lock();
-	if ( channel2 ) libssh2_channel_free(channel2);
+	bConnected = false;
+
+Channel_Close:
 	libssh2_channel_free(channel);
+	if ( channel2 ) libssh2_channel_free(channel2);
+Session_Close:
 	libssh2_session_disconnect(session, "Shutdown");
-	libssh2_session_free(session);	
-	mtx.unlock();
-	disconn();
-	return -1;
+	libssh2_session_free(session);
+TCP_Close:
+	closesocket(sock);
+	do_callback(errmsgs[-rc], -1);
+	readerThread = 0;
+	return rc;
 }
 int confHost::write(const char *msg, int len)
 {
-	char buf[8192];
-	len = sprintf(buf, IETF_MSG, ++msg_id, msg);
-	print("\n%s\n", buf);
+	if ( bConnected ) {
+		char buf[8192];
+		len = sprintf(buf, IETF_MSG, ++msg_id, msg);
+		print("\n%s\n", buf);
 
-	int total=0, cch=0;
-	while ( total<len ) {
-		mtx.lock();
-		cch=libssh2_channel_write(channel, buf+total, len-total); 
-		mtx.unlock();
-		if ( cch>=0 ) 
-			total += cch;
-		else  {
-			if ( cch==LIBSSH2_ERROR_EAGAIN ) {
-				if ( wait_socket()==-1 ) break;
+		int total=0, cch=0;
+		while ( total<len ) {
+			mtx.lock();
+			cch=libssh2_channel_write(channel, buf+total, len-total); 
+			mtx.unlock();
+			if ( cch>=0 ) 
+				total += cch;
+			else  {
+				if ( cch==LIBSSH2_ERROR_EAGAIN ) {
+					if ( wait_socket()==-1 ) break;
+				}
+				else break;
 			}
-			else break;
 		}
+		if ( cch<0 ) { 
+			disconn(); 
+			return cch; 
+		}
+		else 
+			return msg_id;
 	}
-	if ( cch<0 ) { 
-		disconn(); 
-		return cch; 
+	else {
+		if ( readerThread!=0 ) 
+			write_keys(msg, len);
+		else
+			connect();
 	}
-	else 
-		return msg_id;
+	return 0;
 } 
 int confHost::write2(const char *msg, int len)
 {
-	if ( !bConnected ) return 0;
+	assert(bConnected);
 	if ( channel2!=NULL ) return 0;
 	do {
 		mtx.lock();

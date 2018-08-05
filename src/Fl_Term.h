@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 3936 2018-06-30 13:48:10 $"
+// "$Id: Fl_Term.h 3937 2018-06-30 13:48:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -14,11 +14,9 @@
 //
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
-#include "Hosts.h"
 #include <FL/Fl.H>
 #include <FL/Fl_Draw.H>
-#include <thread>
-#include <mutex>
+#include <pthread.h>
 
 #ifdef __APPLE__ 
 	#define TERMFONT "Monaco"
@@ -35,7 +33,7 @@ class Fl_Term : public Fl_Widget {
 	int buff_size; 			//current buffer size, doubles by roll() when exceeded
 	int *line;				//buffer for lines, records starting position of each line
 	int line_size;			//current max number of lines, doubles by roll() when exceeded
-	int size_x, size_y;		//current screen size in number of characters
+	int size_x_, size_y_;		//current screen size in number of characters
 	int cursor_x;			//index to buff and attr for current insert position
 	int	cursor_y;			//index to line buffer for current row of text
 	int save_y;				//saves the previous cursor_y when switch to alternate screen
@@ -66,26 +64,21 @@ class Fl_Term : public Fl_Widget {
 	int iTimeOut;			//time out in seconds while waiting for sPrompt
 	int recv0;				//cursor_x at the start of last command
 	
+	int bLive;				//host reading thread is running
+	int bWait;				//waitfor() function is waiting for string in buffer
 	int bLogging;			//if logging is active 
 	FILE *fpLogFile;
-	int cursor;
-	int bGets, bWait;
-	int bReturn;
-	int bPassword;
-	char keys[256];
 
-	std::thread readerThread;
-	int bReaderRunning;
-	int bDND;
-	dnd_callback dnd_cb;
+	int keyCount;
+	const char *keyChars;
+
 protected: 
-	Fan_Host *host;
 	void draw();
 	void more_lines();
 	void more_chars();
 	void append( const char *newtxt, int len );
 	const char *vt100_Escape( const char *sz );
-	void reader();
+	void write_keys(const char *buf);
 
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
@@ -94,25 +87,31 @@ public:
 	void resize( int X, int Y, int W, int H );
 	void textsize( int pt );
 	void clear();
+	int size_x() { return size_x_; }
+	int size_y() { return size_y_; }
+	int key_count() { return keyCount; }
+	const char *key_chars() { return keyChars; }
+	void live(int c) { bLive = c; }
+	int live() { return bLive; }
+	void timeout(int t) { iTimeOut = t; }
+	void prompt(char *p);
+	int logging() { return bLogging; }
 
-	void set_host(Fan_Host *pHost);
-	Fan_Host *get_host() { return host; }
-	void callback(dnd_callback cb) { dnd_cb = cb; }
-	int active() { return bReaderRunning; }
-	void start_reader();
-	void stop_reader();
-
-	int  logging() { return bLogging; }
 	void logg( const char *fn );
 	void save( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
 
-	char *gets(int echo);
-	void puts(const char *buf);
-	void putxml(const char *msg);
-	void puts(const char *buf, int len);
-	void write(const char *buf);
-	int  waitfor(const char *word);
+	void puts(const char *buf){ append(buf, strlen(buf)); }
+	void puts(const char *buf, int len){ append(buf, len); }
+	void putxml(const char *msg, int len);
+	void mark_prompt();
+	void wait_prompt();
 	int  command( const char *cmd, char **response );
+	int  waitfor(const char *word);
+	void write(const char *chars, int count) {
+		keyChars = chars;
+		keyCount = count;
+		do_callback();
+	}
 };
 #endif

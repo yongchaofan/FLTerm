@@ -31,9 +31,11 @@
 	#include <netdb.h>
 	#define closesocket close
 #endif
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <libssh2.h>
+#include <pthread.h>
 #include <mutex>
 
 #ifndef _FAN_HOST_H_
@@ -43,31 +45,41 @@ enum {  HOST_COM=1, HOST_TCP, HOST_SSH,
 		HOST_SCP, HOST_SFTP, HOST_CONF,
 		HOST_FTPD,HOST_TFTPD };
 
-typedef const char* (*gets_callback_t)(void *, int);
-typedef void (*parse_callback_t)(void *, const char *, int);
+typedef void (*host_callback_t)(void *, const char *, int);
 
 class Fan_Host {
 protected:
 	int bConnected;
-	void *puts_data;
-	void *gets_data;
-	parse_callback_t puts_cb;
-	gets_callback_t gets_cb;
+	void *host_data;
+	host_callback_t host_cb;
+	pthread_t readerThread;
 
 public: 
-	Fan_Host();
+	Fan_Host()
+	{
+		bConnected = false;
+		readerThread = 0;
+		host_cb = NULL;
+	}
 	virtual ~Fan_Host(){}
 	virtual const char *name()					=0;
 	virtual int type()							=0;
-	virtual	int connect()						=0;
-	virtual	int read(parse_callback_t, void *)	=0;
+	virtual	int connect();
+	virtual	int read()							=0;
 	virtual	int write(const char *buf, int len)	=0;
 	virtual void send_size(int sx, int sy)		=0;
 	virtual	void disconn()						=0;	
 
-	int connected() { return bConnected; }
-	void gets_callback(gets_callback_t cb, void *data);
-	void puts_callback(parse_callback_t cb, void *data);
+	void callback(host_callback_t cb, void *data)
+	{
+		host_cb = cb;
+		host_data = data;
+	}
+	void do_callback(const char *buf, int len)
+	{
+		assert(host_cb!=NULL);
+		host_cb(host_data, buf, len);
+	}
 	void print(const char *fmt, ...);
 };
 
@@ -84,8 +96,8 @@ public:
 	
 	virtual const char *name(){ return hostname; }
 	virtual int type() { return HOST_TCP; }
-	virtual int connect();
-	virtual	int read(parse_callback_t, void *);
+//	virtual int connect();
+	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
 	virtual void disconn();	
@@ -96,6 +108,12 @@ protected:
 	char username[64];
 	char password[64];
 	char passphrase[64];
+	int bGets;				//gets() function is waiting for return bing pressed
+	int bReturn;			//true if during gets() return has been pressed
+	int bPassword;
+	int cursor;		
+	char keys[64];
+
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
 	std::mutex mtx;
@@ -105,24 +123,25 @@ protected:
 	int wait_socket();
 	int ssh_knownhost();
 	int ssh_authentication();
+	void write_keys(const char *buf, int len);
 
 public:
 	sshHost(const char *name); 
 
-//	virtual const char *name();
 	virtual int type() { return HOST_SSH; }
-	virtual int connect();
-	virtual	int read(parse_callback_t, void *);
+//	virtual const char *name();
+//	virtual int connect();
+	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
-//	virtual void disconn();			//use from tcpHost	
+	virtual void disconn();
 	void set_user_pass( const char *user, const char *pass ) { 
 		if ( *user ) strncpy(username, user, 31); 
 		if ( *pass ) strncpy(password, pass, 31); 
 	}
+	char *ssh_gets(const char *prompt, int echo);
 	int scp_read(const char *rpath, const char *lpath);
 	int scp_write(const char *lpath, const char *rpath);
-	int tun(const char *cmd);
 	int tun_local(const char *lpath, const char *rpath);
 	int tun_remote(const char *rpath,const char *lpath);
 };
@@ -140,13 +159,13 @@ private:
 public:
 	confHost(const char *name);
 
-//	virtual const char *name();
 	virtual int type() { return HOST_CONF; }
-	virtual int connect();
-	virtual	int read(parse_callback_t, void *);
+//	virtual const char *name();
+//	virtual int connect();		
+	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
-//	virtual void disconn();		//use from tcpHost
+//	virtual void disconn();		//use from sshHost
 	int write2(const char *buf, int len);
 };
 
