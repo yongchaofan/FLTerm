@@ -38,7 +38,6 @@ const char ABOUT_TERM[]="\n\n\
 
 #include <thread>
 #include "Hosts.h"
-#include "ftpd.h"
 #include "acInput.h"
 #include "Fl_Term.h"
 
@@ -516,12 +515,6 @@ void httpd( int s0 )
 						term_tab( cmd+4 ); 
 					else if ( strncmp(cmd, "Cmd=", 4)==0 ) 
 						replen = term_cmd( cmd+4, &reply );
-#ifdef WIN32
-					else if ( strncmp(cmd, "SHA", 3)==0 ) {
-						reply = SHA(cmd+3);
-						replen = strlen(reply);
-					}
-#endif	
 					int len = sprintf( buf, HEADER, "200 OK", replen );
 					send( http_s1, buf, len, 0 );
 					if ( replen>0 ) send( http_s1, reply, replen, 0 );
