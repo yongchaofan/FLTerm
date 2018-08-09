@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 22143 2018-08-08 21:05:10 $"
+// "$Id: flTerm.cxx 21359 2018-08-08 21:05:10 $"
 //
 // flTerm -- A minimal ssh/scp/sftp terminal
 //
@@ -162,19 +162,6 @@ void term_new(const char *host)
 	else if ( strncmp(host, "netconf ", 8)==0 ) {
 		pHost = new confHost(host+8);
 	}
-#ifdef WIN32
-	else if ( strncmp(host, "serial ", 7)==0 ) {
-		pHost = new comHost(host+7);
-	}
-	else if ( strncmp(host, "ftpd ", 5)==0 ) { 
-		char *root = fl_dir_chooser("choose root directory", ".", 0);
-		if ( root!=NULL ) pHost = new ftpDaemon(root);
-	}
-	else if ( strncmp(host, "tftpd ", 6)==0 ) {
-		char *root = fl_dir_chooser("choose root directory", ".", 0);
-		if ( root!=NULL ) pHost = new tftpDaemon(root);
-	}
-#endif
 	else return;
 	pHost->callback(host_cb, pTerm);
 	pTerm->callback(term_cb, pHost);
@@ -365,9 +352,8 @@ void close_callback(Fl_Widget *w, void *data)
 	pTermWin->hide();
 }
 
-const char *protocols[]={"telnet ", "ssh ","sftp ","netconf ",
-									"serial ","ftpd ", "tftpd "};
-const char *ports[]={"23", "22", "22", "830","9600,n,8,1","21", "61"};
+const char *protocols[]={"telnet ", "ssh ","sftp ","netconf "};
+const char *ports[]={"23", "22", "22", "830"};
 void new_callback(Fl_Widget *, void *data)
 {
 	pDialog->show();
@@ -398,18 +384,7 @@ void protocol_callback(Fl_Widget *w)
 {
 	int proto = pProtocol->value();
 	pPort->value(ports[proto]);
-	if ( proto==5 || proto==6 ) 
-		pHostname->value("");
-	else if ( proto==4 ) {
-		pHostname->value("COM1");
-		pHostname->label("Port:");
-		pPort->label("Settings:");
-	}
-	else {
-		pHostname->label("Host:");
-		pHostname->value("192.168.1.1");
-		pPort->label("       Port:");
-	}
+	pHostname->value("192.168.1.1");
 }
 int main() {
 	int http_port = httpd_init();
@@ -483,9 +458,6 @@ int main() {
 		pConnect->labelsize(16);
 		pConnect->shortcut(FL_Enter);
 		pProtocol->add("telnet|ssh|sftp|netconf");
-#ifdef WIN32
-		pProtocol->add("serial|ftpd|tftpd");
-#endif
 		pProtocol->value(1);
 		pHostname->value("192.168.1.1");
 		pPort->value("22");
