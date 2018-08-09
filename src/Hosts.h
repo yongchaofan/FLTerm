@@ -1,7 +1,7 @@
 //
-// "$Id: Hosts.h 3911 2018-06-29 13:48:10 $"
+// "$Id: Hosts.h 5031 2018-08-08 21:12:15 $"
 //
-// tcpHost sshHost confHost
+// tcpHost sshHost confHost sftpHost
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
@@ -31,11 +31,12 @@
 	#include <netdb.h>
 	#define closesocket close
 #endif
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <libssh2.h>
+#include <libssh2_sftp.h>
 #include <pthread.h>
+#include <thread>
 #include <mutex>
 
 #ifndef _FAN_HOST_H_
@@ -77,7 +78,6 @@ public:
 	}
 	void do_callback(const char *buf, int len)
 	{
-		assert(host_cb!=NULL);
 		host_cb(host_data, buf, len);
 	}
 	void print(const char *fmt, ...);
@@ -114,11 +114,9 @@ protected:
 	int cursor;		
 	char keys[64];
 
+	std::mutex mtx;
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
-	std::mutex mtx;
-	int tunStarted;
-	char path[1024];
 	
 	int wait_socket();
 	int ssh_knownhost();
@@ -144,6 +142,7 @@ public:
 	int scp_write(const char *lpath, const char *rpath);
 	int tun_local(const char *lpath, const char *rpath);
 	int tun_remote(const char *rpath,const char *lpath);
+	void tun_worker(int forwardsock, LIBSSH2_CHANNEL *tun_channel);
 };
 
 #define BUFLEN 65536*2-1
@@ -167,6 +166,36 @@ public:
 	virtual void send_size(int sx, int sy){};
 //	virtual void disconn();		//use from sshHost
 	int write2(const char *buf, int len);
+};
+
+class sftpHost : public sshHost {
+private:
+	LIBSSH2_SFTP *sftp_session;
+	char realpath[4096];
+	char homepath[4096];
+protected:
+	int sftp_lcd(char *path);
+	int sftp_cd(char *path);
+	int sftp_md(char *path);
+	int sftp_rd(char *path);
+	int sftp_ls(char *path, int ll=false);
+	int sftp_rm(char *path);
+	int sftp_ren(char *src, char *dst);
+	int sftp_get_one(char *src, char *dst);
+	int sftp_get(char *src, char *dst);
+	int sftp_put(char *src, char *dst);
+	int sftp_put_one(char *src, char *dst);
+
+public:
+	sftpHost(const char *name) : sshHost(name) {}
+	virtual int type() { return HOST_SFTP; }
+//	virtual const char *name();
+//	virtual int connect();
+	virtual int read();
+	virtual int write(const char *buf, int len);
+	virtual void send_size(int sx, int sy){}
+//	virtual void disconn();		//from sshHost	
+	int sftp(char *p);
 };
 
 #endif //_FAN_HOST_H_

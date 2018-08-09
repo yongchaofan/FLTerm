@@ -1,9 +1,9 @@
 //
-// "$Id: flTerm.cxx 20615 2018-06-30 23:55:10 $"
+// "$Id: flTerm.cxx 22143 2018-08-08 21:05:10 $"
 //
-// flTerm -- A minimalist ssh terminal simulator
+// flTerm -- A minimal ssh/scp/sftp terminal
 //
-//    an example application using the Fl_Term widget.
+//    example application using the Fl_Term widget.
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
@@ -26,7 +26,7 @@ const char ABOUT_TERM[]="\n\n\
         * Select to copy, right click to paste\n\n\
         * Drag and Drop to run list of commands\n\n\
         * Scripting interface at \033[34mxmlhttp://127.0.0.1:%d\033[37m\n\n\n\
-    by yongchaofan@gmail.com		06-30-2018\n\n\
+    by yongchaofan@gmail.com		08-08-2018\n\n\
     https://github.com/zoudaokou/flTerm\n";
 
 #include <stdio.h>
@@ -38,7 +38,6 @@ const char ABOUT_TERM[]="\n\n\
 
 #include <thread>
 #include "Hosts.h"
-#include "sftp.h"
 #include "ftpd.h"
 #include "acInput.h"
 #include "Fl_Term.h"
@@ -117,7 +116,7 @@ void host_cb(void *pTerm, const char *buf, int len)
 			term->puts(" press Enter to restart\n\n");
 	}
 	else
-		if ( host->type()==HOST_CONF )
+		if ( *buf=='<' && host->type()==HOST_CONF )
 			term->putxml(buf, len);
 		else
 			term->puts(buf, len);
@@ -262,8 +261,8 @@ void menu_callback(Fl_Widget *w, void *data)
 void menu_add(char *line)
 {
 	if ( strncmp(line, "ssh ",4)==0 ||
+		 strncmp(line, "sftp ",5)==0 ||
 		 strncmp(line, "telnet ",7)==0 ||
-		 strncmp(line, "serial ",7)==0 ||
 		 strncmp(line, "netconf ",8)==0 ) {
 		char *menuline = strdup(line);
 		char *p = strrchr(line, ' ');

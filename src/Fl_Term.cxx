@@ -1,7 +1,7 @@
 //
-// "$Id: Fl_Term.cxx 21757 2018-06-30 13:48:10 $"
+// "$Id: Fl_Term.cxx 19237 2018-08-08 21:08:20 $"
 //
-// Fl_Term -- A terminal simulation widget
+// Fl_Term -- A terminal simulator widget
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
@@ -262,11 +262,12 @@ int Fl_Term::handle( int e ) {
 			else					//right click to paste
 				Fl::paste(*this, 1);
 			return 1; 
-		case FL_PASTE:  write(Fl::event_text(), Fl::event_length()); 
-		case FL_DND_DRAG:  
+		case FL_DND_RELEASE:
 		case FL_DND_ENTER: 
-		case FL_DND_LEAVE:  
-		case FL_DND_RELEASE:return 1;
+		case FL_DND_DRAG:  
+		case FL_DND_LEAVE:  return 1;
+		case FL_PASTE:  write(Fl::event_text(), Fl::event_length()); 
+						return 1;
 		case FL_KEYUP:  if ( Fl::event_state(FL_ALT)==0 ) {
 				int key = Fl::event_key();
 				switch ( key ) {

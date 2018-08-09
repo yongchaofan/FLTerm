@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 3937 2018-06-30 13:48:10 $"
+// "$Id: Fl_Term.h 4065 2018-08-08 21:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -16,7 +16,6 @@
 //
 #include <FL/Fl.H>
 #include <FL/Fl_Draw.H>
-#include <pthread.h>
 
 #ifdef __APPLE__ 
 	#define TERMFONT "Monaco"
@@ -78,7 +77,6 @@ protected:
 	void more_chars();
 	void append( const char *newtxt, int len );
 	const char *vt100_Escape( const char *sz );
-	void write_keys(const char *buf);
 
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
@@ -87,6 +85,7 @@ public:
 	void resize( int X, int Y, int W, int H );
 	void textsize( int pt );
 	void clear();
+
 	int size_x() { return size_x_; }
 	int size_y() { return size_y_; }
 	int key_count() { return keyCount; }
@@ -94,9 +93,9 @@ public:
 	void live(int c) { bLive = c; }
 	int live() { return bLive; }
 	void timeout(int t) { iTimeOut = t; }
-	void prompt(char *p);
 	int logging() { return bLogging; }
 
+	void prompt(char *p);
 	void logg( const char *fn );
 	void save( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
