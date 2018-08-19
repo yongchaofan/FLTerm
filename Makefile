@@ -6,8 +6,8 @@ LDFLAGS = ${shell fltk-config --ldstaticflags} -lc++ -lz -lssl -lcrypto
 
 all: flTerm
 
-flTerm: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o
-	cc -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o ${LIBS} ${LDFLAGS}
+flTerm: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/serial.o obj/ftpd.o
+	cc -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/serial.o obj/ftpd.o ${LIBS} ${LDFLAGS}
 
 obj/%.o: src/%.cxx 
 	${CC} ${CFLAGS} -c $< -o $@

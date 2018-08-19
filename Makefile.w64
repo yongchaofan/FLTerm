@@ -6,8 +6,8 @@ RC = windres
 
 all: flTerm.exe
 
-flTerm.exe: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/flTerm_rc.o 
-	cc -Wall -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/flTerm_rc.o ${LIBS} ${LDFLAGS}
+flTerm.exe: obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/serial.o obj/ftpd.o obj/flTerm_rc.o 
+	cc -Wall -o "$@" obj/flTerm.o obj/Fl_Term.o obj/acInput.o obj/Hosts.o obj/serial.o obj/ftpd.o obj/flTerm_rc.o ${LIBS} ${LDFLAGS}
 
 obj/%.o: src/%.cxx ${HEADERS}
 	${CC} ${CFLAGS} -c $< -o $@
