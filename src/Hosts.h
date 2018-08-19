@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 5031 2018-08-08 21:12:15 $"
+// "$Id: Hosts.h 5266 2018-08-18 21:12:15 $"
 //
 // tcpHost sshHost confHost sftpHost
 //
@@ -30,6 +30,7 @@
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#define closesocket close
+	#define MAX_PATH 4096
 #endif
 #include <stdio.h>
 #include <string.h>
@@ -46,41 +47,46 @@ enum {  HOST_COM=1, HOST_TCP, HOST_SSH,
 		HOST_SCP, HOST_SFTP, HOST_CONF,
 		HOST_FTPD,HOST_TFTPD };
 
-typedef void (*host_callback_t)(void *, const char *, int);
+typedef void ( host_callback )(void *, const char *, int);
 
 class Fan_Host {
 protected:
 	int bConnected;
-	void *host_data;
-	host_callback_t host_cb;
+	int bEcho;
+	void *host_data_;
+	host_callback* host_cb;
 	pthread_t readerThread;
 
 public: 
 	Fan_Host()
 	{
-		bConnected = false;
+		bConnected = bEcho = false;
 		readerThread = 0;
 		host_cb = NULL;
 	}
 	virtual ~Fan_Host(){}
 	virtual const char *name()					=0;
 	virtual int type()							=0;
-	virtual	int connect();
+	virtual	void connect();
 	virtual	int read()							=0;
 	virtual	int write(const char *buf, int len)	=0;
 	virtual void send_size(int sx, int sy)		=0;
 	virtual	void disconn()						=0;	
 
-	void callback(host_callback_t cb, void *data)
+	void callback(host_callback *cb, void *data)
 	{
 		host_cb = cb;
-		host_data = data;
+		host_data_ = data;
 	}
 	void do_callback(const char *buf, int len)
 	{
-		host_cb(host_data, buf, len);
+		host_cb(host_data_, buf, len);
 	}
+	void *host_data() { return host_data_; }
+	int echo() { return bEcho; }
+	void echo(int e) { bEcho = e; }
 	void print(const char *fmt, ...);
+//	int connected() { return bConnected; }
 };
 
 class tcpHost : public Fan_Host {
@@ -96,11 +102,11 @@ public:
 	
 	virtual const char *name(){ return hostname; }
 	virtual int type() { return HOST_TCP; }
-//	virtual int connect();
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
 	virtual void disconn();	
+//	virtual void connect();
 };
 
 class sshHost : public tcpHost {
@@ -108,6 +114,7 @@ protected:
 	char username[64];
 	char password[64];
 	char passphrase[64];
+	char homedir[MAX_PATH];
 	int bGets;				//gets() function is waiting for return bing pressed
 	int bReturn;			//true if during gets() return has been pressed
 	int bPassword;
@@ -122,57 +129,30 @@ protected:
 	int ssh_knownhost();
 	int ssh_authentication();
 	void write_keys(const char *buf, int len);
+	void tun_worker(int forwardsock, LIBSSH2_CHANNEL *tun_channel);
 
 public:
 	sshHost(const char *name); 
 
-	virtual int type() { return HOST_SSH; }
 //	virtual const char *name();
-//	virtual int connect();
+	virtual int type() { return HOST_SSH; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
 	virtual void disconn();
-	void set_user_pass( const char *user, const char *pass ) { 
-		if ( *user ) strncpy(username, user, 31); 
-		if ( *pass ) strncpy(password, pass, 31); 
-	}
-	char *ssh_gets(const char *prompt, int echo);
+//	virtual void connect();
 	int scp_read(const char *rpath, const char *lpath);
 	int scp_write(const char *lpath, const char *rpath);
 	int tun_local(const char *lpath, const char *rpath);
 	int tun_remote(const char *rpath,const char *lpath);
-	void tun_worker(int forwardsock, LIBSSH2_CHANNEL *tun_channel);
-};
-
-#define BUFLEN 65536*2-1
-class confHost : public sshHost {
-private: 
-	LIBSSH2_CHANNEL *channel2;
-	char notif[BUFLEN+1];
-	char reply[BUFLEN+1];
-	int rd;
-	int rd2;
-	int msg_id;
-
-public:
-	confHost(const char *name);
-
-	virtual int type() { return HOST_CONF; }
-//	virtual const char *name();
-//	virtual int connect();		
-	virtual	int read();
-	virtual int write(const char *buf, int len);
-	virtual void send_size(int sx, int sy){};
-//	virtual void disconn();		//use from sshHost
-	int write2(const char *buf, int len);
+	char *ssh_gets(const char *prompt, int echo);
 };
 
 class sftpHost : public sshHost {
 private:
 	LIBSSH2_SFTP *sftp_session;
-	char realpath[4096];
-	char homepath[4096];
+	char realpath[MAX_PATH];
+	char homepath[MAX_PATH];
 protected:
 	int sftp_lcd(char *path);
 	int sftp_cd(char *path);
@@ -188,14 +168,41 @@ protected:
 
 public:
 	sftpHost(const char *name) : sshHost(name) {}
-	virtual int type() { return HOST_SFTP; }
 //	virtual const char *name();
-//	virtual int connect();
+	virtual int type() { return HOST_SFTP; }
 	virtual int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){}
 //	virtual void disconn();		//from sshHost	
+//	virtual void connect();
 	int sftp(char *p);
+};
+
+#define BUFLEN 65536*2-1
+class confHost : public sshHost {
+private: 
+	LIBSSH2_CHANNEL *channel2;
+	char notif[BUFLEN+1];
+	char reply[BUFLEN+1];
+	int rd;
+	int rd2;
+	int msg_id;
+
+public:
+	confHost(const char *name);
+
+//	virtual const char *name();
+	virtual int type() { return HOST_CONF; }
+	virtual	int read();
+	virtual int write(const char *buf, int len);
+	int write2(const char *buf, int len);
+	virtual void send_size(int sx, int sy){};
+//	virtual void disconn();		//use from sshHost
+//	virtual void connect();		
+	void set_user_pass( const char *user, const char *pass ) { 
+		if ( *user ) strncpy(username, user, 31); 
+		if ( *pass ) strncpy(password, pass, 31); 
+	}
 };
 
 #endif //_FAN_HOST_H_
