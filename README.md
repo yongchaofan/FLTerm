@@ -5,7 +5,11 @@ source files included:
 
     Fl_Term.h and Fl_Term.cxx implements a vt100 terminal widget using FLTK
   
-    Hosts.h and Hosts.cxx implements telnet, ssh, sftp and netconf hosts 
+    Hosts.h and Hosts.cxx implements telnet, ssh, sftp and netconf hosts
+    
+    Serial.h and Serial.cxx implements serial communication host
+    
+    ftpd.h and ftpd.cxx implements ftpd and tftpd daemon hosts
   
     flTerm.cxx combines Fl_Term, Hosts and sftp to create the simple terminal application
   
