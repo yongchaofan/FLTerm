@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4261 2018-08-18 21:08:10 $"
+// "$Id: Fl_Term.h 4175 2018-08-31 21:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -16,12 +16,6 @@
 //
 #include <FL/Fl.H>
 #include <FL/Fl_Draw.H>
-
-#ifdef __APPLE__ 
-	#define TERMFONT "Monaco"
-#else
-	#define TERMFONT "Consolas"
-#endif
 
 #ifndef _FL_TERM_H_
 #define _FL_TERM_H_
@@ -40,9 +34,6 @@ class Fl_Term : public Fl_Widget {
 	int save_y;			//previous buff_y when switch to alternate screen
 	int screen_y;		//the line at top of screen
 	int scroll_y;		//scroll offset for the current top line
-	int bMouseScroll;	//if mouse if dragged on scrollbar
-	int page_up_hold; 	//control of scroll speed
-	int page_down_hold;
 	int roll_top;
 	int roll_bot;		//the range of lines that will scroll in vi
 	int sel_left;
@@ -50,6 +41,9 @@ class Fl_Term : public Fl_Widget {
 	int iFontWidth;		//current font width in pixels
 	int iFontHeight;	//current font height in pixels
 	int font_size;		//current font weight
+	int bMouseScroll;	//if mouse if dragged on scrollbar
+	int page_up_hold; 	//control of scroll speed
+	int page_down_hold;
 	
 	int bEscape;		//escape sequence processing mode
 	int bInsert;		//insert mode, for inline editing for commands
@@ -80,7 +74,7 @@ class Fl_Term : public Fl_Widget {
 
 protected: 
 	void draw();
-	void add_line();
+	void next_line();
 	void append( const char *newtxt, int len );
 	const char *vt100_Escape( const char *sz, int cnt );
 
@@ -91,13 +85,14 @@ public:
 	void resize( int X, int Y, int W, int H );
 	void clear();
 
+	int textsize() { return font_size; }
 	int size_x() { return size_x_; }
 	int size_y() { return size_y_; }
-	int textsize() { return font_size; }
 	int live() { return bLive; }
 	int logging() { return bLogging; }
-	void logging( const char *fn );
+
 	void save( const char *fn );
+	void logging( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
 
 	void textsize( int pt );
