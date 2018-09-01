@@ -1,4 +1,4 @@
-HEADERS = Fl_Term.h Fl_Browser_Input.h Hosts.h
+HEADERS = Fl_Term.h Hosts.h ssh2.h
 LIBS =  /usr/local/lib/libssh2.a
 
 CFLAGS= -Os -std=c++11 ${shell fltk-config --cxxflags}
