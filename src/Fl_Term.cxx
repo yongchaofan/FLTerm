@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 22734 2018-08-31 10:08:20 $"
+// "$Id: Fl_Term.cxx 26255 2018-0918 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -14,14 +14,15 @@
 //
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
-
 #include <ctype.h>
 #include <unistd.h>
+#include <assert.h>
 #include "Fl_Term.h"
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bInsert = bAlterScreen = bAppCursor = false;
 	bEscape = bGraphic = bTitle = false;
+	bCursor = true;
 	bLogging = false;
 	bMouseScroll = false;
 	ESC_idx = 0;
@@ -41,8 +42,12 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 
 	line = NULL;
 	buff = attr = NULL;
+	line_size = 8192;
+	buff_size = line_size*64;
+	line = (int *)malloc(line_size*sizeof(int));
+	buff = (char *)malloc(buff_size);
+	attr = (char *)malloc(buff_size);
 	clear();
-
 }
 Fl_Term::~Fl_Term(){
 	free(attr);
@@ -52,15 +57,10 @@ Fl_Term::~Fl_Term(){
 void Fl_Term::clear()
 {
 	Fl::lock();
-	line_size = 4096;
-	buff_size = line_size*64;
-	line = (int *)realloc(line, (line_size+1)*sizeof(int) );
-	buff = (char *)realloc(buff, buff_size+256 );
-	attr = (char *)realloc(attr, buff_size+256 );
-	if ( line!=NULL ) memset(line, 0, (line_size+1)*sizeof(int) );
-	if ( buff!=NULL ) memset(buff, 0, buff_size+256);
-	if ( attr!=NULL ) memset(attr, 0, buff_size+256);
-	buff_y = buff_x = 0;
+	if ( line!=NULL ) memset(line, 0, line_size*sizeof(int) );
+	if ( buff!=NULL ) memset(buff, 0, buff_size);
+	if ( attr!=NULL ) memset(attr, 0, buff_size);
+	cursor_y = cursor_x = 0;
 	screen_y = scroll_y = 0;
 	page_up_hold = page_down_hold = 0;
 	sel_left = sel_right= 0;
@@ -72,24 +72,28 @@ void Fl_Term::resize( int X, int Y, int W, int H )
 {
 	Fl_Widget::resize(X,Y,W,H);
 	size_x_ = w()/iFontWidth;
-	size_y_ = h()/iFontHeight;
-	screen_y = buff_y-size_y_+1;
-	if ( screen_y<0 ) screen_y = 0;
-	scroll_y = 0;
+	size_y_ = (h()-4)/iFontHeight;
+	roll_top = 0;
+	roll_bot = size_y_-1;
+	if ( !bAlterScreen ) {
+		screen_y = cursor_y-size_y_+1;
+		if ( screen_y<0 ) screen_y = 0;
+		scroll_y = 0;
+	}
 	redraw();
 	do_callback(NULL, 0);	//for callback to call host->send_size()
 }
 void Fl_Term::textsize( int pt )
 {
-	font_size = pt;
+	if ( pt!=0 ) font_size = pt;
 	fl_font(FL_COURIER, font_size);
 	iFontWidth = fl_width('a');
 	iFontHeight = fl_height();
 	resize(x(), y(), w(), h());
 }
 
-const unsigned int VT_attr[8]={FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW,
-					 FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE};
+const unsigned int VT_attr[8]={	FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW,
+								FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE};
 void Fl_Term::draw()
 {
 	fl_color(color());
@@ -102,7 +106,7 @@ void Fl_Term::draw()
 		sel_l = sel_right;
 		sel_r = sel_left;
 	}
-	int lx = buff_x-line[buff_y];
+
 	int ly = screen_y+scroll_y;
 	if ( ly<0 ) ly=0;
 	int dy = y()+iFontHeight;
@@ -131,7 +135,7 @@ void Fl_Term::draw()
 				fl_color( font_color );
 			}
 			int k = n;
-			if ( buff[k-1]==0x0a ) k--;
+			if ( buff[k-1]==0x0a ) k--;	//for winXP
 			fl_draw( buff+j, k-j, dx, dy );
 			dx += wi;
 			j=n;
@@ -142,27 +146,29 @@ void Fl_Term::draw()
 		fl_color(FL_DARK3);		//draw scrollbar
 		fl_rectf(x()+w()-8, y(), 8, y()+h());
 		fl_color(FL_RED);		//draw slider
-		int slider_y = h()*(buff_y+scroll_y)/buff_y;
+		int slider_y = h()*(cursor_y+scroll_y)/cursor_y;
 		fl_rectf(x()+w()-8, y()+slider_y-6, 8, 12);
 		fl_line( x()+w()-6, y()+slider_y-8, x()+w()-3, y()+slider_y-8 );
 		fl_line( x()+w()-7, y()+slider_y-7, x()+w()-2, y()+slider_y-7 );
 		fl_line( x()+w()-7, y()+slider_y+6, x()+w()-2, y()+slider_y+6 );
 		fl_line( x()+w()-6, y()+slider_y+7, x()+w()-3, y()+slider_y+7 );
 	}
-	if ( Fl::focus()==this && active() ) {
+	if ( bCursor && Fl::focus()==this && active() ) {
 		fl_color(FL_WHITE);		//draw a white bar as cursor
-		int wi = fl_width(buff+line[buff_y], buff_x-line[buff_y]); 
-		fl_rectf(x()+wi+1, y()+(buff_y-ly+1)*iFontHeight+1,8,3);
+		int wi = fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
+		fl_rectf(x()+wi+1, y()+(cursor_y-ly+1)*iFontHeight+1, 8, 3);
 	}
 }
 int Fl_Term::handle( int e ) {
 	switch (e) {
 		case FL_FOCUS: redraw(); return 1;
 		case FL_MOUSEWHEEL:
-			scroll_y += Fl::event_dy();
-			if ( scroll_y<-screen_y ) scroll_y = -screen_y;
-			if ( scroll_y>0 ) scroll_y = 0;
-			redraw();
+			if ( !bAlterScreen ) {
+				scroll_y += Fl::event_dy();
+				if ( scroll_y<-screen_y ) scroll_y = -screen_y;
+				if ( scroll_y>0 ) scroll_y = 0;
+				redraw();
+			}
 			return 1;
 		case FL_PUSH:
 			if ( Fl::event_button()==FL_LEFT_MOUSE ) {
@@ -173,19 +179,20 @@ int Fl_Term::handle( int e ) {
 					sel_left = line[y]+x;
 					sel_right = sel_left;
 					while ( --sel_left>line[y] )
-						if ( !isalnum(buff[sel_left]) ) {
+						if ( buff[sel_left]==0x0a || buff[sel_left]==0x20 ) {
 							sel_left++;
 							break;
 						}
 					while ( ++sel_right<line[y+1])
-						if ( !isalnum(buff[sel_right]) )
+						if ( buff[sel_right]==0x0a || buff[sel_right]==0x20 ) {
 							break;
+						}
 					redraw();
 					return 1;
 				}
 				if ( x>=size_x_-2 && scroll_y!=0 ) {//push in scrollbar area
 					bMouseScroll = true;
-					scroll_y = y*buff_y/h()-buff_y;
+					scroll_y = y*cursor_y/h()-cursor_y;
 					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
 					redraw();
 				}
@@ -193,6 +200,7 @@ int Fl_Term::handle( int e ) {
 					y = y/iFontHeight + screen_y+scroll_y;
 					sel_left = line[y]+x;
 					if ( sel_left>line[y+1] ) sel_left=line[y+1] ;
+					while ( (buff[sel_left]&0xc0)==0x80 ) sel_left--;
 					sel_right = sel_left;
 				}
 			}
@@ -202,14 +210,14 @@ int Fl_Term::handle( int e ) {
 				int x = Fl::event_x()/iFontWidth;
 				int y = Fl::event_y()-Fl_Widget::y();
 				if ( bMouseScroll) {
-					scroll_y = y*buff_y/h()-buff_y;
+					scroll_y = y*cursor_y/h()-cursor_y;
 					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
 					if ( scroll_y>0 ) scroll_y=0;
 				}
 				else {
 					if ( y<0 ) {
 						scroll_y += y/8;
-						if ( scroll_y<-buff_y ) scroll_y = -buff_y;
+						if ( scroll_y<-cursor_y ) scroll_y = -cursor_y;
 					}
 					if ( y>h() ) {
 						scroll_y += (y-h())/8;
@@ -217,10 +225,11 @@ int Fl_Term::handle( int e ) {
 					}
 					y = y/iFontHeight + screen_y+scroll_y;
 					if ( y<0 ) y=0;
-					if ( !bAlterScreen && y>buff_y ) y = buff_y;
-					//buff_y may not be the last line in AlterScreen mode
+					if ( !bAlterScreen && y>cursor_y ) y = cursor_y;
+					//cursor_y may not be the last line in AlterScreen mode
 					sel_right = line[y]+x;
 					if ( sel_right>line[y+1] ) sel_right=line[y+1];
+					while ( (buff[sel_right]&0xc0)==0x80 ) sel_right++;
 				}
 				redraw();
 			}
@@ -236,7 +245,7 @@ int Fl_Term::handle( int e ) {
 				if ( sel_left<sel_right )
 					Fl::copy(buff+sel_left, sel_right-sel_left, 1);
 				break;
-			case FL_MIDDLE_MOUSE:	//middle click 
+			case FL_MIDDLE_MOUSE:	//middle click
 				break;
 			case FL_RIGHT_MOUSE: 	//right click to paste
 				Fl::paste(*this, 1);
@@ -266,43 +275,57 @@ int Fl_Term::handle( int e ) {
 			break;
 		case FL_KEYDOWN:
 			if ( Fl::event_state(FL_ALT)==0 ) {
+#ifdef __APPLE__
+				int del;
+				if ( Fl::compose(del) ) {
+					int y = (cursor_y-screen_y+1)*iFontHeight;
+					int x = (cursor_x-line[cursor_y])*iFontWidth;
+					Fl::insertion_point_location(x,y,iFontHeight);
+					for ( int i=0; i<del; i++ ) do_callback("\177",1);
+				}
+#endif
 				int key = Fl::event_key();
 				switch (key) {
 				case FL_Page_Up:
+					if ( !bAlterScreen ) {
 						scroll_y-=size_y_*(1<<(page_up_hold/16))-1;
 						page_up_hold++;
 						if ( scroll_y<-screen_y ) scroll_y=-screen_y;
 						redraw();
-						break;
+					}
+					break;
 				case FL_Page_Down:
+					if ( !bAlterScreen ) {
 						scroll_y+=size_y_*(1<<(page_down_hold/16))-1;
 						page_down_hold++;
 						if ( scroll_y>0 ) scroll_y = 0;
 						redraw();
+					}
+					break;
+				case FL_Up:
+						do_callback(bAppCursor?"\033OA":"\033[A",3);
 						break;
-				case FL_Up:    
-						do_callback(bAppCursor?"\033OA":"\033[A",3); 
+				case FL_Down:
+						do_callback(bAppCursor?"\033OB":"\033[B",3);
 						break;
-				case FL_Down:  
-						do_callback(bAppCursor?"\033OB":"\033[B",3); 
+				case FL_Right:
+						do_callback(bAppCursor?"\033OC":"\033[C",3);
 						break;
-				case FL_Right: 
-						do_callback(bAppCursor?"\033OC":"\033[C",3); 
+				case FL_Left:
+						do_callback(bAppCursor?"\033OD":"\033[D",3);
 						break;
-				case FL_Left:  
-						do_callback(bAppCursor?"\033OD":"\033[D",3); 
+				case FL_BackSpace:
+						do_callback("\177", 1);
 						break;
-				case FL_BackSpace: 
-						do_callback("\177", 1); 
+				case FL_Enter:
+						do_callback("\015", 1);
+						scroll_y = 0;
+						bEnter = true;
 						break;
-				default:if ( key==FL_Enter ) {
-							bEnter = true;
-						}
-						else {
-							if ( bEnter ) {	//to detect Prompt after each Enter
-								bEnter = false;
-								bEnter1= true;
-							}
+				default:
+						if ( bEnter ) {	//to detect Prompt after each Enter
+							bEnter = false;
+							bEnter1= true;
 						}
 						do_callback(Fl::event_text(), Fl::event_length());
 						scroll_y = 0;
@@ -312,52 +335,70 @@ int Fl_Term::handle( int e ) {
 	}
 	return Fl_Widget::handle(e);
 }
+void Fl_Term::buffsize(int new_line_size)
+{
+	char *old_buff = buff;
+	char *old_attr = attr;
+	int *old_line = line;
+	int new_buff_size = new_line_size*64;
+
+	Fl::lock();
+	buff = (char *)realloc(buff, new_buff_size);
+	attr = (char *)realloc(attr, new_buff_size);
+	line = (int *)realloc(line, new_line_size*sizeof(int));
+	if ( buff!=NULL && attr!=NULL && line!=NULL ) {
+		if ( new_line_size>line_size ) {
+			memset(line+line_size, 0, (new_line_size-line_size)*sizeof(int));
+			memset(buff+buff_size, 0, new_buff_size-buff_size);
+			memset(attr+buff_size, 0, new_buff_size-buff_size);
+			buff_size = new_buff_size;
+			line_size = new_line_size;
+		}
+		else {
+			buff_size = new_buff_size;
+			line_size = new_line_size;
+			clear();
+		}
+	}
+	else {					//clear buffer if failed to double
+		if ( attr==NULL ) attr = old_attr;
+		if ( buff==NULL ) buff = old_buff;
+		if ( line==NULL ) line = old_line;
+	}
+	Fl::unlock();
+}
 void Fl_Term::next_line()
 {
-	line[++buff_y] = buff_x;
-	if ( buff_x>=buff_size ) {	//if text buffer is filled, try to double it
-		char *old_buff = buff;
-		char *old_attr = attr;
+	line[++cursor_y]=cursor_x;
+	if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
+	
+	if ( cursor_x>=buff_size-1024 || cursor_y==line_size-2 ) {
 		Fl::lock();
-		buff = (char *)realloc(buff, buff_size*2+256);
-		attr = (char *)realloc(attr, buff_size*2+256);
-		if ( buff!=NULL && attr!=NULL ) {
-			buff_size *= 2;
-		}
-		else {					//clear buffer if failed to double
-			if ( attr==NULL ) free(old_attr);
-			if ( buff==NULL ) free(old_buff);
-			attr = buff = NULL;
-			clear();
-		}
+		int i, len = line[1024];
+		recv0 -= len;
+		cursor_x -= len;
+		cursor_y -= 1024;
+		memmove(buff, buff+len, buff_size-len);
+		memset(buff+cursor_x, 0, buff_size-cursor_x);
+		memmove(attr, attr+len, buff_size-len);
+		memset(attr+cursor_x, 0, buff_size-cursor_x);
+		for ( i=0; i<cursor_y+2; i++ ) line[i] = line[i+1024]-len;
+		while ( i<line_size ) line[i++]=0;
+		screen_y -= 1024;
+		scroll_y = 0;
 		Fl::unlock();
 	}
-	if ( buff_y==line_size ) {	//if line buffer is filled, try to double it
-		int *old_line = line;
-		Fl::lock();
-		line = (int *)realloc(line, (line_size*2+1)*sizeof(int));
-		if ( line!=NULL ) {
-			line_size *= 2;
-			for ( int i=buff_y+1; i<line_size+1; i++ ) line[i]=0;
-		}
-		else {					//clear buffer if failed to double
-			free(old_line);
-			clear();
-		}
-		Fl::unlock();
-	}
-	if ( line[buff_y+1]<buff_x ) line[buff_y+1] = buff_x;
-	if ( screen_y<buff_y-size_y_+1 ) screen_y = buff_y-size_y_+1;
 	if ( scroll_y<0 ) scroll_y--;
+	if ( screen_y<cursor_y-size_y_+1 ) screen_y = cursor_y-size_y_+1;
 }
 void Fl_Term::append( const char *newtext, int len ){
-	const char *p = newtext;
-	const char *zz = newtext+len;
-	
+	const unsigned char *p = (const unsigned char *)newtext;
+	const unsigned char *zz = p+len;
+
 	if ( bEnter1 ) { //capture prompt for scripting after Enter key and pressed
 		if ( len==1 ) {//and the echo is just one letter
-			sPrompt[0] = buff[buff_x-2];
-			sPrompt[1] = buff[buff_x-1];
+			sPrompt[0] = buff[cursor_x-2];
+			sPrompt[1] = buff[cursor_x-1];
 			iPrompt = 2;
 		}
 		bEnter1 = false;
@@ -365,61 +406,68 @@ void Fl_Term::append( const char *newtext, int len ){
 	if ( bLogging ) fwrite( newtext, 1, len, fpLogFile );
 	if ( bEscape ) p = vt100_Escape( p, zz-p );
 	while ( p < zz ) {
-		char c=*p++;
-		switch ( (unsigned char)c ) {
+		unsigned char c=*p++;
+		if ( bTitle ) {
+			if ( c==0x07 ) {
+				bTitle = false;
+				sTitle[title_idx]=0;
+			}
+			else
+				sTitle[title_idx++] = c;
+			continue;
+		}
+		switch ( c ) {
 		case 	0: 	break;
-		case 0x07: 	if ( bTitle ) {
-						bTitle=false;
-						buff[buff_x]=0;
-						buff_x=line[buff_y];
-						line[buff_y+1]=buff_x;
-						strncpy(sTitle, buff+buff_x, 63);
-						sTitle[63] = 0;
-					}
+		case 0x07: 	break;
+		case 0x08:  if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte
+						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x--;
 					break;
-		case 0x08: 	--buff_x; 
+		case 0x09: 	do { 
+						attr[cursor_x]=c_attr;
+						buff[cursor_x++]=' '; 
+					} while ( (cursor_x-line[cursor_y])%8!=0 );
 					break;
-		case 0x09: 	do { buff[buff_x++]=' '; }
-					while ( (buff_x-line[buff_y])%8!=0 );
-					break;
-		case 0x1b: 	p = vt100_Escape( p, zz-p ); 
-					break;
-		case 0x0d: 	if ( bAlterScreen || (*p!=0x0a&&*p!=0x0d) )
-						buff_x = line[buff_y]; 
-					break;
-		case 0x0a: 	if ( bAlterScreen ) {
-						if ( buff_y==screen_y+roll_bot ) {
-							vt100_Escape("D", 1);// scroll up one line
-						}
+		case 0x0a:	if ( bAlterScreen ) { 	//LF on alter screen is not stored
+						if ( cursor_y==screen_y+roll_bot ) // scroll up one line
+							vt100_Escape((unsigned char *)"D", 1);
 						else {
-							int x = buff_x-line[buff_y];
-							buff_x = line[++buff_y]+x;
+							int x = cursor_x-line[cursor_y];
+							cursor_x = line[++cursor_y]+x;
 						}
 					}
-					else {
-						buff_x = line[buff_y+1];
-						attr[buff_x] = c_attr;
-						buff[buff_x++] = c;
-						next_line();
+					else {	//not on alter screen, store LF at end of line
+						cursor_x = line[cursor_y+1];
+//if the next line is not empty, assum it's a ESC[2J cleared buffer like in top
+						if ( line[cursor_y+2]!=0 ) cursor_x--;
+						attr[cursor_x] = c_attr;
+						buff[cursor_x++] = 0x0a;
+						next_line();		//hard line feed
 					}
 					break;
-		case 0xe2: if ( (unsigned char)(*p)==0x94 ) {//utf8 box drawing 
-						switch ( (unsigned char )(p[1]) ) {
-						case 0x80: 
-						case 0xac:
-						case 0xb4:
-						case 0xbc: c='_'; break;
-						case 0x82:
-						case 0x94:
-						case 0x98: 
-						case 0x9c:  
-						case 0xa4: c='|'; break;
-						case 0x8c:
-						case 0x90: c=' '; break;
-						default: c='?';
+		case 0x0d: 	if ( cursor_x-line[cursor_y]==size_x_+1 && *p!=0x0a ) 
+						next_line();		//soft line feed
+					else
+						cursor_x = line[cursor_y]; 
+					break;
+		case 0x1b: 	p = vt100_Escape( p, zz-p );
+					break;
+		case 0xe2:  if ( bAlterScreen ) {//utf8 box drawing hack
+						c = ' ';
+						if ( *p++==0x94 ) {
+							switch ( *p ) {
+							case 0x80:
+							case 0xac:
+							case 0xb4:
+							case 0xbc: c='_'; break;
+							case 0x82:
+							case 0x94:
+							case 0x98:
+							case 0x9c:
+							case 0xa4: c='|'; break;
+							}
 						}
-						p+=2;
-					}
+						p++;
+					}//fall through
 		default:	if ( bGraphic ) switch ( c ) {//charset 2 box drawing
 						case 'q': c='_'; break;
 						case 'x': c='|';
@@ -431,32 +479,47 @@ void Fl_Term::append( const char *newtext, int len ){
 						case 'k': c=' '; break;
 						default: c = '?';
 					}
-					if ( bInsert ) vt100_Escape("[1@",3);	//insert one space
-					if ( buff_x-line[buff_y]==size_x_ ) {
-						if ( bAlterScreen )
-							buff_x--;		//don't overflow a line in vi
-						else
-							next_line();
-					}
-					attr[buff_x] = c_attr;
-					buff[buff_x++] = c;
-					if ( line[buff_y+1]<buff_x ) line[buff_y+1]=buff_x;
+					if ( bInsert ) 			//insert one space
+						vt100_Escape((unsigned char *)"[1@",3);	
+					if ( cursor_x-line[cursor_y]>=size_x_ ) {
+						int char_cnt = 0;
+						for ( int i=line[cursor_y]; i<cursor_x; i++ )
+							if ( (buff[i]&0xc0)!=0x80 ) char_cnt++;
+						if ( char_cnt==size_x_ ) {
+							if ( bAlterScreen ) 
+								cursor_x--;	//don't overflow in vi
+							else
+								next_line();
+						}
+					} 
+					attr[cursor_x] = c_attr;
+					buff[cursor_x++] = c;
+					if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
 		}
 	}
 	if ( !bPrompt )
-		bPrompt = (strncmp(sPrompt, buff+buff_x-iPrompt, iPrompt)==0);
+		bPrompt = (strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0);
 	Fl::awake( this );
 }
 
-const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
+const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 {
-	const char *zz = sz+cnt;
+	const unsigned char *zz = sz+cnt;
+/*
+for ( const unsigned char *p=sz; p<zz&&p<sz+20; p++ )
+	if ( *p<32 )
+		fprintf(stderr, "\\%02x", *p);
+	else
+		fprintf(stderr, "%c",*p);
+fprintf(stderr, "\n");
+fflush(stderr);
+*/
 	bEscape = true;
 	while ( sz<zz && bEscape ){
 		ESC_code[ESC_idx++] = *sz++;
 		switch( ESC_code[0] ) {
 		case '[':
-			if ( isalpha(ESC_code[ESC_idx-1]) 
+			if ( isalpha(ESC_code[ESC_idx-1])
 				|| ESC_code[ESC_idx-1]=='@'
 				|| ESC_code[ESC_idx-1]=='`' ) {
 				bEscape = false;
@@ -464,103 +527,139 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 				if ( ESC_idx>1 ) {
 					char *p = strchr(ESC_code,';');
 					if ( p != NULL ) {
-						n1 = atoi(ESC_code+1);
-						n2 = atoi(p+1);
-					}
-					else if ( isdigit(ESC_code[1]) )
+						char *p1 = strchr(p+1, ';');
+						if ( p1!=NULL ) {
 							n0 = atoi(ESC_code+1);
+							n1 = atoi(p+1);
+							n2 = atoi(p1+1);
+						}
+						else {
+							n0 = 0;
+							n1 = atoi(ESC_code+1);
+							n2 = atoi(p+1);
+						}
+					}
+					else
+						if ( isdigit(ESC_code[1]) ) {
+							n0 = atoi(ESC_code+1);
+							n1 = 0; 
+							n2 = 0;
+						}
 				}
 				int x;
 				switch ( ESC_code[ESC_idx-1] ) {
 				case 'A': //cursor up n0 times
-					x = buff_x-line[buff_y];
-					buff_y -=n0;
-					buff_x = line[buff_y]+x;
+					x = cursor_x-line[cursor_y];
+					cursor_y -=n0;
+					cursor_x = line[cursor_y]+x;
 					break;
+				case 'd'://line position absolute
+					if ( n0>size_y_ ) n0 = size_y_;
+					x = cursor_x-line[cursor_y];
+					cursor_y = screen_y+n0-1;
+					cursor_x = line[cursor_y]+x;
+					break;
+				case 'e': //line position relative
 				case 'B': //cursor down n0 times
-					x = buff_x-line[buff_y];
-					buff_y += n0;
-					buff_x = line[buff_y]+x;
+					x = cursor_x-line[cursor_y];
+					cursor_y += n0;
+					cursor_x = line[cursor_y]+x;
 					break;
+				case 'I': //cursor forward n0 tab stops
+					n0 *= 8;	
+					//fall through
+				case 'a': //character position relative
 				case 'C': //cursor forward n0 times
-					buff_x += n0; 
+					while ( n0-->0 ) {
+						if ( (buff[++cursor_x]&0xc0)==0x80 )
+							while ( (buff[++cursor_x]&0xc0)==0x80 );
+					}
 					break;
+				case 'Z': //cursor backward n0 tab stops
+					n0 *= 8;
+					//fall through
 				case 'D': //cursor backward n0 times
-					buff_x -= n0; 
+					while ( n0-->0 ) {
+						if ( (buff[--cursor_x]&0xc0)==0x80 )
+							while ( (buff[--cursor_x]&0xc0)==0x80 );
+					}
 					break;
 				case 'E': //cursor to begining of next line n0 times
-					buff_y += n0; 
-					buff_x = line[buff_y];
+					cursor_y += n0;
+					cursor_x = line[cursor_y];
 					break;
 				case 'F': //cursor to begining of previous line n0 times
-					buff_y -= n0; 
-					buff_x = line[buff_y];
+					cursor_y -= n0;
+					cursor_x = line[cursor_y];
 					break;
+				case '`': //character position absolute
 				case 'G': //cursor to n0th position from left
-					buff_x = line[buff_y]+n0-1; 
-					break;
+					n1 = cursor_y-screen_y+1;
+					n2 = n0;				//fall through to 'H'
+				case 'f': //horizontal and vertical position forced
+					if ( n1==0 ) n1=1;
+					if ( n2==0 ) n2=1;		//fall through to 'H'
 				case 'H': //cursor to line n1, postion n2
 					if ( n1>size_y_ ) n1 = size_y_;
 					if ( n2>size_x_ ) n2 = size_x_;
-					buff_y = screen_y+n1-1;
-					buff_x = line[buff_y]+n2-1;
+					cursor_y = screen_y+n1-1;
+					cursor_x = line[cursor_y];
+					while ( --n2>0 ) {
+						cursor_x++;
+						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x++;
+					}
 					break;
-				case 'I': //cursor forward n0 tab stops
-					buff_x += n0*8;
-					break;
-				case 'Z': //cursor backward n0 tab stops
-					buff_x -= n0*8;
-					break;
-				case 'J': {//[J kill till end, 1J begining, 2J entire screen
+				case 'J': //[J kill till end, 1J begining, 2J entire screen
 					if ( ESC_code[ESC_idx-2]=='[' ) {
-						n0 = 0;
+					//[J, tinycore use this for CLI editing
 						if ( !bAlterScreen ) {
-							line[buff_y+1] = buff_x; break;
+							int i=cursor_y+1; line[i]=cursor_x; 
+							while (++i<=screen_y+size_y_) line[i]=0;
+							break;
 						}
+						else //tinycore use this to clear alterScreen 
+							screen_y = cursor_y;
 					}
-					int a=0, z=0, s=screen_y;
-					switch ( n0 ) {
-						case 0: a=buff_y;   z=screen_y+size_y_; break;			
-						case 1: a=screen_y; z=buff_y+1; break;			
-						case 2: a=screen_y; z=screen_y+size_y_; break;
-						}
-						char empty[256];
-						memset(empty,' ',256);
-						buff_y = a; buff_x = line[buff_y];
-						while (buff_y<z) {
-							append(empty, size_x_);
-							next_line();
-						}
-						buff_y = a; buff_x = line[buff_y];
-						screen_y = s;
+					/*[2J, mostly used after [?1049h to clear screen
+					  and when screen size changed during vi or raspi-config
+					  flashwave TL1 use it without [?1049h for splash screen 
+					  freeBSD use it without [?1049h* for top and vi 		*/
+					cursor_y = screen_y; cursor_x = line[cursor_y];
+					for ( int i=0; i<size_y_; i++ ) { 
+						memset(buff+cursor_x, ' ', size_x_);
+						memset(attr+cursor_x,   0, size_x_);
+						cursor_x += size_x_;
+						next_line();
 					}
+					cursor_y = --screen_y; cursor_x = line[cursor_y];
 					break;
 				case 'K': {//[K erase till line end, 1K begining, 2K entire line
 					if ( ESC_code[ESC_idx-2]=='[' ) n0 = 0;
-					int i=0, j=0;
+					int a=0, z=0;
+					if ( line[cursor_y+1]==0 ) line[cursor_y+1] = cursor_x;
 					switch ( n0 ) {
-						case 0:	i=buff_x; j=line[buff_y+1]; break;
-						case 1: j=buff_x; i=line[buff_y]; break;
-						case 2: i=line[buff_y]; j=line[buff_y+1]; break;
-						}
-						memset(buff+i, ' ', j-i);
-						memset(attr+i,   0, j-i);
+						case 0:	a=cursor_x; z=line[cursor_y+1]; break;
+						case 1: z=cursor_x; a=line[cursor_y]; break;
+						case 2: a=line[cursor_y]; z=line[cursor_y+1]; break;
+					}
+					memset(buff+a, ' ', z-a);
+					memset(attr+a,   0, z-a);
 					}
 					break;
 				case 'L': //insert n0 lines
-					for ( int i=roll_bot; i>buff_y-screen_y; i-- ) {
+					for ( int i=roll_bot; i>cursor_y-screen_y; i-- ) {
 						memcpy( buff+line[screen_y+i],
 								buff+line[screen_y+i-n0], size_x_ );
 						memcpy( attr+line[screen_y+i],
 								attr+line[screen_y+i-n0], size_x_ );
 					}
 					for ( int i=0; i<n0; i++ ) {
-						memset(buff+line[buff_y+i], ' ', size_x_);
-						memset(attr+line[buff_y+i],   0, size_x_);
+						memset(buff+line[cursor_y+i], ' ', size_x_);
+						memset(attr+line[cursor_y+i],   0, size_x_);
 					}
 					break;
 				case 'M': //delete n0 lines
-					for ( int i=buff_y-screen_y; i<=roll_bot-n0; i++ ) {
+					for ( int i=cursor_y-screen_y; i<=roll_bot-n0; i++ ) {
 						memcpy( buff+line[screen_y+i],
 								buff+line[screen_y+i+n0], size_x_);
 						memcpy( attr+line[screen_y+i],
@@ -572,24 +671,34 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 					}
 					break;
 				case '@': //insert n0 spaces
-					for ( int i=line[buff_y+1]; i>=buff_x; i-- ){
-						buff[i+n0]=buff[i]; attr[i+n0]=attr[i];
+					for ( int i=line[cursor_y+1]; i>=cursor_x; i-- ){
+						buff[i+n0]=buff[i]; 
+						attr[i+n0]=attr[i];
 					}
-					memset(buff+buff_x, ' ', n0);
-					line[buff_y+1]+=n0;
+					if ( !bAlterScreen ) {
+						line[cursor_y+1]+=n0;
+						if ( line[cursor_y+2]!=0 ) line[cursor_y+2]+=n0;
+						memset(buff+cursor_x, ' ', n0);
+						memset(attr+cursor_x,   0, n0);
+					}
 					break;
 				case 'P': //delete n0 characters
-					for ( int i=buff_x; i<line[buff_y+1]-n0; i++ ) {
-						buff[i]=buff[i+n0]; 
-						attr[i]=attr[i+n0]; 
+					for ( int i=cursor_x; i<line[cursor_y+1]-n0; i++ ) {
+						buff[i]=buff[i+n0];
+						attr[i]=attr[i+n0];
 					}
-					if ( !bAlterScreen ) //for freebsd vi 'x' operation
-						line[buff_y+1]-=n0;
+					if ( !bAlterScreen ) {
+					//when editing command input longer than a single line
+						line[cursor_y+1]-=n0;
+						if ( line[cursor_y+2]>0 ) line[cursor_y+2]-=n0;
+						memset(buff+line[cursor_y+1], ' ', n0);
+						memset(attr+line[cursor_y+1],   0, n0);
+					}
 					break;
 				case 'X': //erase n0 characters
 					for ( int i=0; i<n0; i++) {
-						buff[buff_x+i]=' '; 
-						attr[buff_x+i]=0;
+						buff[cursor_x+i]=' ';
+						attr[cursor_x+i]=0;
 					}
 					break;
 				case 'S': // scroll up n0 lines
@@ -612,26 +721,17 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 					memset(buff+line[screen_y+roll_top], ' ', n0*size_x_);
 					memset(attr+line[screen_y+roll_top],   0, n0*size_x_);
 					break;
-//				case '`': //character position absolute
-//				case 'a': //character position relative
-//				case 'd':{//line position absolute
-//					if ( n0>size_y_ ) n0 = size_y_;
-//					int x = buff_x-line[buff_y];
-//					buff_y = screen_y+n0-1;
-//					buff_x = line[buff_y]+x;
-//					}
-//					break;
-//				case 'e': //line position relative
-//				case 'f': //horizontal and vertical position forced
 				case 'h':
 					if ( ESC_code[1]=='4' ) bInsert=true;
 					if ( ESC_code[1]=='?' ) {
 						n0 = atoi(ESC_code+2);
 						if ( n0==1 ) bAppCursor=true;
-						if ( n0==1 || n0==1049 ) {
+						if ( n0==25 ) bCursor=true;
+						if ( n0==1049 ) {	//?1049h enter alternate screen
 							bAlterScreen = true;
-							save_y = screen_y =  buff_y;
-							roll_top = 0; roll_bot = size_y_-1;
+							screen_y = cursor_y; cursor_x = line[cursor_y];
+/* 	should clear alterScreen here, but all apps(vi, raspi-config etc) use 
+	ESC[2J or ESC[J to clear the screen following ESC[?1049h any way 	*/
 						}
 					}
 					break;
@@ -640,19 +740,19 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 					if ( ESC_code[1]=='?' ) {
 						n0 = atoi(ESC_code+2);
 						if ( n0==1 )  bAppCursor=false;
-						if ( n0==1 || n0==1049 ) { 	//?1049h alternate screen
+						if ( n0==25 ) bCursor=false;
+						if ( n0==1049 ) { 	//?1049l exit alternate screen
 							bAlterScreen = false;
-							buff_y = save_y;
-							buff_x = line[buff_y];
-							for ( int i=1; i<=size_y_+1; i++ )
-								if (buff_y+i<line_size) line[buff_y+i] = 0;
-							screen_y = buff_y-size_y_+1;
+							cursor_y = screen_y; cursor_x = line[cursor_y];
+							for ( int i=1; i<=size_y_+1; i++ ) 
+								line[cursor_y+i] = 0;
+							screen_y = cursor_y-size_y_+1;
 							if ( screen_y<0 ) screen_y = 0;
 						}
 					}
 					break;
 				case 'm': //text style, color attributes
-					if ( n0==1 && n2!=1 ) n0 = n2; 	//ESC[0;0m	ESC[01;34m
+					if ( n0==0 && n2!=1 ) n0 = n2;	//ESC[0;0m	ESC[01;34m
 					switch ( int(n0/10) ) {			//ESC[34m
 					case 0: if ( n0%10==7 ) {c_attr = 0x70; break;}
 					case 1:
@@ -664,27 +764,35 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 					}
 					break;
 				case 'r': roll_top=n1-1; roll_bot=n2-1; break;
+				case 's': //save cursor
+					save_x = cursor_x-line[cursor_y];
+					save_y = cursor_y-screen_y;
+					break;
+				case 'u': //restore cursor
+					cursor_y = save_y+screen_y;
+					cursor_x = line[cursor_y]+save_x;
+					break;
 				}
 			}
 			break;
 		case 'D': // scroll up one line
 			for ( int i=roll_top; i<roll_bot; i++ ) {
-				memcpy(buff+line[screen_y+i], buff+line[screen_y+i+1], size_x_);
-				memcpy(attr+line[screen_y+i], attr+line[screen_y+i+1], size_x_);
+				memcpy(buff+line[screen_y+i],buff+line[screen_y+i+1],size_x_);
+				memcpy(attr+line[screen_y+i],attr+line[screen_y+i+1],size_x_);
 			}
 			memset(buff+line[screen_y+roll_bot], ' ', size_x_);
 			memset(attr+line[screen_y+roll_bot],   0, size_x_);
 			bEscape = false;
 			break;
 		case 'F': //cursor to lower left corner
-			buff_y = screen_y+size_y_-1;
-			buff_x = line[buff_y];
+			cursor_y = screen_y+size_y_-1;
+			cursor_x = line[cursor_y];
 			bEscape = false;
 			break;
 		case 'M': // scroll down one line
 			for ( int i=roll_bot; i>roll_top; i-- ) {
-				memcpy(buff+line[screen_y+i], buff+line[screen_y+i-1], size_x_);
-				memcpy(attr+line[screen_y+i], attr+line[screen_y+i-1], size_x_);
+				memcpy(buff+line[screen_y+i],buff+line[screen_y+i-1],size_x_);
+				memcpy(attr+line[screen_y+i],attr+line[screen_y+i-1],size_x_);
 			}
 			memset(buff+line[screen_y+roll_top], ' ', size_x_);
 			memset(attr+line[screen_y+roll_top],   0, size_x_);
@@ -692,7 +800,10 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 			break;
 		case ']': //set window title
 			if ( ESC_code[ESC_idx-1]==';' ) {
-				if ( ESC_code[1]=='0' ) bTitle = true;
+				if ( ESC_code[1]=='0' ) {
+					bTitle = true;
+					title_idx = 0;
+				}
 				bEscape = false;
 			}
 			break;
@@ -712,14 +823,14 @@ const char *Fl_Term::vt100_Escape( const char *sz, int cnt )
 
 void Fl_Term::srch( const char *word, int dirn )
 {
-	for ( int i=buff_y+scroll_y+dirn; i>0&&i<buff_y; i+=dirn ) {
+	for ( int i=cursor_y+scroll_y+dirn; i>0&&i<cursor_y; i+=dirn ) {
 		int len = strlen(word);
 		char *p, tmp=buff[line[i+1]+len-1];
 		buff[line[i+1]+len-1]=0;
 		p = strstr(buff+line[i], word);
 		buff[line[i+1]+len-1]=tmp;
 		if ( p!=NULL ) {
-			scroll_y = i-buff_y;
+			scroll_y = i-cursor_y;
 			sel_left = p-buff;
 			sel_right = sel_left+strlen(word);
 			redraw();
@@ -727,38 +838,33 @@ void Fl_Term::srch( const char *word, int dirn )
 		}
 	}
 }
-void Fl_Term::logging( const char *fn )
+void Fl_Term::logg( const char *fn )
 {
 	if ( bLogging ) {
 		fclose( fpLogFile );
 		bLogging = false;
-		puts("\n\033[32m***Log file closed***\033[37m\n");
+		puts("\r\n\033[32m***Log file closed***\033[37m\r\n");
 	}
 	else {
 		fpLogFile = fl_fopen( fn, "wb" );
 		if ( fpLogFile != NULL ) {
 			bLogging = true;
-			puts("\n\033[32m***");
+			puts("\r\n\033[32m***");
 			puts(fn);
-			puts(" opened for logging***\033[37m\n");
+			puts(" opened for logging***\033[37m\r\n");
 		}
 	}
 }
-void Fl_Term::save(const char *fn)
+void Fl_Term::copyall()
 {
-	FILE *fp = fl_fopen( fn, "w" );
-	if ( fp != NULL ) {
-		fwrite(buff, 1, buff_x, fp);
-		fclose( fp );
-		puts("\n\033[32m***buffer saved***\033[37m\n");
-	}
+	Fl::copy(buff, cursor_x, 1);
 }
 int Fl_Term::waitfor(const char *word)
 {
 	char *p = buff+recv0;
 	bWait = true;
 	for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
-		buff[buff_x]=0;
+		buff[cursor_x]=0;
 		if ( strstr(p, word)!=NULL ) return 1;
 		sleep(1);
 	}
@@ -772,7 +878,7 @@ void Fl_Term::prompt(char *p)
 void Fl_Term::mark_prompt()
 {
 	bPrompt = false;
-	recv0 = buff_x;
+	recv0 = cursor_x;
 }
 int Fl_Term::wait_prompt( char **preply )
 {
@@ -780,10 +886,10 @@ int Fl_Term::wait_prompt( char **preply )
 	int oldlen = recv0;
 	for ( int i=0; i<iTimeOut && !bPrompt; i++ ) {
 		sleep(1);
-		if ( buff_x>oldlen ) { i=0; oldlen=buff_x; }
+		if ( cursor_x>oldlen ) { i=0; oldlen=cursor_x; }
 	}
 	bPrompt = true;
-	return buff_x - recv0;
+	return cursor_x - recv0;
 }
 void Fl_Term::putxml(const char *msg, int len)
 {

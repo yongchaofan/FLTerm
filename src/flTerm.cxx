@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 30631 2018-08-31 21:05:10 $"
+// "$Id: flTerm.cxx 26346 2018-09-30 21:05:10 $"
 //
 // flTerm -- A minimal ssh/scp/sftp terminal
 //
@@ -17,42 +17,39 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 
-const char ABOUT_TERM[]="\n\n\
-    flTerm is a terminal simulator for network engineers,\n\n\
-    a simple telnet/ssh/sftp/netconf client that features:\n\n\n\
-        * minimalist user interface\n\n\
-        * unlimited scroll back buffer\n\n\
-        * Windows, macOS and Linux compatible\n\n\
-        * Select to copy, right click to paste\n\n\
-        * Drag and Drop to run list of commands\n\n\
-        * Scripting interface at \033[34mxmlhttp://127.0.0.1:%d\033[37m\n\n\n\
-    by yongchaofan@gmail.com		08-31-2018\n\n\
-    https://github.com/zoudaokou/flTerm\n\n\n";
+const char ABOUT_TERM[]="\r\n\r\n\
+    flTerm is a terminal emulator designed for network engineers,\n\n\
+    with focus on simplicity and scriptibility for CLI users:\r\n\r\n\r\n\
+        * serial/telnet/ssh/sftp/netconf client\r\n\r\n\
+        * single executable smaller than 1MB\r\n\r\n\
+        * Windows, macOS and Linux compatible\r\n\r\n\
+        * simple automation of command batches\r\n\r\n\
+        * scriptable through \033[34mxmlhttp://127.0.0.1:%d\033[37m\r\n\r\n\r\n\
+    by yongchaofan@gmail.com		10-18-2018\r\n\r\n\
+    https://github.com/zoudaokou/flTerm\r\n\r\n\r\n";
 
 #include <stdio.h>
 #include <ctype.h>
 #include <assert.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <fnmatch.h>
 #include <sys/stat.h>
 
 #include <thread>
 #include "Hosts.h"
 #include "ssh2.h"
-#include "ftpd.h"
 #include "Fl_Term.h"
 #include "Fl_Browser_Input.h"
 
-#define TABHEIGHT 20
+#define CMDHEIGHT	18
+#define TABHEIGHT 	20
 #ifdef __APPLE__
-	#define MENUHEIGHT 0
+  #define MENUHEIGHT 0
 #else
-	#define MENUHEIGHT 20
+  #define MENUHEIGHT 20
 #endif
 #include <FL/x.H>               // needed for fl_display
 #include <FL/Fl.H>
-#include <FL/Fl_Ask.H>
+#include <FL/fl_ask.H>
 #include <FL/Fl_Tabs.H>
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Button.H>
@@ -64,14 +61,11 @@ const char ABOUT_TERM[]="\n\n\
 #include <FL/Fl_Native_File_Chooser.H>
 int httpd_init();
 void httpd_exit();
-void scp(char *cmd);
-void tun(char *cmd);
 void term_dnd(Fl_Term *term, Fan_Host *host, const char *buf);
 void conn_dialog();
-int scp_read(sshHost *pHost, const char *rpath, 
-											const char *lpath);
-int scp_write(sshHost *pHost, const char *lpath, 
-											const char *rpath);
+void cmd_batch(const char *fn);
+void scp_r(const char *rpath, const char *lpath);
+void scp_w(const char *lpath, const char *rpath);
 
 static Fl_Native_File_Chooser fnfc;
 const char *file_chooser(const char *title, const char *filter, int type=1)
@@ -105,13 +99,6 @@ Fl_Input_Choice *pHostname, *pSettings;
 Fl_Button *pConnect;
 Fl_Button *pCancel;
 
-Fl_Window *pScpDialog;
-Fl_Choice *pType;
-Fl_Input  *pLocal;
-Fl_Input  *pRemote;
-Fl_Button *pCopy;
-Fl_Button *pScpCancel;
-
 Fl_Window *pSrchDialog;
 Fl_Choice *pDir;
 Fl_Input  *pKeyword;
@@ -130,7 +117,7 @@ const char *kb_gets(const char *prompt, int echo)
 {
 	const char *p = NULL;
 	if ( acTerm->live() ) {
-		sshHost *host = (sshHost *)acTerm->term_data();
+		sshHost *host = (sshHost *)acTerm->user_data();
 		p = host->ssh_gets(prompt, echo);
 	}
 	return p;
@@ -147,11 +134,7 @@ void term_cb(void *data, const char *buf, int len)
 		if ( len==0 ) 
 			host->send_size(term->size_x(), term->size_y());
 		else //len<0
-			if ( term->live() ) 
-				term_dnd(term, host, buf);
-			else {
-				term->puts(buf);
-			}
+			term_dnd(term, host, buf);
 	}
 }
 void host_cb(void *data, const char *buf, int len)
@@ -163,15 +146,15 @@ void host_cb(void *data, const char *buf, int len)
 	else {
 		if ( len==0 ) {
 			term->live(true);
-			Fan_Host *host = (Fan_Host *)term->term_data();
+			Fan_Host *host = (Fan_Host *)term->user_data();
 			host->send_size(term->size_x(), term->size_y());
 		}
 		else {	//len<0
 			term->live(false);
-			term->puts("\n\033[31m");
+			term->puts("\r\n\033[31m");
 			term->puts(buf);
-			term->puts(*buf!='D'?" failure\033[37m\n\n":
-				 ", press Enter to restart\033[37m\n\n" );
+			term->puts(*buf!='D'?" failure\033[37m\r\n\r\n":
+				 ", press Enter to restart\033[37m\r\n\r\n" );
 		}
 		menu_update();
 	}
@@ -188,7 +171,7 @@ void conf_host_cb(void *data, const char *buf, int len)
 		else {	//len<0
 			term->live(false);
 			term->puts(buf);
-			term->puts(*buf=='D'?" press Enter to restart\n":" failure\n");
+			term->puts(*buf=='D'?" press Enter to restart\r\n":" failure\r\n");
 		}
 		menu_update();
 	}
@@ -238,7 +221,7 @@ void term_tabs()
 	pTermTabs->end();
 	pTermWin->remove(acTerm);
 	pTermWin->insert(*pTermTabs, pTermWin->children()-1);
-	pTermWin->resizable(*pTermTabs);
+	pTermWin->resizable(pTermTabs);
 	acTerm->resize(0, MENUHEIGHT+TABHEIGHT, pTermTabs->w(), 
 								pTermTabs->h()-TABHEIGHT);
 	acTerm->labelsize(16);
@@ -260,7 +243,7 @@ void term_del()
 {
 	if ( acTerm!=pPlus ) {
 		if ( acTerm->live() ) {
-			Fan_Host *host = (Fan_Host *)acTerm->term_data();
+			Fan_Host *host = (Fan_Host *)acTerm->user_data();
 			host->disconn();
 			delete host;
 			acTerm->callback(NULL, NULL);
@@ -280,13 +263,13 @@ int term_cmd(char *cmd, char** preply)
 		acTerm->puts(cmd);
 		return 0;
 	}
+	
+	int rc=0;
+	Fan_Host *host = (Fan_Host *)acTerm->user_data();
 	if ( *cmd=='#' ) {
 		cmd++;
-		if ( strncmp(cmd,"scp ",4)==0 ) scp(cmd+4);
-		else if ( strncmp(cmd,"tun ",4)==0 ) tun(cmd+4);
-		else if ( strncmp(cmd,"Wait",4)==0 ) sleep(atoi(cmd+5));
-		else if ( strncmp(cmd,"Log ",4)==0 ) acTerm->logging( cmd+4 );
-		else if ( strncmp(cmd,"Save",4)==0 ) acTerm->save( cmd+5 );
+		if ( strncmp(cmd,"Wait",4)==0 ) sleep(atoi(cmd+5));
+		else if ( strncmp(cmd,"Log ",4)==0 ) acTerm->logg( cmd+4 );
 		else if ( strncmp(cmd,"Clear",5)==0 ) acTerm->clear();
 		else if ( strncmp(cmd,"Title",5)==0 ) acTerm->copy_label( cmd+6 );
 		else if ( strncmp(cmd,"Waitfor",7)==0 ) acTerm->waitfor(cmd+8); 
@@ -295,14 +278,28 @@ int term_cmd(char *cmd, char** preply)
 			fl_decode_uri(cmd+7);
 			acTerm->prompt(cmd+7);
 		}
-		return 0;
+		else if ( strncmp(cmd,"scp ",4)==0 ) {
+			if ( host->type()==HOST_SSH ) {
+				cmd += 4;
+				char *p = strchr(cmd, ' ');
+				if ( p!=NULL ) {
+					*p++ = 0;
+					*cmd==':' ? scp_r(p, cmd+1) : scp_w(cmd, p+1);
+				}
+			}
+		}
+		else if ( strncmp(cmd,"tun ",4)==0 ) {
+			if ( host->type()==HOST_SSH ) ((sshHost *)host)->tun(cmd+4);
+		}
+		host->write("\r",1);
 	}
-
-	Fan_Host *host = (Fan_Host *)acTerm->term_data();
-	acTerm->mark_prompt();
-	host->write(cmd, strlen(cmd));
-	host->write("\r",1);
-	return acTerm->wait_prompt(preply);
+	else {
+		acTerm->mark_prompt();
+		host->write(cmd, strlen(cmd));
+		host->write("\r",1);
+		rc = acTerm->wait_prompt(preply);
+	}
+	return rc;
 }
 const char *protocols[]={"serial ","telnet ", "ssh ","sftp ","netconf "};
 const char *ports[]={"/dev/tty.usbserial","23", "22", "22", "830"};
@@ -321,10 +318,6 @@ void term_connect(int proto, const char *host)
 		pHost = new sftpHost(host); break;
 	case 4: //netconf
 		pHost = new confHost(host); break;
-	case 5: //ftpd
-		pHost = new ftpDaemon(host); break;
-	case 6: //tftpd
-		pHost = new tftpDaemon(host); break;
 	default: return;
 	}
 	if ( pHost!=NULL ) {
@@ -401,7 +394,7 @@ void protocol_cb(Fl_Widget *w)
 		for ( int i=1; i<16; i++ ) {
 			char port[32];
 			sprintf( port, "\\\\.\\COM%d", i );
-			HANDLE hPort = CreateFile( port, GENERIC_READ, 0, NULL,
+			HANDLE hPort = CreateFileA( port, GENERIC_READ, 0, NULL,
 										OPEN_EXISTING, 0, NULL);
 			if ( hPort != INVALID_HANDLE_VALUE ) {
 				pPort->add(port+4);
@@ -455,36 +448,6 @@ void search_cb(Fl_Widget *w)
 {
 	acTerm->srch(pKeyword->value(), pDir->value()==0?-1:1);
 }
-void scp_cb(Fl_Widget *w)
-{
-	Fan_Host *host = (Fan_Host *)(acTerm->term_data());
-	if ( host->type()!=HOST_SSH ) return;
-	if ( pType->value()==1 ) {	//remote to local
-		std::thread scp_thread( scp_read, (sshHost *)host, 
-								pRemote->value(), pLocal->value() );
-		scp_thread.detach();
-	}
-	else {						//local to remote
-		std::thread scp_thread( scp_write, (sshHost *)host, 
-								pLocal->value(), pRemote->value() );
-		scp_thread.detach();
-	}
-}
-void tun_cb(Fl_Widget *w)
-{
-	Fan_Host *host = (Fan_Host *)(acTerm->term_data());
-	if ( host->type()!=HOST_SSH ) return;
-	if ( pType->value()==1 ) { //start remote tunnel
-		std::thread tun_thread(&sshHost::tun_remote,(sshHost *)host,
-								pRemote->value(), pLocal->value() );
-		tun_thread.detach();
-	}
-	else {						//start local tunnel
-		std::thread tun_thread(&sshHost::tun_local, (sshHost *)host, 
-								pLocal->value(), pRemote->value() );
-		tun_thread.detach();
-	}
-}
 void cancel_cb(Fl_Widget *w)
 {
 	w->parent()->hide();
@@ -495,49 +458,24 @@ void conn_dialog()
 	pDialog->show();
 	pHostname->take_focus();
 }
-void scp_dialog()
-{
-	pScpDialog->resize(pTermWin->x()+400, pTermWin->y()+100, 360, 200);
-	pScpDialog->label("Secure Copy");
-	pCopy->label(" Copy ");
-	pCopy->callback(scp_cb);
-	pType->value(1);
-	pLocal->value("flTerm.exe");
-	pRemote->value("/tmp/flTerm.exe");
-	pScpDialog->show();
-	pRemote->take_focus();
-}
-void tun_dialog()
-{
-	pScpDialog->resize(pTermWin->x()+400, pTermWin->y()+100, 360, 200);
-	pScpDialog->label("SSH tunneling");
-	pCopy->label("Tunnel");
-	pCopy->callback(tun_cb);
-	pType->value(0);
-	pLocal->value("127.0.0.1:22");
-	pRemote->value("127.0.0.1:22");
-	pScpDialog->show();
-	pLocal->take_focus();
-}
 void cmd_cb(Fl_Widget *o) 
 {
 	char cmd[256];
 	strncpy(cmd, pCmd->value(), 255);
 	cmd[255] = 0;
-	pCmd->position(strlen(cmd), 0);
 	pCmd->add( cmd );
+	pCmd->position(strlen(cmd), 0);
 	switch( *cmd ) {
 		case '/':  acTerm->srch(cmd+1); break;
 		case '\\': acTerm->srch(cmd+1, 1); break;
 		case '#':  term_cmd(cmd, NULL); break;
 		default: if ( acTerm->live() ) {
-					Fan_Host *host = (Fan_Host *)acTerm->term_data();
+					Fan_Host *host = (Fan_Host *)acTerm->user_data();
 					host->write(cmd, strlen(cmd));
 					host->write("\r",1);
 				}
-				else { 
+				else
 					term_connect(cmd);
-				}
 	}
 }
 void editor_cb(Fl_Widget *w, void *data)
@@ -556,15 +494,15 @@ void editor_cb(Fl_Widget *w, void *data)
 	}
 	else {
 		pTermWin->insert(*pCmd, 1);
-		pCmd->resize(40, pTermWin->h()-TABHEIGHT, pTermWin->w()-40, TABHEIGHT);
+		pCmd->resize(0, pTermWin->h()-CMDHEIGHT, pTermWin->w(), CMDHEIGHT);
 		pTermWin->resize( pTermWin->x(), pTermWin->y(), 
-							pTermWin->w(), pTermWin->h()+TABHEIGHT);
+							pTermWin->w(), pTermWin->h()+CMDHEIGHT);
 		if ( pTermTabs!=NULL ) 
 			pTermTabs->resize( 0, MENUHEIGHT, pTermWin->w(), 
-							pTermWin->h()-MENUHEIGHT-TABHEIGHT);
+							pTermWin->h()-MENUHEIGHT-CMDHEIGHT);
 		else
 			acTerm->resize( 0, MENUHEIGHT, pTermWin->w(),
-							pTermWin->h()-MENUHEIGHT-TABHEIGHT);
+							pTermWin->h()-MENUHEIGHT-CMDHEIGHT);
 		pCmd->take_focus();
 	}
 	pTermWin->redraw();
@@ -580,37 +518,29 @@ int shortcut_handler(int e)
 }
 void menu_cb(Fl_Widget *w, void *data)
 {
-	const char *fname, *menutext = pMenu->text();
+	const char *menutext = pMenu->text();
 	if ( strcmp(menutext, "&Connect...")==0 ) {
 			conn_dialog();
 	}
 	else if ( strcmp(menutext, "&Disconnect")==0 ) {
-			Fan_Host *host = (Fan_Host *)acTerm->term_data();
+			Fan_Host *host = (Fan_Host *)acTerm->user_data();
 			host->disconn();
 	}
 	else if ( strcmp(menutext, "Log...")==0 ) {
-		if ( acTerm->logging() ) 
-			acTerm->logging( NULL );
+		if ( acTerm->logg() ) 
+			acTerm->logg( NULL );
 		else {
-			fname = file_chooser("Log to file:", "Log\t*.log");	
-			if ( fname!=NULL ) acTerm->logging(fname);
+			const char *fname = file_chooser("Log to file:", "Log\t*.log");	
+			if ( fname!=NULL ) acTerm->logg(fname);
 		}
 	}
-	else if ( strcmp(menutext, "Save...")==0 ) {
-		fname = file_chooser("Save to file:", "Text\t*.txt");
-		if ( fname!=NULL ) acTerm->save(fname);
+	else if ( strcmp(menutext, "Copy all")==0 ) {
+		acTerm->copyall();
 	}
 	else if ( strcmp(menutext, "Search...")==0 ) {
 		pSrchDialog->resize(pTermWin->x()+400, pTermWin->y()+100, 360, 140);
 		pSrchDialog->show();
 		pKeyword->take_focus();
-	}
-	else if ( strcmp(menutext, "local &Echo")==0 ) {
-		if ( !acTerm->live() ) return;
-		Fan_Host *host = (Fan_Host *)acTerm->term_data();
-		host->echo(!host->echo());
-		acTerm->puts(host->echo()?"\n\033[31mlocal echo ON\033[37m\n":
-								  "\n\033[31mlocal echo OFF\033[37m\n");
 	}
 	else if ( strcmp(menutext, "Tabs")==0 ) {
 		if ( pTermTabs==NULL ) term_tabs();
@@ -621,7 +551,7 @@ void menu_cb(Fl_Widget *w, void *data)
 			  strcmp(menutext, "Consolas")==0 ||
 			  strcmp(menutext, "Lucida Console")==0 ) {
 		Fl::set_font(FL_COURIER, menutext);
-		acTerm->textsize(acTerm->textsize());
+		acTerm->textsize();
 	}
 	else if ( strcmp(menutext, "12")==0 ||
 			  strcmp(menutext, "14")==0 ||
@@ -629,30 +559,28 @@ void menu_cb(Fl_Widget *w, void *data)
 			  strcmp(menutext, "18")==0  ) {
 		acTerm->textsize(atoi(menutext));
 	}
-	else if ( strcmp(menutext, "Script...")==0 ) {
-		fname = file_chooser("choose script file:", "Text\t*.txt", 0);
-		FILE *fp = fopen(fname, "rb");
-		if ( fp!=NULL ) {
-			char buff[8192];
-			fread(buff, 1, 8191, fp);
-			buff[8191]=0;
-			Fan_Host *host = (Fan_Host *)acTerm->term_data();
-			term_dnd(acTerm, host, buff);			
-		}
+	else if ( strcmp(menutext, "4096")==0 ||
+			  strcmp(menutext, "8192")==0 ||
+			  strcmp(menutext, "16384")==0||
+			  strcmp(menutext, "32768")==0 ) {
+		acTerm->buffsize(atoi(menutext));
+	}
+	else if ( strcmp(menutext, "local Echo")==0 ) {
+		if ( !acTerm->live() ) return;
+		Fan_Host *host = (Fan_Host *)acTerm->user_data();
+		host->echo(!host->echo());
+		acTerm->puts(host->echo()?"\r\n\033[31mlocal echo ON\033[37m\r\n":
+								  "\r\n\033[31mlocal echo OFF\033[37m\r\n");
 	}
 	else if ( strcmp(menutext, "Scp...")==0 ) {
-		scp_dialog();
+	//	scp_dialog();
 	}
 	else if ( strcmp(menutext, "Tunnel...")==0 ) {
-		tun_dialog();
+	//	tun_dialog();
 	}
-	else if ( strcmp(menutext, "FTP server")==0 ) {
-		fname = fl_dir_chooser("choose FTPd root dir", ".", 0);
-		if ( fname!=NULL ) term_connect(5, fname);
-	}
-	else if ( strcmp(menutext, "TFTP server")==0 ) {
-		fname = fl_dir_chooser("choose TFTPd root dir", ".", 0);
-		if ( fname!=NULL ) term_connect(6, fname);
+	else if ( strcmp(menutext, "Cmd batch")==0 ) {
+		const char *fname = file_chooser("choose batch file:","Text\t*.txt", 0);
+		if ( fname!=NULL ) cmd_batch(fname);
 	}
 	else {
 		term_connect((const char *)data);
@@ -665,7 +593,7 @@ void close_cb(Fl_Widget *w, void *data)
 		if ( acTerm->live() ) {
 			if ( fl_choice("Disconnect and exit?", "Yes", "No", 0)==1 ) 
 				return;
-			Fan_Host *host = (Fan_Host *)acTerm->term_data();
+			Fan_Host *host = (Fan_Host *)acTerm->user_data();
 			host->disconn();
 			delete host;
 		}
@@ -689,9 +617,9 @@ Fl_Menu_Item menubar[] = {
 {"Terminal", 	0,			0,			0, 	FL_SUBMENU},
 {"&Connect...", FL_ALT+'c', menu_cb},
 {"Log...", 		0, 			menu_cb},
-{"Save...",		0, 			menu_cb},
 {"Search...",	0, 			menu_cb},
-{"local &Echo",	FL_ALT+'e',	menu_cb, 	0, 	FL_MENU_DIVIDER},
+{"Copy all",	0, 			menu_cb},
+{"About", 		0,			about_cb, 	0, 	FL_MENU_DIVIDER},
 {0},
 {"Options", 	0,			0,			0, 	FL_SUBMENU},
 {"Tabs",		0,			menu_cb},
@@ -711,15 +639,19 @@ Fl_Menu_Item menubar[] = {
 {"16",			0,			menu_cb,	0,	FL_MENU_RADIO},
 {"18",			0,			menu_cb,	0,	FL_MENU_RADIO},
 {0},
-{"&Line editor",FL_ALT+'l',	editor_cb},
+{"Buffer Size", 0,			0,			0,	FL_SUBMENU},
+{"4096",		0,			menu_cb,	0,	FL_MENU_RADIO},
+{"8192",		0,			menu_cb,	0,	FL_MENU_RADIO|FL_MENU_VALUE},
+{"16384",		0,			menu_cb,	0,	FL_MENU_RADIO},
+{"32768",		0,			menu_cb,	0,	FL_MENU_RADIO},
+{0},
+{"local Echo",	0,			menu_cb},
 {0},
 {"Extra", 		0,			0,			0, 	FL_SUBMENU},
-{"Script...",	0,			menu_cb},		
 {"Scp...",		0,			menu_cb},		
 {"Tunnel...",	0,			menu_cb},		
-{"FTP server", 	0,			menu_cb},
-{"TFTP server", 0,			menu_cb},
-{"About", 		0,			about_cb},
+{"Cmd batch",	0,			menu_cb},		
+{"Cmd &Builder",FL_ALT+'b',	editor_cb},
 {0}, {0}
 };
 int main(int argc, char **argv) {
@@ -732,6 +664,26 @@ int main(int argc, char **argv) {
 	Fl::set_font(FL_COURIER, "Consolas");
 #endif
 
+	int fontsize = 14;
+	int tabs = false;
+	int i=1;
+	while ( i<argc ) {
+		if ( strcmp(argv[i], "--fontface")==0 ) {
+			Fl::set_font(FL_COURIER, argv[i+1]);
+			i+=2;
+		}
+		else if ( strcmp(argv[i], "--fontsize")==0 ) {
+			fontsize = atoi(argv[i+1]);
+			i+=2;
+		}
+		else if ( strcmp(argv[i], "--tabs")==0 ) {
+			tabs=true;
+			i++;
+		}
+		else
+			break;
+	}
+			
 	pTermWin = new Fl_Double_Window(800, 640, "Fl_Term");
 	{
 		pMenu=new Fl_Sys_Menu_Bar(0, 0, pTermWin->w(), MENUHEIGHT);
@@ -740,16 +692,31 @@ int main(int argc, char **argv) {
 		pMenu->box(FL_FLAT_BOX);
 		acTerm = new Fl_Term(0, MENUHEIGHT, pTermWin->w(), 
 								pTermWin->h()-MENUHEIGHT, "term");
-	  	pCmd = new Fl_Browser_Input( 0, pTermWin->h()-1, 1, 1, "CMD:");
+		acTerm->textsize(fontsize);
+	  	pCmd = new Fl_Browser_Input( 0, pTermWin->h()-1, 1, 1, "");
 	  	pCmd->color(FL_CYAN);
 		pCmd->box(FL_FLAT_BOX);
-		pCmd->textsize(16);
+		pCmd->textsize(18);
+		pCmd->labelsize(18);
 	  	pCmd->when(FL_WHEN_ENTER_KEY_ALWAYS);
 	  	pCmd->callback(cmd_cb);
 	}
 	pTermWin->callback(close_cb);
 	pTermWin->resizable(acTerm);
 	pTermWin->end();
+	FILE *fp = fopen("flTerm.dic", "r");
+	if ( fp!=NULL ) {
+		char line[256];
+		while ( fgets(line, 255, fp)!=NULL ) {
+			int l = strlen(line)-1;
+			while ( line[l]=='\015' || line[l]=='\012' ) line[l--]=0; 
+			pCmd->add(line);
+			if ( strncmp(line, "ssh ",4)==0 ) {
+				const char *p = strrchr(line, ' ');
+				pMenu->insert(6,p+1,0,menu_cb,(void *)strdup(line));
+			}
+		}
+	}
 
 	pDialog = new Fl_Window(360, 200, "Connect");
 	{
@@ -767,6 +734,7 @@ int main(int argc, char **argv) {
 		pProtocol->add("serial|telnet|ssh|sftp|netconf");
 		pProtocol->value(2);
 		pPort->value("22");
+		pHostname->add("192.168.1.1");
 		pHostname->value("192.168.1.1");
 		pProtocol->callback(protocol_cb);
 		pConnect->callback(connect_cb);
@@ -774,23 +742,6 @@ int main(int argc, char **argv) {
 	}
 	pDialog->end();
 	pDialog->set_modal();
-
-	pScpDialog = new Fl_Window(360, 200, "SCP");
-	{
-		pType = new Fl_Choice(100,20,192,24, "Direction:");
-		pLocal = new Fl_Input(100,60,192,24, "Local:");
-		pRemote = new Fl_Input(100,100,192,24,"Remote:");
-		pCopy = new Fl_Button(200,160,80,24, "Copy");
-		pScpCancel = new Fl_Button(80,160,80,24, "Cancel");
-		pType->textsize(16); pType->labelsize(16);
-		pLocal->textsize(16); pLocal->labelsize(16);
-		pRemote->textsize(16); pRemote->labelsize(16);
-		pCopy->labelsize(16); pScpCancel->labelsize(16);
-		pCopy->shortcut(FL_Enter);
-		pType->add("Local to Remote|Remote to Local");
-		pScpCancel->callback(cancel_cb);
-	}
-	pScpDialog->end();
 
 	pSrchDialog = new Fl_Window(360, 140, "Search");
 	{
@@ -814,22 +765,14 @@ int main(int argc, char **argv) {
     pTermWin->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
 	pTermWin->show();
-	pDialog->resize(pTermWin->x()+100, pTermWin->y()+100, 360, 200);
-	pDialog->show();
-	pHostname->take_focus();
-
-	FILE *fp = fopen("flTerm.dic", "r");
-	if ( fp!=NULL ) {
-		char line[256];
-		while ( fgets(line, 255, fp)!=NULL ) {
-			int l = strlen(line)-1;
-			while ( line[l]=='\015' || line[l]=='\012' ) line[l--]=0; 
-			pCmd->add(line);
-			if ( strncmp(line, "ssh ",4)==0 ) {
-				const char *p = strrchr(line, ' ');
-				pMenu->insert(6,p+1,0,menu_cb,(void *)strdup(line));
-			}
-		}
+	if ( tabs ) term_tabs();
+	if ( i<argc ) {
+		term_connect(2, argv[i]);
+	}
+	else {
+		pDialog->resize(pTermWin->x()+100, pTermWin->y()+100, 360, 200);
+		pDialog->show();
+		pHostname->take_focus();
 	}
 	
 	Fl::add_handler(shortcut_handler);
@@ -921,50 +864,82 @@ void httpd_exit()
 {
 	closesocket(http_s0);
 }
-
-/** taken out of Fl_Term.cxx so that NETables don't have to do this    **/
-void scp_writer(Fl_Term *pTerm, Fan_Host *host, char *script)
+void scp_pwd(char *dst)
 {
-	char *p, *p0, *p1, *p2, pwd[4]="pwd";
-	char lfile[1024], rfile[1024];
-	int rpath_len;
-
+	char *p1, *p2, pwd[4]="pwd";
 	term_cmd(pwd, &p2);
 	p1 = strchr(p2, 0x0a);
-	if ( p1==NULL ) goto done;
-	p2 = p1+1;
-	p1 = strchr(p2, 0x0a);
-	if ( p1==NULL ) goto done;
-	rpath_len = p1-p2;
-	strncpy(rfile, p2, rpath_len);
-	rfile[rpath_len++]='/';
-
-	p0 = script;
-	do {
-		p2=p1=strchr(p0, 0x0a);
-		if ( p1==NULL ) 
-			p1 = p0+strlen(p0);
-		else 
-			*p1 = 0; 
-		strncpy(lfile, p0, 1023);
-		for ( p=lfile; *p; p++ ) 
-			if ( *p=='\\' ) *p='/';
-
-		p = strrchr(lfile, '/');
-		if (p!=NULL) p++; else p=lfile;
-		strcpy(rfile+rpath_len, p);
-
-		((sshHost *)host)->scp_write(lfile, rfile);
-		p0 = p1+1;
+	if ( p1!=NULL ) {
+		p2 = p1+1;
+		p1 = strchr(p2, 0x0a);
+		if ( p1!=NULL ) {
+			strncpy(dst, p2, p1-p2);
+			dst[p1-p2]=0;
+		}
 	}
-	while ( p2!=NULL ); 
-	host->write("\015", 1);
-done:
+}
+void scp_r(const char *local, const char *remote)
+{
+	char *rpath, rlist[1024]="ls -1 ";
+	if ( *remote=='/' ) 
+		strcpy(rlist+6, remote);
+	else {
+		scp_pwd(rlist+6);
+		if ( *remote ) {
+			strcat(rlist, "/");
+			strcat(rlist, remote);
+		}
+	}
+	if ( term_cmd(rlist, &rpath)>0 ) {
+		char *p = strchr(rpath, 0x0a);
+		if ( p!=NULL ) {
+			sshHost *host = (sshHost *)acTerm->user_data();
+			std::thread scp_thread( &sshHost::scp_read, host,
+								strdup(local), strdup(p+1) );
+			scp_thread.detach();
+		}
+	}
+}
+void scp_w(const char *local, const char *remote)
+{
+	char *rpath, rlist[1024]="ls -ld ";
+	if ( *remote=='/') 
+		strcpy(rlist+7, remote);
+	else {
+		scp_pwd(rlist+7);
+		if ( *remote ) {
+			strcat(rlist, "/");
+			strcat(rlist, remote);
+		}
+	}
+	if ( term_cmd(rlist, &rpath)>0 ) {
+		char *p = strchr(rpath, 0x0a);
+		if ( p!=NULL ) if ( p[1]=='d' ) strcat(rlist, "/");
+		sshHost *host = (sshHost *)acTerm->user_data();
+		std::thread scp_thread( &sshHost::scp_write, host,
+								strdup(local), strdup(rlist+7) );
+		scp_thread.detach();
+	}
+}
+
+void cmd_scripter(Fl_Term *pTerm, Fan_Host *host, char *script)
+{
+	char *p=script, *p1;	
+	while ( (p1=strchr(p, 0x0a))!=NULL ) {
+		*p1++ = 0;
+		term_cmd(p, NULL);
+		p = p1;
+	}
+	if ( *p ) term_cmd(p, NULL);
 	delete script;
 }
-void sftp_copier(Fl_Term *pTerm, Fan_Host *host, char *script)
+void file_copier(Fl_Term *pTerm, Fan_Host *host, char *script)
 {
-	char *p0, *p1, *p2, fn[1024];
+	char *p0, *p1, *p2, fn[1024], rdir[1024];
+	if ( host->type()==HOST_SSH ) {
+		scp_pwd(rdir);
+		strcat(rdir, "/");
+	}
 
 	p0 = script;
 	do {
@@ -975,198 +950,60 @@ void sftp_copier(Fl_Term *pTerm, Fan_Host *host, char *script)
 			*p1 = 0; 
 		strcpy(fn, "put ");
 		strncat(fn, p0, 1020);
-		for ( unsigned int i=0; i<strlen(fn); i++ ) 
-			if ( fn[i]=='\\' ) fn[i]='/';
-		((sftpHost *)host)->sftp(fn);
+		if ( host->type()==HOST_SSH )
+			((sshHost *)host)->scp_write(strdup(fn+4), strdup(rdir));
+		if ( host->type()==HOST_SFTP ) 
+			((sftpHost *)host)->sftp(fn);
 		p0 = p1+1;
 	}
 	while ( p2!=NULL ); 
-	pTerm->puts("sftp> ");
+	if ( host->type()==HOST_SFTP ) pTerm->puts("sftp> ");
 	delete script;
 }
-
-void term_scripter(Fl_Term *pTerm, Fan_Host *host, char *script)
+void file_scripter(Fl_Term *pTerm, Fan_Host *host, char *fn)
 {
-	char *p0=script, *p1;	
-	while ( (p1=strchr(p0, 0x0a))!=NULL ) {
-		if ( *p0=='#' ) {
-			*p1 = 0;
-			term_cmd(p0, NULL);
-		}
-		else {
-			*p1 = '\015';
-			pTerm->mark_prompt();
-			host->write(p0, p1-p0+1);
-			pTerm->wait_prompt(NULL);
-		}
-		p0 = p1+1;
+	char cmd[256];	
+	FILE *fp = fopen(fn, "r");
+	delete fn;
+	
+	while ( fgets(cmd, 256, fp)!=NULL ) {
+		cmd[strcspn(cmd, "\r\n")]=0;
+		term_cmd(cmd, NULL);
 	}
-	if ( *p0 ) host->write(p0, strlen(p0));
-	delete script;
+	fclose(fp);
 }
 void term_dnd(Fl_Term *term, Fan_Host *host, const char *buf)
 {
+	if ( !term->live() ) {
+		term->puts(buf, strlen(buf));
+		return;
+	}
+	if ( host->type()==HOST_CONF ) {
+		host->write(buf, strlen(buf));
+		return;
+	}
+
+	void ( *scripter )(Fl_Term *, Fan_Host *, char *);
+	scripter = cmd_scripter;
 	char *script = strdup(buf);	//script thread must delete this
-
-	switch ( host->type() ) {
-	case HOST_CONF: host->write(buf, strlen(buf)); 
-					break;
-	case HOST_SFTP: {
-				std::thread scripterThread(sftp_copier, term, host, script);
-				scripterThread.detach();
-			}
-			break;
-	case HOST_SSH: {
-				char *p0 = script;
-				char *p1=strchr(p0, 0x0a);
-				if ( p1!=NULL ) *p1=0;
-				struct stat sb;
-				int rc = stat(p0, &sb);		//is this a list of files?
-				if ( p1!=NULL ) *p1=0x0a;
-				if ( rc!=-1 ) {
-					std::thread scripterThread(scp_writer, term, host, script);
-					scripterThread.detach();
-					break;
-				}
-			}
-	default: {
-				std::thread scripterThread(term_scripter, term, host, script);
-				scripterThread.detach();
-			}
-			break;
+	char *p0 = script;
+	char *p1=strchr(p0, 0x0a);
+	if ( p1!=NULL ) *p1=0;
+	struct stat sb;				//is this a list of files?
+	if ( stat(p0, &sb)!=-1 ) {
+		if ( host->type()==HOST_SSH || host->type()==HOST_SFTP )
+			scripter = file_copier;
+		else
+			scripter = file_scripter;
 	}
+	if ( p1!=NULL ) *p1=0x0a;
+		
+	std::thread scripterThread(scripter, term, host, script);
+	scripterThread.detach();
 }
-int scp_read(sshHost *pHost, const char *rpath, 
-											const char *lpath)
+void cmd_batch(const char *fn)
 {
-	if ( strchr(rpath,'*')==NULL && strchr(rpath, '?')==NULL ) {
-		char lfile[1024];
-		strcpy(lfile, lpath);
-		struct stat statbuf;
-		if ( stat(lpath, &statbuf)!=-1 ) {
-			if ( S_ISDIR(statbuf.st_mode) ) {
-				strcat(lfile, "/");
-				const char *p = strrchr(rpath, '/');
-				if ( p!=NULL ) p++; else p=rpath;
-				strcat(lfile, p);
-			}
-		}	
-		pHost->scp_read(rpath, lfile);
-	}
-	else {
-		char rnames[4096]="ls -1 ", *rlist;
-		if ( *rpath!='/' ) strcat(rnames, "~/");
-		strcat(rnames, rpath);
-		if ( term_cmd(rnames, &rlist )>0 ) {
-			char rdir[1024], rfile[1024], lfile[1024];
-			char *p1, *p2, *p = strrchr(rnames, '/');
-			if ( p!=NULL ) *p=0;
-			strncpy(rdir, rnames+6, 1023);
-			strncpy(rnames, rlist, 4095);
-			p = strchr(rnames, '\012');
-			if ( p==NULL ) return 0;
-			while ( (p1=strchr(++p, '\012'))!=NULL ) {
-				*p1=0; 
-				strcpy(rfile, p);
-				p2 = strrchr(p, '/');
-				if ( p2==NULL ) p2=p; else p2++;
-				strcpy(lfile, lpath);
-				strcat(lfile, "/");
-				strcat(lfile, p2);
-				pHost->scp_read(rfile, lfile);
-				p = p1;
-			}
-		}
-	}
-	pHost->write("\015", 1);
-	return 0;
-}
-int scp_write(sshHost *pHost, const char *lpath, 
-											const char *rpath)
-{
-	DIR *dir;
-	struct dirent *dp;
-	struct stat statbuf;
-
-	if ( stat(lpath, &statbuf)!=-1 ) {
-		char rnames[1024]="ls -ld ", *rlist, rfile[1024];
-		if ( *rpath!='/' ) strcat(rnames, "~/");
-		strcat(rnames, rpath);
-		strcpy(rfile, *rpath?rpath:".");
-		if ( term_cmd(rnames, &rlist )>0 ) {
-			const char *p = strchr(rlist, '\012');
-			if ( p!=NULL ) if ( p[1]=='d' ) {
-				p = strrchr(lpath, '/');
-				if ( p!=NULL ) p++; else p=lpath;
-				strcat(rfile, "/");
-				strcat(rfile, p);
-			}
-		}
-		pHost->scp_write(lpath, rfile);
-	}
-	else {
-		const char *lname=lpath;
-		char ldir[1024]=".";
-		char *p = (char *)strrchr(lpath, '/');
-		if ( p!=NULL ) {
-			*p++ = 0; 
-			lname = p;
-			strcpy(ldir, lpath);
-		}
-
-		if ( (dir=opendir(ldir) ) == NULL ){
-			pHost->print("\n\033[31mSCP: couldn't open local directory\033[32m%s\033[30m\n", ldir);
-			return 0;
-		}
-		while ( (dp=readdir(dir)) != NULL ) {
-			if ( fnmatch(lname, dp->d_name, 0)==0 ) {
-				char lfile[1024], rfile[1024];
-				strcpy(lfile, ldir);
-				strcat(lfile, "/");
-				strcat(lfile, dp->d_name);
-				strcpy(rfile, rpath);
-				strcat(rfile, "/");
-				strcat(rfile, dp->d_name);
-				pHost->scp_write(lfile, rfile);
-			}
-		}
-	}
-	pHost->write("\015", 1);
-	return 0;
-}
-void scp(char *cmd)
-{
-	char *p = strchr(cmd, ' ');
-	if ( p!=NULL ) {
-		*p++=0; 
-		if ( *cmd==':' ) {
-			pType->value(1);
-			pLocal->value(p);
-			pRemote->value(cmd+1);
-		}
-		else {
-			pType->value(0);
-			pLocal->value(cmd);
-			pRemote->value(p+1);
-		}
-		scp_cb(pCopy);
-	}
-}
-void tun(char *cmd)
-{
-	char *p = strchr(cmd, ' ');
-	if ( p!=NULL ) { 
-		*p++=0;
-		if ( *cmd=='R' ) { //start remote tunnel
-			pType->value(1);
-			pLocal->value(p);
-			pRemote->value(cmd+1);
-		}
-		else {
-			pType->value(0);
-			pLocal->value(cmd);
-			pRemote->value(p);
-		}
-		tun_cb(pCopy);
-	}
+	Fan_Host *host = (Fan_Host *)(acTerm->user_data());
+	std::thread scripterThread(file_scripter, acTerm, host, strdup(fn));
+	scripterThread.detach();
 }

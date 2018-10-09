@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 1129 2018-08-18 23:48:10 $"
+// "$Id: ssh2.h 3493 2018-08-18 23:48:10 $"
 //
 //  sshHost sftpHost confHost
 //
@@ -59,10 +59,13 @@ public:
 	virtual void send_size(int sx, int sy);
 	virtual void disconn();
 //	virtual void connect();
-	int scp_read(const char *rpath, const char *lpath);
-	int scp_write(const char *lpath, const char *rpath);
+	int scp_read_one(const char *rpath, const char *lpath);
+	int scp_read(char *rpath, char *lpath);
+	int scp_write_one(const char *lpath, const char *rpath);
+	int scp_write(char *lpath, char *rpath);
 	int tun_local(const char *lpath, const char *rpath);
 	int tun_remote(const char *rpath,const char *lpath);
+	void tun(char *cmd);
 	char *ssh_gets(const char *prompt, int echo);
 };
 
@@ -81,8 +84,8 @@ protected:
 	int sftp_ren(char *src, char *dst);
 	int sftp_get_one(char *src, char *dst);
 	int sftp_get(char *src, char *dst);
-	int sftp_put(char *src, char *dst);
 	int sftp_put_one(char *src, char *dst);
+	int sftp_put(char *src, char *dst);
 
 public:
 	sftpHost(const char *name) : sshHost(name) {}

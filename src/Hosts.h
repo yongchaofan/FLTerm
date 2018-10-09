@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 5266 2018-08-18 21:12:15 $"
+// "$Id: Hosts.h 2951 2018-10-08 21:12:15 $"
 //
 // Fan_Host comHost tcpHost
 //
@@ -39,9 +39,7 @@
 #ifndef _FAN_HOST_H_
 #define _FAN_HOST_H_
 
-enum {  HOST_COM=1, HOST_TCP,
-		HOST_SSH, HOST_SFTP, HOST_CONF,
-		HOST_FTPD,HOST_TFTPD };
+enum {  HOST_COM=1, HOST_TCP, HOST_SSH, HOST_SFTP, HOST_CONF };
 
 typedef void ( host_callback )(void *, const char *, int);
 
@@ -82,7 +80,6 @@ public:
 	int echo() { return bEcho; }
 	void echo(int e) { bEcho = e; }
 	void print(const char *fmt, ...);
-//	int connected() { return bConnected; }
 };
 
 class comHost : public Fan_Host {
@@ -108,9 +105,9 @@ public:
 #endif //WIN32
 	}
 	virtual int type() { return HOST_COM; }
-	virtual void send_size(int sx, int sy){};
 	virtual int read();
 	virtual int write(const char *buf, int len);
+	virtual void send_size(int sx, int sy){};
 	virtual void disconn();	
 //	virtual void connect();
 };

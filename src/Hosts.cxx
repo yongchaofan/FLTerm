@@ -1,7 +1,7 @@
 //
-// "$Id: Hosts.cxx 40087 2018-08-18 21:15:10 $"
+// "$Id: Hosts.cxx 8522 2018-10-08 22:15:10 $"
 //
-// tcpHost sshHost sftpHost confHost
+// Fan_Host tcpHost comHost
 //
 //	  host implementation for terminal simulator
 //    used with the Fl_Term widget in flTerm
@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <assert.h>
 #include <stdarg.h>
 #ifndef WIN32
 	#include <termios.h>
@@ -42,7 +41,6 @@ void Fan_Host::connect()
 }
 void Fan_Host::print( const char *fmt, ... ) 
 {
-	assert(host_cb!=NULL);
 	char buff[4096];
 	va_list args;
 	va_start(args, (char *)fmt);
