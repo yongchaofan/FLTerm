@@ -844,10 +844,10 @@ int httpd_init()
 	memset(&svraddr, 0, addrsize);
 	svraddr.sin_family=AF_INET;
 	svraddr.sin_addr.s_addr=inet_addr("127.0.0.1");
-	short port = 8089;
+	short port = 8079;
 	int rc = -1;
-	while ( rc==-1 && port<8100 ) {
-		svraddr.sin_port=htons(++port);
+	while ( rc==-1 && ++port<8100 ) {
+		svraddr.sin_port=htons(port);
 		rc = bind(http_s0, (struct sockaddr*)&svraddr, addrsize);
 	}
 	if ( rc!=-1 ) {

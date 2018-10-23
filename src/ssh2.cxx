@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38828 2018-08-31 21:55:10 $"
+// "$Id: ssh2.cxx 38809 2018-08-31 21:55:10 $"
 //
 // sshHost sftpHost confHost
 //
@@ -222,7 +222,7 @@ void sshHost::write_keys(const char *buf, int len)
 		}
 	}	
 }
-char* sshHost::ssh_gets( const char *prompt, int echo )
+char* sshHost::ssh_gets( const char *prompt, int echo, int seconds )
 {
 	do_callback(prompt, strlen(prompt));
 	cursor=0;
@@ -230,7 +230,7 @@ char* sshHost::ssh_gets( const char *prompt, int echo )
 	bReturn = false; 
 	bPassword = !echo;
 	int old_cursor = cursor;
-	for ( int i=0; i<3000&&bGets; i++ ) {
+	for ( int i=0; i<seconds*10&&bGets; i++ ) {
 		if ( bReturn ) return keys;
 		if ( cursor>old_cursor ) { old_cursor=cursor; i=0; }
 		usleep(100000);
@@ -1036,19 +1036,19 @@ int sftpHost::sftp_lcd(char *cmd)
 	if ( cmd==NULL || *cmd==0 ) {
 		char buf[4096];
 		if ( getcwd(buf, 4096)!=NULL ) {
-			print("\t\033[32m%s \033[37mis current local directory\r\n", cmd);
+			print("\033[32m%s \033[37mis current local directory\r\n", cmd);
 		}
 		else {
-			print("\t\033[31mCouldn't get current local directory\r\n");
+			print("\033[31mCouldn't get current local directory\r\n");
 		}
 	}
 	else {
 		while ( *cmd==' ' ) cmd++;
 		if ( chdir(cmd)==0 ) {
-			print("\t\033[32m%s\033[37m is now local directory!\r\n", cmd);
+			print("\033[32m%s\033[37m is now local directory!\r\n", cmd);
 		}
 		else {
-			print("\t\033[31mCouldn't change local directory to\033[32m%s\r\n", cmd);
+			print("\033[31mCouldn't change directory to \033[32m%s\r\n", cmd);
 		}
 	}
 	return 0;
@@ -1060,14 +1060,14 @@ int sftpHost::sftp_cd(char *path)
 		LIBSSH2_SFTP_HANDLE *sftp_handle;
 		sftp_handle = libssh2_sftp_opendir(sftp_session, path);
 		if (!sftp_handle) {
-			print("\t\033[31mUnable to change working directory to\033[32m%s\r\n", path);
+			print("\033[31mUnable to change directory to \033[32m%s\r\n", path);
 			return 0;
 		}
 	    libssh2_sftp_closedir(sftp_handle);		
 		int rc = libssh2_sftp_realpath(sftp_session, path, newpath, 1024);
 		if ( rc>0 ) strcpy( realpath, newpath );
 	}
-	print("\t\033[32m%s \033[37mis current working directory\r\n", realpath);
+	print("\033[32m%s \033[37mis current working directory\r\n", realpath);
 	return 0;
 }
 int sftpHost::sftp_ls(char *path, int ll)
@@ -1078,7 +1078,7 @@ int sftpHost::sftp_ls(char *path, int ll)
 	LIBSSH2_SFTP_HANDLE *sftp_handle = libssh2_sftp_opendir(sftp_session, path);
     if (!sftp_handle) {
         if ( strchr(path, '*')==NULL && strchr(path, '?')==NULL ) {
-			print("\t\033[31mUnable to open dir\033[32m%s\r\n", path);
+			print("\033[31mUnable to open dir \033[32m%s\r\n", path);
         	return 0;
 		}
 		pattern = strrchr(path, '/');
@@ -1091,7 +1091,7 @@ int sftpHost::sftp_ls(char *path, int ll)
 			sftp_handle = libssh2_sftp_opendir(sftp_session, "/");
 		}
 		if ( !sftp_handle ) {
-			print("\t\033[31munable to open dir\033[32m%s\r\n", path);
+			print("\033[31munable to open dir \033[32m%s\r\n", path);
 			return 0;
 		}
     }
@@ -1099,7 +1099,7 @@ int sftpHost::sftp_ls(char *path, int ll)
     while ( libssh2_sftp_readdir_ex(sftp_handle, mem, sizeof(mem),
                         	longentry, sizeof(longentry), &attrs)>0 ) {
 		if ( pattern==NULL || fnmatch(pattern, mem, 0)==0 ) 
-			print("\t%s\r\n", ll ? longentry : mem);
+			print("%s\r\n", ll ? longentry : mem);
     }
     libssh2_sftp_closedir(sftp_handle);
 	return 0;
@@ -1108,7 +1108,7 @@ int sftpHost::sftp_rm(char *path)
 {
 	if ( strchr(path, '*')==NULL && strchr(path, '?')==NULL ) {
 		if ( libssh2_sftp_unlink(sftp_session, path) ) 
-			print("\t\033[31mcouldn't delete file\033[32m%s\r\n", path);
+			print("\033[31mcouldn't delete file \033[32m%s\r\n", path);
 		return 0;
 	}
     char mem[512], rfile[1024];
@@ -1118,7 +1118,7 @@ int sftpHost::sftp_rm(char *path)
 	if ( pattern!=path ) *pattern++ = 0;
 	sftp_handle = libssh2_sftp_opendir(sftp_session, path);
 	if ( !sftp_handle ) {
-		print("\t\033[31munable to open dir\033[32m%s\r\n", path);
+		print("\033[31munable to open dir \033[32m%s\r\n", path);
 		return 0;
 	}
 
@@ -1128,7 +1128,7 @@ int sftpHost::sftp_rm(char *path)
 			strcat(rfile, "/");
 			strcat(rfile, mem);
 			if ( libssh2_sftp_unlink(sftp_session, rfile) ) 
-				print("\t\033[31mcouldn't delete file\033[32m%s\r\n", rfile);
+				print("\033[31mcouldn't delete file \033[32m%s\r\n", rfile);
 		}
     }
     libssh2_sftp_closedir(sftp_handle);
@@ -1141,7 +1141,7 @@ int sftpHost::sftp_md(char *path)
                             LIBSSH2_SFTP_S_IRGRP|LIBSSH2_SFTP_S_IXGRP|
                             LIBSSH2_SFTP_S_IROTH|LIBSSH2_SFTP_S_IXOTH);
     if ( rc ) {
-        print("\t\033[31mcouldn't create directory\033[32m%s\r\n", path);	
+        print("\033[31mcouldn't create directory \033[32m%s\r\n", path);	
 	}
 	return 0;
 }
@@ -1149,7 +1149,7 @@ int sftpHost::sftp_rd(char *path)
 {
  	int rc = libssh2_sftp_rmdir(sftp_session, path);
     if ( rc ) {
-        print("\t\033[31mcouldn't remove directory\033[32m%s\r\n", path);	
+        print("\033[31mcouldn't remove directory \033[32m%s\r\n", path);	
 	}
 	return 0;
 }
@@ -1157,7 +1157,7 @@ int sftpHost::sftp_ren(char *src, char *dst)
 {
 	int rc = libssh2_sftp_rename(sftp_session, src, dst);
 	if ( rc ) 
-		print("\t\033[31mcouldn't rename file\033[32m%s\r\n", src);
+		print("\033[31mcouldn't rename file \033[32m%s\r\n", src);
 	return 0;	
 }
 int sftpHost::sftp_get_one(char *src, char *dst)
@@ -1166,16 +1166,16 @@ int sftpHost::sftp_get_one(char *src, char *dst)
 											src, LIBSSH2_FXF_READ, 0);
 
 	if (!sftp_handle) {
-        print("\t\033[31mUnable to read file\033[32m%s\r\n", src);
+        print("\033[31mUnable to read file \033[32m%s\r\n", src);
 		return 0;
     }
     FILE *fp = fopen(dst, "wb");
 	if ( fp==NULL ) {
-		print("\t\033[31munable to create local file\033[32m%s\r\n", dst);
+		print("\033[31munable to create local file \033[32m%s\r\n", dst);
     	libssh2_sftp_close(sftp_handle);
 		return 0;
 	}
-	print("\t\033[32m%s ", dst);
+	print("\033[32m%s ", dst);
     char mem[1024*64];
 	unsigned int rc, block=0;
 	long total=0;
@@ -1199,15 +1199,15 @@ int sftpHost::sftp_put_one(char *src, char *dst)
                       LIBSSH2_SFTP_S_IRUSR|LIBSSH2_SFTP_S_IWUSR|
                       LIBSSH2_SFTP_S_IRGRP|LIBSSH2_SFTP_S_IROTH);
     if (!sftp_handle) {
-		print("\t\033[31mcouldn't open remote file\033[32m%s\r\n", dst);
+		print("\033[31mcouldn't open remote file \033[32m%s\r\n", dst);
 		return 0;
     }
 	FILE *fp = fopen(src, "rb");
 	if ( fp==NULL ) {
-		print("\t\033[31mcouldn't open local file\033[32m%s\r\n", src);
+		print("\033[31mcouldn't open local file \033[32m%s\r\n", src);
 		return 0;
 	}
-	print("\t\033[32m%s ", dst);
+	print("\033[32m%s ", dst);
     char mem[1024*64];
 	int nread, block=0;
 	long total=0;
@@ -1253,7 +1253,7 @@ int sftpHost::sftp_get(char *src, char *dst)
 		*pattern++ = 0;
 		sftp_handle = libssh2_sftp_opendir(sftp_session, src);
 		if ( !sftp_handle ) {
-			print("\t\033[31mcould't open remote diretory\033[32m%s\r\n", src);
+			print("\033[31mcould't open remote diretory \033[32m%s\r\n", src);
 			return 0;
 		}
 		
@@ -1304,7 +1304,7 @@ int sftpHost::sftp_put(char *src, char *dst)
 		}
 
 		if ( (dir=opendir(lfile) ) == NULL ){
-			print("\t\033[31mcouldn't open local directory\033[32m%s\r\n",lfile);
+			print("\033[31mcouldn't open local directory \033[32m%s\r\n",lfile);
 			return 0;
 		}
 		strcat(lfile, "/");
@@ -1370,7 +1370,7 @@ int sftpHost::sftp(char *cmd)
 	else if ( strncmp(cmd, "get",3)==0 ) sftp_get(src, p2);
 	else if ( strncmp(cmd, "put",3)==0 ) sftp_put(p1, dst);
 	else if ( strncmp(cmd, "bye",3)==0 ) return -1;
-	else print("\t\033[31m%s is not supported command,  %s\r\n\t%s\r\n",
+	else print("\033[31m%s is not supported command,  %s\r\n\t%s\r\n",
 				cmd, "\033[37mtry lcd, lpwd, cd, pwd,", 
 				"ls, dir, get, put, ren, rm, del, mkdir, rmdir, bye");
 	return 0;
@@ -1401,7 +1401,7 @@ int sftpHost::read()
 	bConnected = true;
 
 	const char *p;
-	while ( (p=ssh_gets("sftp> ", true))!=NULL ) {
+	while ( (p=ssh_gets("sftp> ", true, 300))!=NULL ) {
 		if ( *p==0 ) continue;
 		if ( sftp((char *)p)==-1 ) break;
 	} 

@@ -66,7 +66,7 @@ public:
 	int tun_local(const char *lpath, const char *rpath);
 	int tun_remote(const char *rpath,const char *lpath);
 	void tun(char *cmd);
-	char *ssh_gets(const char *prompt, int echo);
+	char *ssh_gets(const char *prompt, int echo, int seconds=30);
 };
 
 class sftpHost : public sshHost {
@@ -99,7 +99,7 @@ public:
 	int sftp(char *p);
 };
 
-#define BUFLEN 65536*2-1
+#define BUFLEN 65536*4-1
 class confHost : public sshHost {
 private: 
 	LIBSSH2_CHANNEL *channel2;

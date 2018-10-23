@@ -43,8 +43,6 @@ class Fl_Term : public Fl_Widget {
 	int iFontHeight;	//current font height in pixels
 	int font_size;		//current font weight
 	int bMouseScroll;	//if mouse is dragged on scrollbar
-	int page_up_hold; 	//control of scroll speed
-	int page_down_hold;
 	
 	int bEscape;		//escape sequence processing mode
 	int ESC_idx;		//current index for ESC_code

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 26255 2018-0918 10:08:20 $"
+// "$Id: Fl_Term.cxx 25753 2018-0918 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -62,7 +62,6 @@ void Fl_Term::clear()
 	if ( attr!=NULL ) memset(attr, 0, buff_size);
 	cursor_y = cursor_x = 0;
 	screen_y = scroll_y = 0;
-	page_up_hold = page_down_hold = 0;
 	sel_left = sel_right= 0;
 	c_attr = 7;				//default black background, white foreground
 	recv0 = 0;
@@ -147,11 +146,7 @@ void Fl_Term::draw()
 		fl_rectf(x()+w()-8, y(), 8, y()+h());
 		fl_color(FL_RED);		//draw slider
 		int slider_y = h()*(cursor_y+scroll_y)/cursor_y;
-		fl_rectf(x()+w()-8, y()+slider_y-6, 8, 12);
-		fl_line( x()+w()-6, y()+slider_y-8, x()+w()-3, y()+slider_y-8 );
-		fl_line( x()+w()-7, y()+slider_y-7, x()+w()-2, y()+slider_y-7 );
-		fl_line( x()+w()-7, y()+slider_y+6, x()+w()-2, y()+slider_y+6 );
-		fl_line( x()+w()-6, y()+slider_y+7, x()+w()-3, y()+slider_y+7 );
+		fl_rectf(x()+w()-8, y()+slider_y-8, 8, 16);
 	}
 	if ( bCursor && Fl::focus()==this && active() ) {
 		fl_color(FL_WHITE);		//draw a white bar as cursor
@@ -260,19 +255,6 @@ int Fl_Term::handle( int e ) {
 			do_callback(Fl::event_text(), bDND?-1:Fl::event_length());
 			bDND = false;
 			return 1;
-		case FL_KEYUP:
-			if ( Fl::event_state(FL_ALT)==0 ) {
-				int key = Fl::event_key();
-				switch ( key ) {
-					case FL_Page_Up:
-						page_up_hold = 0;
-						break;
-					case FL_Page_Down:
-						page_down_hold = 0;
-						break;
-				}
-			}
-			break;
 		case FL_KEYDOWN:
 			if ( Fl::event_state(FL_ALT)==0 ) {
 #ifdef __APPLE__
@@ -288,47 +270,45 @@ int Fl_Term::handle( int e ) {
 				switch (key) {
 				case FL_Page_Up:
 					if ( !bAlterScreen ) {
-						scroll_y-=size_y_*(1<<(page_up_hold/16))-1;
-						page_up_hold++;
+						scroll_y-=size_y_;
 						if ( scroll_y<-screen_y ) scroll_y=-screen_y;
 						redraw();
 					}
 					break;
 				case FL_Page_Down:
 					if ( !bAlterScreen ) {
-						scroll_y+=size_y_*(1<<(page_down_hold/16))-1;
-						page_down_hold++;
+						scroll_y+=size_y_;
 						if ( scroll_y>0 ) scroll_y = 0;
 						redraw();
 					}
 					break;
 				case FL_Up:
-						do_callback(bAppCursor?"\033OA":"\033[A",3);
-						break;
+					do_callback(bAppCursor?"\033OA":"\033[A",3);
+					break;
 				case FL_Down:
-						do_callback(bAppCursor?"\033OB":"\033[B",3);
-						break;
+					do_callback(bAppCursor?"\033OB":"\033[B",3);
+					break;
 				case FL_Right:
-						do_callback(bAppCursor?"\033OC":"\033[C",3);
-						break;
+					do_callback(bAppCursor?"\033OC":"\033[C",3);
+					break;
 				case FL_Left:
-						do_callback(bAppCursor?"\033OD":"\033[D",3);
-						break;
+					do_callback(bAppCursor?"\033OD":"\033[D",3);
+					break;
 				case FL_BackSpace:
-						do_callback("\177", 1);
-						break;
+					do_callback("\177", 1);
+					break;
 				case FL_Enter:
-						do_callback("\015", 1);
-						scroll_y = 0;
-						bEnter = true;
-						break;
+					do_callback("\015", 1);
+					scroll_y = 0;
+					bEnter = true;
+					break;
 				default:
-						if ( bEnter ) {	//to detect Prompt after each Enter
-							bEnter = false;
-							bEnter1= true;
-						}
-						do_callback(Fl::event_text(), Fl::event_length());
-						scroll_y = 0;
+					if ( bEnter ) {	//to detect Prompt after each Enter
+						bEnter = false;
+						bEnter1= true;
+					}
+					do_callback(Fl::event_text(), Fl::event_length());
+					scroll_y = 0;
 				}
 				return 1;
 			}
