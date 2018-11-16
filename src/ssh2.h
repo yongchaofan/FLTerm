@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 3493 2018-08-18 23:48:10 $"
+// "$Id: ssh2.h 3823 2018-11-11 23:48:10 $"
 //
 //  sshHost sftpHost confHost
 //
@@ -27,6 +27,17 @@
 #ifndef _SSH2_H_
 #define _SSH2_H_
 
+struct TUNNEL
+{
+	int socket;
+	char *localip;
+	char *remoteip;
+	unsigned short localport;
+	unsigned short remoteport;
+	LIBSSH2_CHANNEL *channel;
+	TUNNEL *next;
+};
+
 class sshHost : public tcpHost {
 protected:
 	char username[64];
@@ -42,12 +53,23 @@ protected:
 	std::mutex mtx;
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
+	TUNNEL *tunnel_list = NULL;
 	
 	int wait_socket();
 	int ssh_knownhost();
 	int ssh_authentication();
 	void write_keys(const char *buf, int len);
+
+	int scp_read_one(const char *rpath, const char *lpath);
+	int scp_write_one(const char *lpath, const char *rpath);
+	TUNNEL *tun_add( int tun_sock, LIBSSH2_CHANNEL *tun_channel, 
+							char *localip, unsigned short localport, 
+							char *remoteip, unsigned short remoteport);
+	void tun_del(int tun_sock);
+	void tun_closeall();
 	void tun_worker(int forwardsock, LIBSSH2_CHANNEL *tun_channel);
+	int tun_local(const char *lpath, const char *rpath);
+	int tun_remote(const char *rpath,const char *lpath);
 
 public:
 	sshHost(const char *name); 
@@ -59,14 +81,10 @@ public:
 	virtual void send_size(int sx, int sy);
 	virtual void disconn();
 //	virtual void connect();
-	int scp_read_one(const char *rpath, const char *lpath);
 	int scp_read(char *rpath, char *lpath);
-	int scp_write_one(const char *lpath, const char *rpath);
 	int scp_write(char *lpath, char *rpath);
-	int tun_local(const char *lpath, const char *rpath);
-	int tun_remote(const char *rpath,const char *lpath);
 	void tun(char *cmd);
-	char *ssh_gets(const char *prompt, int echo, int seconds=30);
+	char *ssh_gets(const char *prompt, int echo);
 };
 
 class sftpHost : public sshHost {
@@ -83,9 +101,7 @@ protected:
 	int sftp_rm(char *path);
 	int sftp_ren(char *src, char *dst);
 	int sftp_get_one(char *src, char *dst);
-	int sftp_get(char *src, char *dst);
 	int sftp_put_one(char *src, char *dst);
-	int sftp_put(char *src, char *dst);
 
 public:
 	sftpHost(const char *name) : sshHost(name) {}
@@ -96,17 +112,14 @@ public:
 	virtual void send_size(int sx, int sy){}
 //	virtual void disconn();		//from sshHost	
 //	virtual void connect();
+	int sftp_get(char *src, char *dst);
+	int sftp_put(char *src, char *dst);
 	int sftp(char *p);
 };
 
-#define BUFLEN 65536*4-1
 class confHost : public sshHost {
 private: 
 	LIBSSH2_CHANNEL *channel2;
-	char notif[BUFLEN+1];
-	char reply[BUFLEN+1];
-	int rd;
-	int rd2;
 	int msg_id;
 
 public:

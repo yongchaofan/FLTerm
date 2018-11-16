@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 25753 2018-0918 10:08:20 $"
+// "$Id: Fl_Term.cxx 26766 2018-11-15 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -18,6 +18,8 @@
 #include <unistd.h>
 #include <assert.h>
 #include "Fl_Term.h"
+#include <FL/Fl_Menu.H>
+Fl_Menu_Item rclick_menu[]={{"Copy"},{"Paste"},{"Select all"},{"Erase all"},{0}};
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bInsert = bAlterScreen = bAppCursor = false;
@@ -27,10 +29,9 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bMouseScroll = false;
 	ESC_idx = 0;
 	term_cb = NULL;
-	term_data_ = NULL;
 
 	color(FL_BLACK);
-	textsize(14);
+	textsize(16);
 	strcpy(sTitle, "flTerm");
 	strcpy(sPrompt, "> ");
 	iPrompt = 2;
@@ -48,6 +49,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	buff = (char *)malloc(buff_size);
 	attr = (char *)malloc(buff_size);
 	clear();
+	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
 }
 Fl_Term::~Fl_Term(){
 	free(attr);
@@ -65,6 +67,10 @@ void Fl_Term::clear()
 	sel_left = sel_right= 0;
 	c_attr = 7;				//default black background, white foreground
 	recv0 = 0;
+	
+	xmlIndent=0;
+	xmlTagIsOpen=true;
+
 	Fl::unlock();
 }
 void Fl_Term::resize( int X, int Y, int W, int H )
@@ -238,12 +244,26 @@ int Fl_Term::handle( int e ) {
 					int t=sel_left; sel_left=sel_right; sel_right=t;
 				}
 				if ( sel_left<sel_right )
-					Fl::copy(buff+sel_left, sel_right-sel_left, 1);
+					Fl::copy(buff+sel_left, sel_right-sel_left, 0);
 				break;
-			case FL_MIDDLE_MOUSE:	//middle click
+			case FL_MIDDLE_MOUSE:	//middle click to paste
+				Fl::paste(*this, 0);
 				break;
-			case FL_RIGHT_MOUSE: 	//right click to paste
-				Fl::paste(*this, 1);
+			case FL_RIGHT_MOUSE: {	//right click for context menu
+					int ex = Fl::event_x(), ey=Fl::event_y();
+					const Fl_Menu_Item *m = rclick_menu->popup( ex, ey );
+					if ( m ) {
+						const char *sel = m->label();
+						switch ( *sel ) {
+						case 'C': Fl::copy(buff+sel_left,sel_right-sel_left,1); 
+								  break;
+						case 'P': Fl::paste( *this, 1 ); break;
+						case 'E': clear();
+						case 'S': sel_left=0; sel_right=cursor_x; 
+								  redraw(); break;
+						}
+					}
+				}
 				break;
 			}
 			return 1;
@@ -252,7 +272,7 @@ int Fl_Term::handle( int e ) {
 		case FL_DND_DRAG:
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:
-			do_callback(Fl::event_text(), bDND?-1:Fl::event_length());
+			write(Fl::event_text(), bDND?-1:Fl::event_length());
 			bDND = false;
 			return 1;
 		case FL_KEYDOWN:
@@ -263,7 +283,7 @@ int Fl_Term::handle( int e ) {
 					int y = (cursor_y-screen_y+1)*iFontHeight;
 					int x = (cursor_x-line[cursor_y])*iFontWidth;
 					Fl::insertion_point_location(x,y,iFontHeight);
-					for ( int i=0; i<del; i++ ) do_callback("\177",1);
+					for ( int i=0; i<del; i++ ) write("\177",1);
 				}
 #endif
 				int key = Fl::event_key();
@@ -282,23 +302,13 @@ int Fl_Term::handle( int e ) {
 						redraw();
 					}
 					break;
-				case FL_Up:
-					do_callback(bAppCursor?"\033OA":"\033[A",3);
-					break;
-				case FL_Down:
-					do_callback(bAppCursor?"\033OB":"\033[B",3);
-					break;
-				case FL_Right:
-					do_callback(bAppCursor?"\033OC":"\033[C",3);
-					break;
-				case FL_Left:
-					do_callback(bAppCursor?"\033OD":"\033[D",3);
-					break;
-				case FL_BackSpace:
-					do_callback("\177", 1);
-					break;
+				case FL_Up:	  write(bAppCursor?"\033OA":"\033[A",3); break;
+				case FL_Down: write(bAppCursor?"\033OB":"\033[B",3); break;
+				case FL_Right:write(bAppCursor?"\033OC":"\033[C",3); break;
+				case FL_Left: write(bAppCursor?"\033OD":"\033[D",3); break;
+				case FL_BackSpace: write("\177", 1); break;
 				case FL_Enter:
-					do_callback("\015", 1);
+					write("\015", 1);
 					scroll_y = 0;
 					bEnter = true;
 					break;
@@ -307,7 +317,7 @@ int Fl_Term::handle( int e ) {
 						bEnter = false;
 						bEnter1= true;
 					}
-					do_callback(Fl::event_text(), Fl::event_length());
+					write(Fl::event_text(), Fl::event_length());
 					scroll_y = 0;
 				}
 				return 1;
@@ -398,7 +408,7 @@ void Fl_Term::append( const char *newtext, int len ){
 		}
 		switch ( c ) {
 		case 	0: 	break;
-		case 0x07: 	break;
+		case 0x07: 	fprintf(stdout, "\007"); fflush(stdout); break;
 		case 0x08:  if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte
 						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x--;
 					break;
@@ -485,15 +495,6 @@ void Fl_Term::append( const char *newtext, int len ){
 const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 {
 	const unsigned char *zz = sz+cnt;
-/*
-for ( const unsigned char *p=sz; p<zz&&p<sz+20; p++ )
-	if ( *p<32 )
-		fprintf(stderr, "\\%02x", *p);
-	else
-		fprintf(stderr, "%c",*p);
-fprintf(stderr, "\n");
-fflush(stderr);
-*/
 	bEscape = true;
 	while ( sz<zz && bEscape ){
 		ESC_code[ESC_idx++] = *sz++;
@@ -823,21 +824,68 @@ void Fl_Term::logg( const char *fn )
 	if ( bLogging ) {
 		fclose( fpLogFile );
 		bLogging = false;
-		puts("\r\n\033[32m***Log file closed***\033[37m\r\n");
+		disp("\r\n\033[32m***Log file closed***\033[37m\r\n");
 	}
 	else {
 		fpLogFile = fl_fopen( fn, "wb" );
 		if ( fpLogFile != NULL ) {
 			bLogging = true;
-			puts("\r\n\033[32m***");
-			puts(fn);
-			puts(" opened for logging***\033[37m\r\n");
+			disp("\r\n\033[32m***");
+			disp(fn);
+			disp(" opened for logging***\033[37m\r\n");
 		}
 	}
 }
-void Fl_Term::copyall()
+void Fl_Term::prompt(char *p)
 {
-	Fl::copy(buff, cursor_x, 1);
+	strncpy(sPrompt, p, 31);
+	iPrompt = strlen(sPrompt);
+}
+char *Fl_Term::mark_prompt()
+{
+	bPrompt = false;
+	recv0 = cursor_x;
+	return buff+cursor_x;
+}
+int Fl_Term::waitfor_prompt( )
+{
+	int oldlen = recv0;
+	for ( int i=0; i<iTimeOut*10 && !bPrompt; i++ ) {
+		usleep(100000);
+		if ( cursor_x>oldlen ) { i=0; oldlen=cursor_x; }
+	}
+	bPrompt = true;
+	return cursor_x - recv0;
+}
+void Fl_Term::disp(const char *buf)
+{
+	recv0 = cursor_x;
+	append(buf, strlen(buf));
+}
+void Fl_Term::send(const char *buf)
+{
+	do_callback(buf, strlen(buf));
+}
+int Fl_Term::recv(char **preply)
+{
+	if ( preply!=NULL ) *preply = buff+recv0;
+	int len = cursor_x-recv0;
+	recv0 = cursor_x;
+	return len;
+}
+int Fl_Term::command(const char *cmd, char **preply)
+{
+	int rc = 0;
+	if ( preply!=NULL ) *preply = mark_prompt();
+	send(cmd);
+	send("\r");
+	if ( preply!=NULL ) rc = waitfor_prompt();
+	return rc;
+}
+int Fl_Term::selection(char **preply)
+{
+	if ( preply!=NULL ) *preply = buff+sel_left;
+	return sel_right-sel_left;
 }
 int Fl_Term::waitfor(const char *word)
 {
@@ -850,53 +898,35 @@ int Fl_Term::waitfor(const char *word)
 	}
 	return 0;
 }
-void Fl_Term::prompt(char *p)
-{
-	strncpy(sPrompt, p, 31);
-	iPrompt = strlen(sPrompt);
-}
-void Fl_Term::mark_prompt()
-{
-	bPrompt = false;
-	recv0 = cursor_x;
-}
-int Fl_Term::wait_prompt( char **preply )
-{
-	if ( preply!=NULL ) *preply = buff+recv0;
-	int oldlen = recv0;
-	for ( int i=0; i<iTimeOut && !bPrompt; i++ ) {
-		sleep(1);
-		if ( cursor_x>oldlen ) { i=0; oldlen=cursor_x; }
-	}
-	bPrompt = true;
-	return cursor_x - recv0;
-}
 void Fl_Term::putxml(const char *msg, int len)
 {
-	int indent=0, previousIsOpen=true;
 	const char *p=msg, *q;
 	const char spaces[256]="\r\n                                               \
                                                                               ";
+	if ( strncmp(msg, "<?xml ", 6)==0 ) {
+		xmlIndent = 0;
+		xmlTagIsOpen = true;
+	}
 	while ( *p!=0 && *p!='<' ) p++;
 	if ( p>msg ) append(msg, p-msg);
 	while ( *p!=0 && p<msg+len ) {
 		while (*p==0x0d || *p==0x0a || *p=='\t' || *p==' ' ) p++;
 		if ( *p=='<' ) { //tag
 			if ( p[1]=='/' ) {
-				if ( !previousIsOpen ) {
-					indent -= 2;
-					append(spaces, indent);
+				if ( !xmlTagIsOpen ) {
+					xmlIndent -= 2;
+					append(spaces, xmlIndent);
 				}
-				previousIsOpen = false;
+				xmlTagIsOpen = false;
 			}
 			else {
-				if ( previousIsOpen ) indent+=2;
-				append(spaces, indent);
-				previousIsOpen = true;
+				if ( xmlTagIsOpen ) xmlIndent+=2;
+				append(spaces, xmlIndent);
+				xmlTagIsOpen = true;
 			}
+			append("\033[32m",5);
 			q = strchr(p, '>');
 			if ( q!=NULL ) {
-				append("\033[32m",5);
 				const char *r = strchr(p, ' ');
 				if ( r!=NULL && r<q ) {
 					append(p, r-p);
@@ -906,16 +936,18 @@ void Fl_Term::putxml(const char *msg, int len)
 				else
 					append(p, q-p);
 				append("\033[32m>",6);
-				if ( q[-1]=='/' ) previousIsOpen = false;
+				if ( q[-1]=='/' ) xmlTagIsOpen = false;
 				p = q+1;
 			}
-			else
+			else { //incomplete tag ( pair of '<' and '>'
+				append(p, strlen(p));
 				break;
+			}
 		}
 		else {			//data
+			append("\033[33m",5);
 			q = strchr(p, '<');
 			if ( q!=NULL ) {
-				append("\033[33m",5);
 				append(p, q-p);
 				p = q;
 			}
@@ -925,5 +957,4 @@ void Fl_Term::putxml(const char *msg, int len)
 			}
 		}
 	}
-	append("\033[37m",5);
 }

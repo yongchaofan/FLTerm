@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4236 2018-08-31 21:08:10 $"
+// "$Id: Fl_Term.h 4383 2018-11-15 21:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -66,6 +66,8 @@ class Fl_Term : public Fl_Widget {
 	int bEnter1;		//set at second enter key press, for prompt detection
 	int iTimeOut;		//time out in seconds while waiting for sPrompt
 	int recv0;			//cursor_x at the start of last command
+	int xmlIndent;		//used by putxml
+	int xmlTagIsOpen;	//used by putxml
 	
 	int bDND;			//if a FL_PASTE is result of drag&drop
 	int bLive;			//host reading thread is running
@@ -74,7 +76,6 @@ class Fl_Term : public Fl_Widget {
 	FILE *fpLogFile;
 
 	term_callback *term_cb;
-	void *term_data_;
 
 protected: 
 	void draw();
@@ -96,20 +97,13 @@ public:
 
 	void logg( const char *fn );
 	void srch( const char *word, int dirn=-1 );	
-	void copyall();
 
 	void textsize( int pt=0 );
 	void buffsize( int lines );
 	void live(int c) { bLive = c; }
 	void timeout(int t) { iTimeOut = t; }
-	void prompt(char *p);
+	const char *title() { return sTitle; }
 
-	void puts(const char *buf){ append(buf, strlen(buf)); }
-	void puts(const char *buf, int len){ append(buf, len); }
-	void putxml(const char *msg, int len);
-	void mark_prompt();
-	int  wait_prompt( char **preply );
-	int  waitfor(const char *word);
 	void callback(term_callback *cb, void *data) {
 		term_cb = cb;
 		user_data(data);
@@ -117,6 +111,20 @@ public:
 	void do_callback(const char *buf, int len) {
 		if ( term_cb!=NULL ) term_cb(user_data(), buf, len);
 	}
-	const char *title() { return sTitle; }
+	void write(const char *buf, int len) { do_callback(buf, len); }
+	
+	void prompt(char *p);
+	char *mark_prompt();
+	int  waitfor_prompt();
+	int  waitfor(const char *word);
+
+	void disp(const char *buf);
+	void send(const char *buf);
+	int recv(char **preply);
+	int selection(char **preply);
+	int command(const char *cmd, char **preply);
+
+	void puts(const char *buf, int len){ append(buf, len); }
+	void putxml(const char *msg, int len);
 };
 #endif

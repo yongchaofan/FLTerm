@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 2951 2018-10-08 21:12:15 $"
+// "$Id: Hosts.h 2951 2018-11-08 21:12:15 $"
 //
 // Fan_Host comHost tcpHost
 //
