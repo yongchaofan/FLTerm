@@ -1,5 +1,5 @@
 //
-// "$Id: flTerm.cxx 26145 2018-11-11 21:05:10 $"
+// "$Id: flTerm.cxx 24849 2018-11-11 21:05:10 $"
 //
 // flTerm -- FLTK based terminal emulator
 //
@@ -30,8 +30,8 @@ const char ABOUT_TERM[]="\r\n\r\n\
 
 #include <stdio.h>
 #include <ctype.h>
-#include <assert.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/stat.h>
 
 #include <thread>
@@ -60,31 +60,21 @@ const char ABOUT_TERM[]="\r\n\r\n\
 int httpd_init();
 void httpd_exit();
 int term_scp(Fl_Term *term, char *cmd, char **preply);
-void scper(Fl_Term *term, char *cmd)	//used by cmd_cb for #scp thread
-{
-	term_scp(term, cmd, NULL);
-}
 int term_tun(Fl_Term *term, char *cmd, char **preply);
-void tuner(Fl_Term *term, char *cmd)	//used by cmd_cb for #tun thread
-{
-	term_tun(term, cmd, NULL);
-}
 void term_drop(Fl_Term *term, const char *buf);
-void term_script(Fl_Term *term, const char *fn);
-void term_download(Fl_Term *term, const char *fn, const char *dest);
 
 void tab_cb(Fl_Widget *w);
+void editor_cb(Fl_Widget *w, void *data);
 void menu_cb(Fl_Widget *w, void *data);
 void menu_host_cb(Fl_Widget *w, void *data);
 
-Fl_Tabs *pTermTabs = NULL;
-Fl_Window *pTermWin;
-Fl_Sys_Menu_Bar *pMenu;
-Fl_Browser_Input *pCmd;
 Fl_Term *acTerm;
-int fontsize = 16;
+Fl_Window *pTermWin;
+Fl_Sys_Menu_Bar *pMenuBar;
+Fl_Browser_Input *pCmd;
+Fl_Tabs *pTermTabs = NULL;
+int fontsize = 14;
 int buffsize = 8192;
-
 Fl_Window *pDialog;
 Fl_Choice *pProtocol;
 Fl_Input_Choice *pPort;
@@ -131,12 +121,10 @@ const char *kb_gets(const char *prompt, int echo)
 void term_cb(void *data, const char *buf, int len)
 {
 	Fan_Host *host = (Fan_Host *)data;
-	assert (host!=NULL);
 	if ( len>0 ) 
 		host->write(buf, len);
 	else {
 		Fl_Term *term = (Fl_Term *)host->host_data();
-		assert(term!=NULL);
 		if ( len==0 ) 
 			host->send_size(term->size_x(), term->size_y());
 		else //len<0
@@ -146,7 +134,6 @@ void term_cb(void *data, const char *buf, int len)
 void host_cb(void *data, const char *buf, int len)
 {
 	Fl_Term *term = (Fl_Term *)data;
-	assert(term!=NULL);
 	if ( len>0 )
 		term->puts(buf, len);
 	else {
@@ -167,7 +154,6 @@ void host_cb(void *data, const char *buf, int len)
 void conf_host_cb(void *data, const char *buf, int len)
 {
 	Fl_Term *term = (Fl_Term *)data;
-	assert(term!=NULL);
 	if ( len>0 )
 		term->putxml(buf, len);
 	else {
@@ -243,7 +229,7 @@ void tab_del()
 	}
 	if ( pTermTabs->children()>1 ) {
 		pTermTabs->remove(acTerm);
-		Fl::delete_widget(acTerm); 
+	//	Fl::delete_widget(acTerm); 
 		acTerm = NULL;
 		tab_act((Fl_Term *)pTermTabs->child(0));
 	}
@@ -275,31 +261,36 @@ void term_act(const char *host)
 			break;
 		}
 }
-const char *protocols[]={"serial ","telnet ", "ssh ","sftp ","netconf "};
 #ifdef WIN32
 const char *ports[]={"COM1","23", "22", "22", "830"};
 #else
 const char *ports[]={"/dev/tty.usbserial","23", "22", "22", "830"};
 #endif
-void term_connect(int proto, const char *host)
+void term_connect(const char *host)
 {
-	if ( acTerm->live() ) tab_new();
-	Fan_Host *pHost=NULL;
-	switch ( proto ) {
-	case 0: //serial
-		pHost = new comHost(host); break;
-	case 1: //telnet
-		pHost = new tcpHost(host); break;
-	case 2: //ssh
-		pHost = new sshHost(host); break;
-	case 3: //sftp
-		pHost = new sftpHost(host); break;
-	case 4: //netconf
-		pHost = new confHost(host); break;
-	default: return;
+	Fan_Host *pHost = NULL;
+	if ( strncmp(host, "disconn", 7)==0 ) {
+		pHost = (Fan_Host *)acTerm->user_data();
+		if ( pHost!=NULL ) pHost->disconn();
+		return;
+	}
+	else if ( strncmp(host, "serial ", 7)==0 ) {
+		pHost = new comHost(host+7);
+	}
+	else if ( strncmp(host, "telnet ", 7)==0 ) {
+		pHost = new tcpHost(host+7);
+	}
+	else if ( strncmp(host, "ssh " , 4)==0 ) {
+		pHost = new sshHost(host+4);
+	}
+	else if ( strncmp(host, "sftp ", 5)==0 ) {
+		pHost = new sftpHost(host+5);
+	}
+	else if ( strncmp(host, "netconf ", 8)==0 ) {
+		pHost = new confHost(host+8);
 	}
 	if ( pHost!=NULL ) {
-		pHost->callback(proto==4?conf_host_cb:host_cb, acTerm);
+		if ( acTerm->live() ) tab_new();
 		acTerm->callback(term_cb, pHost);
 		char label[32];
 		strncpy(label, pHost->name(), 28);
@@ -307,17 +298,9 @@ void term_connect(int proto, const char *host)
 		strcat(label, "  x");
 		acTerm->copy_label(label);
 		acTerm->live(true);
+		
+		pHost->callback(host_cb, acTerm);
 		pHost->connect();
-	}
-}
-void term_connect(const char *host)
-{
-	for ( int i=0; i<5; i++ ) {
-		int l = strlen(protocols[i]);
-		if ( strncmp(host, protocols[i],l)==0 ) {
-			term_connect(i, host+l);
-			break;
-		}
 	}
 }
 void protocol_cb(Fl_Widget *w)
@@ -347,21 +330,25 @@ void connect_cb(Fl_Widget *w)
 {
 	char buf[256];
 	int proto = pProtocol->value();
+	buf[0] = '!';
+	strcpy(buf+1, pProtocol->mvalue()->label());
+	strcat(buf, " ");
 	if ( proto>0 ) {
 		pHostname->add(pHostname->value());
-		strcpy(buf, pHostname->value());
+		strcat(buf, pHostname->value());
 		if ( strcmp(ports[proto],pPort->value())!=0 ) {
 			strcat(buf, ":");
 			strcat(buf, pPort->value());
 		}
 	}
 	else {
-		strcpy(buf, pPort->value());
+		strcat(buf, pPort->value());
 		strcat(buf, ":");
 		strcat(buf, pSettings->value());
 	}
 	pDialog->hide();
-	term_connect(proto, buf); 
+	pCmd->add(buf);
+	term_connect(buf+1); 
 }
 void cancel_cb(Fl_Widget *w)
 {
@@ -374,88 +361,64 @@ void conn_dialog()
 	pHostname->take_focus();
 }
 
-int term_cmd(Fl_Term *term, char *cmd, char** preply)
+int term_cmd(const char *cmd, char** preply)
 {
-	if ( !term->live() ) {
-		term->disp(cmd); term->disp("\n");
-		return 0;
-	}
 	
 	int rc=0;
-	Fan_Host *host = (Fan_Host *)term->user_data();
-	if ( *cmd=='#' ) {
-		cmd++;
-		if ( strncmp(cmd,"Wait",4)==0 ) sleep(atoi(cmd+5));
-		else if ( strncmp(cmd,"Log ",4)==0 ) term->logg( cmd+4 );
-		else if ( strncmp(cmd,"Clear",5)==0 ) term->clear();
-		else if ( strncmp(cmd,"Title",5)==0 ) term->copy_label( cmd+6 );
-		else if ( strncmp(cmd,"Waitfor",7)==0 ) term->waitfor(cmd+8); 
-		else if ( strncmp(cmd,"Timeout",7)==0 ) term->timeout(atoi(cmd+8));
-		else if ( strncmp(cmd,"Prompt ",7)==0 ) {
-			fl_decode_uri(cmd+7); term->prompt(cmd+7);
+	if ( *cmd=='!' ) {
+		pCmd->value(cmd++);
+		if ( strncmp(cmd,"Tab ", 4)==0 ) term_act(cmd+4);
+		else if ( strncmp(cmd,"scp",3)==0 ) 
+			rc = term_scp(acTerm,strdup(cmd+4),preply);
+		else if ( strncmp(cmd,"tun",3)==0 ) 
+			rc = term_tun(acTerm,strdup(cmd+3),preply);
+		else {
+			rc = acTerm->cmd(cmd-1, preply);
+			if ( rc==-1 ) term_connect(cmd);
 		}
-		else if ( strncmp(cmd,"Selection",8)==0)rc = term->selection(preply);
-		else if ( strncmp(cmd,"Disp ",5)==0 ) term->disp(cmd+5);
-		else if ( strncmp(cmd,"Send ",5)==0 ) term->send(cmd+5);
-		else if ( strncmp(cmd,"Recv", 4)==0 ) rc = term->recv(preply);
-		else if ( strncmp(cmd,"Tab ", 4)==0 ) term_act(cmd+4);
-		else if ( strncmp(cmd,"Connect ",7)==0 )term_connect(cmd+8);
-		else if ( strncmp(cmd,"scp",3)==0 ) rc = term_scp(term, cmd+4, preply);
-		else if ( strncmp(cmd,"tun",3)==0 ) rc = term_tun(term, cmd+3, preply);
 	}
 	else 
-		rc = term->command(cmd, preply);
+		rc = acTerm->cmd(cmd, preply);
 	return rc;
+}
+void scper(char *cmd)	//used by cmd_cb for #scp thread
+{
+	term_scp(acTerm, cmd, NULL);
+}
+void tuner(char *cmd)	//used by cmd_cb for #tun thread
+{
+	term_tun(acTerm, cmd, NULL);
 }
 void cmd_cb(Fl_Widget *o) 
 {
-	static char cmd[256];
-	strncpy(cmd, pCmd->value(), 254);
-	cmd[254] = 0;
+	const char *cmd = pCmd->value();
 	pCmd->add( cmd );
-	int len = strlen(cmd);
-	pCmd->position(len, 0);
+	pCmd->position(0, strlen(cmd));
 	switch( *cmd ) {
 		case '/':  acTerm->srch(cmd+1); break;
-		case '\\': acTerm->srch(cmd+1, 1); break;
-		case '#':  if ( strncmp(cmd, "#scp ", 5)==0 ) {
-						std::thread scp_thread(scper,acTerm,cmd+5);
+		case '!':	if ( strncmp(cmd, "!scp ", 5)==0 ) {
+						std::thread scp_thread(scper,strdup(cmd+5));
 						scp_thread.detach();
 					}
-					else if ( strncmp(cmd, "#tun", 4)==0 ) {
-						std::thread tun_thread(tuner,acTerm,cmd+4);
+					else if ( strncmp(cmd, "!tun", 4)==0 ) {
+						std::thread tun_thread(tuner,strdup(cmd+4));
 						tun_thread.detach();
 					}
 					else
-						term_cmd(acTerm, cmd, NULL);
+						term_cmd(cmd, NULL);
 					break;
 		default: 	if ( acTerm->live() ) {
 						acTerm->send(cmd);
 						acTerm->send("\r");
 					}
-					else
-						term_connect(cmd);
 	}
 }
 void editor_cb(Fl_Widget *w, void *data)
 {
-	if ( Fl::focus()==pCmd ) {
-		pTermWin->remove(pCmd);
-		pTermWin->resize( pTermWin->x(), pTermWin->y(), 
-							pTermWin->w(), pTermWin->h()-TABHEIGHT);
-		if ( pTermTabs!=NULL ) 
-			pTermTabs->resize( 0, MENUHEIGHT, pTermWin->w(), 
-								pTermWin->h()-MENUHEIGHT);
-		else
-			acTerm->resize( 0, MENUHEIGHT, pTermWin->w(), 
-								pTermWin->h()-MENUHEIGHT);
-		acTerm->take_focus();
-	}
-	else {
-		pTermWin->insert(*pCmd, 1);
-		pCmd->resize(0, pTermWin->h()-CMDHEIGHT, pTermWin->w(), CMDHEIGHT);
+	if ( pCmd->w()==1 ) {
 		pTermWin->resize( pTermWin->x(), pTermWin->y(), 
 							pTermWin->w(), pTermWin->h()+CMDHEIGHT);
+		pCmd->resize(0, pTermWin->h()-CMDHEIGHT, pTermWin->w(), CMDHEIGHT);
 		if ( pTermTabs!=NULL ) 
 			pTermTabs->resize( 0, MENUHEIGHT, pTermWin->w(), 
 							pTermWin->h()-MENUHEIGHT-CMDHEIGHT);
@@ -463,18 +426,31 @@ void editor_cb(Fl_Widget *w, void *data)
 			acTerm->resize( 0, MENUHEIGHT, pTermWin->w(),
 							pTermWin->h()-MENUHEIGHT-CMDHEIGHT);
 		pCmd->take_focus();
+		pTermWin->redraw();
 	}
-	pTermWin->redraw();
+	else {
+		pTermWin->resize( pTermWin->x(), pTermWin->y(), 
+							pTermWin->w(), pTermWin->h()-CMDHEIGHT);
+		pCmd->resize(0, pTermWin->h(), 1, 1);
+		if ( pTermTabs!=NULL ) 
+			pTermTabs->resize( 0, MENUHEIGHT, pTermWin->w(), 
+							pTermWin->h()-MENUHEIGHT);
+		else
+			acTerm->resize( 0, MENUHEIGHT, pTermWin->w(),
+							pTermWin->h()-MENUHEIGHT);
+		acTerm->take_focus();
+		pTermWin->redraw();
+	}
 }
 void menu_cb(Fl_Widget *w, void *data)
 {
-	const char *menutext = pMenu->text();
+	const char *menutext = pMenuBar->text();
 	if ( strcmp(menutext, "&Connect...")==0 ) {
 		conn_dialog();
 	}
 	else if ( strcmp(menutext, "&Disconnect")==0 ) {
 		Fan_Host *host = (Fan_Host *)acTerm->user_data();
-		host->disconn();
+		if ( host!=NULL ) host->disconn();
 	}
 	else if ( strcmp(menutext, "Logging...")==0 ) {
 		if ( acTerm->logg() ) 
@@ -487,15 +463,32 @@ void menu_cb(Fl_Widget *w, void *data)
 	}
 	else if ( strcmp(menutext, "local Echo")==0 ) {
 		if ( !acTerm->live() ) return;
-		Fan_Host *host = (Fan_Host *)acTerm->user_data();
-		host->echo(!host->echo());
-		acTerm->disp(host->echo()?"\r\n\033[31mlocal echo ON\033[37m\r\n":
-								  "\r\n\033[31mlocal echo OFF\033[37m\r\n");
+		acTerm->echo(!acTerm->echo());
 	}
 	else if ( strcmp(menutext, "Run...")==0 ) {
 		const char *fname = file_chooser("script file:","Text\t*.txt", 
 														CHOOSE_FILE);
-		if ( fname!=NULL ) term_script(acTerm, fname);
+		if ( fname!=NULL ) {
+			struct stat sb;
+			if ( stat(fname, &sb)!=-1 ) {
+				char *script = (char *)malloc(sb.st_size+1);
+				if ( script!=NULL ) {
+					FILE *fp = fopen(fname, "r");
+					if ( fp!=NULL ) {
+						fread(script, 1, sb.st_size, fp);
+						fclose(fp);
+						script[sb.st_size]=0;
+						acTerm->run_script(script);
+					}
+				}
+			}
+		}
+	}
+	else if ( strcmp(menutext, "Pause")==0 ) {
+		acTerm->pause_script();
+	}
+	else if ( strcmp(menutext, "Stop")==0 ) {
+		acTerm->stop_script();
 	}
 	else if ( strcmp(menutext, "Courier New")==0 ||
 			  strcmp(menutext, "Monaco")==0 ||
@@ -510,14 +503,16 @@ void menu_cb(Fl_Widget *w, void *data)
 			  strcmp(menutext, "16")==0 ||
 			  strcmp(menutext, "18")==0 ||
 			  strcmp(menutext, "20")==0 ){ 
-		fontsize=atoi(menutext);
+		fontsize = atoi(menutext);
+		acTerm->textsize(fontsize);
 	}
 	else if ( strcmp(menutext, "2048")==0 ||
 			  strcmp(menutext, "4096")==0 ||
 			  strcmp(menutext, "8192")==0 ||
 			  strcmp(menutext, "16384")==0||
 			  strcmp(menutext, "32768")==0 ){
-		buffsize=atoi(menutext);
+		buffsize = atoi(menutext);
+		acTerm->buffsize(buffsize);
 	}
 }
 void menu_host_cb(Fl_Widget *w, void *data)
@@ -528,8 +523,7 @@ void close_cb(Fl_Widget *w, void *data)
 {
 	if ( pTermTabs==NULL ) {	//not multi-tab
 		if ( acTerm->live() ) {
-			if ( fl_choice("Disconnect and exit?", "Yes", "No", 0)==1 ) 
-				return;
+			if ( fl_choice("Disconnect and exit?", "Yes", "No", 0)==1 ) return;
 			Fan_Host *host = (Fan_Host *)acTerm->user_data();
 			host->disconn();
 			delete host;
@@ -547,20 +541,21 @@ void close_cb(Fl_Widget *w, void *data)
 		}
 		while ( pTermTabs->children()>1 ) tab_del();
 	}
-	delete pCmd;
 	pTermWin->hide();
 }
 Fl_Menu_Item menubar[] = {
 {"Term", 		0,	0,		0, 	FL_SUBMENU},
 {"&Connect...", FL_ALT+'c', menu_cb},
 {"&Disconnect", FL_ALT+'d', menu_cb},
-{"&Logging...",	FL_ALT+'l',	menu_cb},
-{"local Echo",	0,	menu_cb,0,	FL_MENU_DIVIDER},
+{"Logging...",	0,			menu_cb},
+{"local Echo",	0,			menu_cb,	0,	FL_MENU_DIVIDER},
 {0},
 {"Script", 		0,	0,		0, 	FL_SUBMENU},
-{"Run...",		FL_ALT+'r',	menu_cb},		
+{"Run...",		FL_ALT+'r',	menu_cb},
+{"Pause",		FL_ALT+'p',	menu_cb},
+{"Stop",		FL_ALT+'q',	menu_cb,	0,	FL_MENU_DIVIDER},		
 {0},
-{"Settings", 	0,	0,		0, 	FL_SUBMENU},
+{"Options", 	0,	0,		0, 	FL_SUBMENU},
 {"Font Face",	0, 	0,		0,	FL_SUBMENU},
 #ifdef __APPLE__
 {"Menlo",	 	0, 	menu_cb,0, 	FL_MENU_RADIO|FL_MENU_VALUE},
@@ -574,8 +569,8 @@ Fl_Menu_Item menubar[] = {
 {0},
 {"Font Size", 	0,	0,		0,	FL_SUBMENU},
 {"12",			0,	menu_cb,0,	FL_MENU_RADIO},
-{"14",			0,	menu_cb,0,	FL_MENU_RADIO},
-{"16",			0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
+{"14",			0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
+{"16",			0,	menu_cb,0,	FL_MENU_RADIO},
 {"18",			0,	menu_cb,0,	FL_MENU_RADIO},
 {"20",			0,	menu_cb,0,	FL_MENU_RADIO},
 {0},
@@ -586,13 +581,15 @@ Fl_Menu_Item menubar[] = {
 {"16384",		0,	menu_cb,0,	FL_MENU_RADIO},
 {"32768",		0,	menu_cb,0,	FL_MENU_RADIO},
 {0},
-{"&Editor",		FL_ALT+'e',	editor_cb},
+{"Editor",		FL_ALT+'e',	editor_cb,	0,	FL_MENU_TOGGLE},
 #ifndef __APPLE__
-{"About", 		0,			about_cb },
+{"About", 		0,			about_cb,	0,	FL_MENU_DIVIDER},
 #endif
-{0},{0}
+{0},
+{0}
 };
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 	http_port = httpd_init();
 	libssh2_init(0);
 
@@ -604,14 +601,15 @@ int main(int argc, char **argv) {
 
 	pTermWin = new Fl_Double_Window(800, 640, "Fl_Term");
 	{
-		pMenu=new Fl_Sys_Menu_Bar(0, 0, pTermWin->w(), MENUHEIGHT);
-		pMenu->menu(menubar);
-		pMenu->textsize(20);
-		pMenu->box(FL_THIN_UP_BOX);
+		pMenuBar=new Fl_Sys_Menu_Bar(0, 0, pTermWin->w(), MENUHEIGHT);
+		pMenuBar->menu(menubar);
+		pMenuBar->textsize(20);
+		pMenuBar->box(FL_THIN_UP_BOX);
 		acTerm = new Fl_Term(0, MENUHEIGHT, pTermWin->w(), 
 								pTermWin->h()-MENUHEIGHT, "term");
 		acTerm->textsize(fontsize);
-	  	pCmd = new Fl_Browser_Input( 0, pTermWin->h()-1, 1, 1, "");
+	
+		pCmd = new Fl_Browser_Input( 0, pTermWin->h()-1, 1, 1, "");
 		pCmd->box(FL_FLAT_BOX);
 	  	pCmd->color(FL_DARK_GREEN);
 		pCmd->textcolor(FL_YELLOW);
@@ -654,53 +652,75 @@ int main(int argc, char **argv) {
 #endif
 	pTermWin->show();
 
-	int i=1;
-	while ( i<argc ) {
+	int i;
+	for ( i=1; i<argc; i++ ) {
+		Fl_Menu_Item *menu;
+		char itemname[256] = "Options/";
 		if ( strcmp(argv[i], "--tabs")==0 ) {
 			tab_init();
-			i++;
+		}
+		else if ( strcmp(argv[i], "--editor")==0 ) {
+			editor_cb(NULL, NULL);
+			strcpy(itemname+8, "Editor");
+			menu = (Fl_Menu_Item *)pMenuBar->find_item(itemname);
+			if ( menu!=NULL ) menu->set();
 		}
 		else if ( strcmp(argv[i], "--fontface")==0 ) {
-			Fl::set_font(FL_COURIER, argv[i+1]);
-			i+=2;
+			Fl::set_font(FL_COURIER, argv[++i]);
+			strcpy(itemname+8, "Font Face/");
+			strcat(itemname, argv[i]);
+			menu = (Fl_Menu_Item *)pMenuBar->find_item(itemname);
+			if ( menu!=NULL ) menu->setonly();
 		}
 		else if ( strcmp(argv[i], "--fontsize")==0 ) {
-			fontsize = atoi(argv[i+1]);
+			fontsize = atoi(argv[++i]);
 			acTerm->textsize(fontsize);
-			i+=2;
-		}
+			strcpy(itemname+8, "Font Size/");
+			strcat(itemname, argv[i]);
+			menu = (Fl_Menu_Item *)pMenuBar->find_item(itemname);
+			if ( menu!=NULL ) menu->setonly();
+	}
 		else if ( strcmp(argv[i], "--buffsize")==0 ) {
-			buffsize = atoi(argv[i+1]);
+			buffsize = atoi(argv[++i]);
 			acTerm->buffsize(buffsize);
-			i+=2;
+			strcpy(itemname+8, "Buffer Size/");
+			strcat(itemname, argv[i]);
+			menu = (Fl_Menu_Item *)pMenuBar->find_item(itemname);
+			if ( menu!=NULL ) menu->setonly();
 		}
 		else
 			break;
 	}
 	if ( i<argc ) 
-		term_connect(2, argv[i]);
+		term_connect(argv[i]);
 	else 
 		conn_dialog();
 			
-	FILE *fp = fopen("flTerm.dic", "r");
-	if ( fp!=NULL ) {
+	FILE *fp;
+	if ( (fp=fopen("flTerm.hist", "r"))!=NULL ) {
 		char line[256];
-		while ( fgets(line, 255, fp)!=NULL ) {
-			int l = strlen(line)-1;
-			while ( line[l]=='\015' || line[l]=='\012' ) line[l--]=0; 
+		while ( fgets(line, 256, fp)!=NULL ) {
+			line[strcspn(line, "\r\n")] = 0; 
 			pCmd->add(line);
-			if ( strncmp(line, "ssh ",4)==0 ) {
-				const char *p = strrchr(line, ' ');
-				pMenu->insert(5,p+1,0,menu_host_cb,(void *)strdup(line));
-			}
+			if ( *line=='!' ) 
+				pMenuBar->insert(5,line+1,0,menu_host_cb,(void *)strdup(line+1));
 		}
+		fclose(fp);
 	}
 
 	while ( Fl::wait() ) {
 		Fl_Widget *pt = (Fl_Widget *)Fl::thread_message();
 		if ( pt!=NULL )pt->redraw();
 	}
-		
+
+	if ( (fp=fopen("flTerm.hist", "w"))!=NULL ) {
+		const char *p = pCmd->first();
+		while ( p!=NULL ) { 
+			fprintf(fp, "%s\n", p);
+			p = pCmd->next();
+		}
+		fclose(fp);
+	}
 	libssh2_exit();
 	httpd_exit();
 	return 0;
@@ -722,19 +742,17 @@ void httpd( int s0 )
 	while ( (http_s1=accept(s0,(struct sockaddr*)&cltaddr,&addrsize ))!=-1 ) {
 		while ( (cmdlen=recv(http_s1,buf,4095,0))>0 ) {
 			buf[cmdlen] = 0;
-			if ( strncmp(buf, "GET /", 5)==0 ) {
-				cmd = buf+5;
+			if ( strncmp(buf, "GET /?",6)==0 ) {
+				cmd = buf+6;
 				char *p = strchr(cmd, ' ');
 				if ( p!=NULL ) *p = 0;
-				if ( *cmd=='?' ) {
-					for ( char *p=++cmd; *p!=0; p++ )
-						if ( *p=='+' ) *p=' ';
-					fl_decode_uri(cmd);
-					replen = term_cmd( acTerm, cmd, &reply );
-					int len = sprintf( buf, HEADER, "200 OK", replen );
-					send( http_s1, buf, len, 0 );
-					if ( replen>0 ) send( http_s1, reply, replen, 0 );
-				}
+				for ( char *p=cmd; *p!=0; p++ )
+					if ( *p=='+' ) *p=' ';
+				fl_decode_uri(cmd);
+				replen = term_cmd( cmd, &reply );
+				int len = sprintf( buf, HEADER, "200 OK", replen );
+				send( http_s1, buf, len, 0 );
+				if ( replen>0 ) send( http_s1, reply, replen, 0 );
 			}
 		}
 		closesocket(http_s1);
@@ -777,8 +795,8 @@ void httpd_exit()
 }
 void term_pwd(Fl_Term *term, char *dst)
 {
-	char *p1, *p2, pwd[4]="pwd";
-	term_cmd(term, pwd, &p2);
+	char *p1, *p2;
+	term->cmd("pwd", &p2);
 	p1 = strchr(p2, 0x0a);
 	if ( p1!=NULL ) {
 		p2 = p1+1;
@@ -822,7 +840,7 @@ int term_scp(Fl_Term *term, char *cmd, char **preply)
 				strcat(rlist, remote);
 			}
 		}
-		if ( term_cmd(term, rlist, &rpath)>0 ) {
+		if ( term->cmd(rlist, &rpath)>0 ) {
 			reply = term->mark_prompt();
 			char *p = strchr(rpath, 0x0a);
 			if ( p!=NULL ) {
@@ -839,6 +857,7 @@ int term_scp(Fl_Term *term, char *cmd, char **preply)
 			}
 		}	
 	}
+	free(cmd);
 	host->write("\r", 1);
 	if ( preply!=NULL ) *preply = reply;
 	return term->waitfor_prompt();
@@ -855,12 +874,10 @@ int term_tun(Fl_Term *term, char *cmd, char **preply)
 		return 0;
 	}
 
-	int rc = 0;
-	char *reply = term->mark_prompt();
+	if ( preply!=NULL ) *preply = term->mark_prompt();
 	((sshHost *)host)->tun(cmd);
-	rc = term->waitfor_prompt();
-	if ( preply!=NULL ) *preply = reply;
-	return rc;
+	free(cmd);
+	return term->waitfor_prompt();
 }
 void file_copier(Fl_Term *term, char *files)
 {
@@ -885,17 +902,6 @@ void file_copier(Fl_Term *term, char *files)
 	host->write("\r",1);
 	free(files);
 }
-void cmd_scripter(Fl_Term *term, char *cmds)
-{
-	char *p=cmds, *p1;	
-	do {
-		p1 = strchr(p, 0x0a);
-		if ( p1!=NULL ) *p1++ = 0;
-		term_cmd(term, p, NULL);
-	}
-	while ( (p=p1)!=NULL );
-	free(cmds);
-}
 void term_drop(Fl_Term *term, const char *buf)
 {
 	if ( !term->live() ) {
@@ -908,37 +914,20 @@ void term_drop(Fl_Term *term, const char *buf)
 		return;
 	}
 
-	void ( *scripter )(Fl_Term *, char *);
-	scripter = cmd_scripter;
 	char *script = strdup(buf);	//script thread must delete this
 	char *p0 = script;
 	char *p1=strchr(p0, 0x0a);
 	if ( p1!=NULL ) *p1=0;
 	struct stat sb;				//is this a list of files?
-	if ( stat(p0, &sb)!=-1 ) {
-		if ( host->type()==HOST_SSH || host->type()==HOST_SFTP )
-			scripter = file_copier;
-	}
+	int rc = stat(p0, &sb);
 	if ( p1!=NULL ) *p1=0x0a;
-		
-	std::thread scripterThread(scripter, term, script);
-	scripterThread.detach();
-}
-void term_script(Fl_Term *term, const char *fn)
-{
-	Fan_Host *host = (Fan_Host *)term->user_data();
-	if ( host==NULL ) return;
 
-	struct stat sb;
-	if ( stat(fn, &sb)!=-1 ) {
-		char *script = (char *)malloc(sb.st_size+1);
-		FILE *fp = fopen(fn, "r");
-		if ( script!=NULL && fp!=NULL ) {
-			fread(script, 1, sb.st_size, fp);
-			script[sb.st_size]=0;
-			std::thread scripterThread(cmd_scripter, term, script);
+	if ( rc!=-1 ) {
+		if ( host->type()==HOST_SSH || host->type()==HOST_SFTP ) {
+			std::thread scripterThread(file_copier, term, script);
 			scripterThread.detach();
 		}
-		if ( fp!=NULL ) fclose(fp);
 	}
+	else
+		term->run_script(script);
 }

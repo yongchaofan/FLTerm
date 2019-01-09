@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.cxx 2105 2018-08-31 13:48:10 $"
+// "$Id: Fl_Browser_Input.cxx 2568 2018-08-31 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -15,6 +15,7 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 #include "Fl_Browser_Input.h"
+#include <string.h>
 Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L)
 													: Fl_Input(X,Y,W,H,L)
 {
@@ -30,9 +31,10 @@ Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L)
 void Fl_Browser_Input::resize( int X, int Y, int W, int H )
 {
 	Fl_Input::resize(X, Y, W, H);
-	browserWin->resize( parent()->x()+40, parent()->y()+y()-84, w(), 84);
+	browserWin->resize( parent()->x(), parent()->y()+y()-84, w(), 84);
 }
-void Fl_Browser_Input::add( const char *cmd ) {
+void Fl_Browser_Input::add( const char *cmd ) 
+{
 	if ( *cmd==0 ) return;
 	if ( browser->size()==0 ) browser->add(cmd);
 	int i=0;
@@ -42,7 +44,21 @@ void Fl_Browser_Input::add( const char *cmd ) {
 	}
 	browser->insert(i, cmd);
 }
-
+const char * Fl_Browser_Input::first( ) 
+{
+	id = 1;
+	if ( id<=browser->size() )
+		return browser->text(id);
+	else
+		return NULL;
+}
+const char * Fl_Browser_Input::next( )
+{
+	if ( id<browser->size() )
+		return browser->text(++id);
+	else
+		return NULL;
+}
 int Fl_Browser_Input::handle( int e ) 
 {
 	int rc = Fl_Input::handle(e);
@@ -51,7 +67,7 @@ int Fl_Browser_Input::handle( int e )
 		case FL_Left:
 		case FL_Right:
 		case FL_Delete:
-		case FL_BackSpace: 
+		case FL_BackSpace:
 		case FL_Enter: break;
 		case FL_Up:	
 			if ( id>1 ) id--;
@@ -68,7 +84,7 @@ int Fl_Browser_Input::handle( int e )
 			take_focus();
 			break;
 		default: {
-			for ( int i=browser->size(); i>0; i-- ) 
+			for ( int i=browser->size(); i>0&&position()>0; i-- ) 
 				if ( strncmp(value(), browser->text(i), position())==0 ) {
 					id = i;
 					int p = position();

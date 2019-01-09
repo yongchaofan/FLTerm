@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 26766 2018-11-15 10:08:20 $"
+// "$Id: Fl_Term.cxx 26800 2018-11-15 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -19,13 +19,16 @@
 #include <assert.h>
 #include "Fl_Term.h"
 #include <FL/Fl_Menu.H>
-Fl_Menu_Item rclick_menu[]={{"Copy"},{"Paste"},{"Select all"},{"Erase all"},{0}};
+#include <FL/filename.H>               // needed for fl_decode_rui
+#include <thread>
+Fl_Menu_Item rclick_menu[]={{"Paste"},{"Copy all"},{"Erase"},{0}};
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bInsert = bAlterScreen = bAppCursor = false;
 	bEscape = bGraphic = bTitle = false;
 	bCursor = true;
 	bLogging = false;
+	bEcho = false;
 	bMouseScroll = false;
 	ESC_idx = 0;
 	term_cb = NULL;
@@ -97,8 +100,10 @@ void Fl_Term::textsize( int pt )
 	resize(x(), y(), w(), h());
 }
 
-const unsigned int VT_attr[8]={	FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW,
-								FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE};
+const unsigned int VT_attr[8] = {	
+	FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW,	//0,1,2,3
+	FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE	//4,5,6,7
+};
 void Fl_Term::draw()
 {
 	fl_color(color());
@@ -244,10 +249,10 @@ int Fl_Term::handle( int e ) {
 					int t=sel_left; sel_left=sel_right; sel_right=t;
 				}
 				if ( sel_left<sel_right )
-					Fl::copy(buff+sel_left, sel_right-sel_left, 0);
+					Fl::copy(buff+sel_left, sel_right-sel_left, 1);
 				break;
 			case FL_MIDDLE_MOUSE:	//middle click to paste
-				Fl::paste(*this, 0);
+				write(buff+sel_left, sel_right-sel_left);
 				break;
 			case FL_RIGHT_MOUSE: {	//right click for context menu
 					int ex = Fl::event_x(), ey=Fl::event_y();
@@ -255,12 +260,9 @@ int Fl_Term::handle( int e ) {
 					if ( m ) {
 						const char *sel = m->label();
 						switch ( *sel ) {
-						case 'C': Fl::copy(buff+sel_left,sel_right-sel_left,1); 
-								  break;
 						case 'P': Fl::paste( *this, 1 ); break;
+						case 'C': Fl::copy(buff,cursor_x,1); break;
 						case 'E': clear();
-						case 'S': sel_left=0; sel_right=cursor_x; 
-								  redraw(); break;
 						}
 					}
 				}
@@ -440,6 +442,8 @@ void Fl_Term::append( const char *newtext, int len ){
 						cursor_x = line[cursor_y]; 
 					break;
 		case 0x1b: 	p = vt100_Escape( p, zz-p );
+					break;
+		case 0xff: 	p = telnet_options(p);
 					break;
 		case 0xe2:  if ( bAlterScreen ) {//utf8 box drawing hack
 						c = ' ';
@@ -802,22 +806,24 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 	return sz;
 }
 
-void Fl_Term::srch( const char *word, int dirn )
+void Fl_Term::srch( const char *sstr )
 {
-	for ( int i=cursor_y+scroll_y+dirn; i>0&&i<cursor_y; i+=dirn ) {
-		int len = strlen(word);
-		char *p, tmp=buff[line[i+1]+len-1];
-		buff[line[i+1]+len-1]=0;
-		p = strstr(buff+line[i], word);
-		buff[line[i+1]+len-1]=tmp;
-		if ( p!=NULL ) {
-			scroll_y = i-cursor_y;
-			sel_left = p-buff;
-			sel_right = sel_left+strlen(word);
-			redraw();
+	int l = strlen(sstr);
+	char *p = buff+sel_left;
+	if ( sel_left==sel_right ) p = buff+cursor_x;
+	while ( --p>=buff+l ) {
+		int i;
+		for ( i=l-1; i>=0; i-- ) 
+			if ( sstr[i]!=p[i-l] ) break;
+		if ( i==-1 ) {
+			sel_left = p-l-buff;
+			sel_right = sel_left+l;
+			while ( line[screen_y+scroll_y]>sel_left ) scroll_y--;
 			break;
 		}
 	}
+	if ( p<buff+l ) sel_left = sel_right = scroll_y = 0;
+	redraw();
 }
 void Fl_Term::logg( const char *fn )
 {
@@ -836,11 +842,13 @@ void Fl_Term::logg( const char *fn )
 		}
 	}
 }
-void Fl_Term::prompt(char *p)
-{
-	strncpy(sPrompt, p, 31);
-	iPrompt = strlen(sPrompt);
+void Fl_Term::echo(int e)
+{ 
+	bEcho = e; 
+	disp(bEcho? "\r\n\033[32mlocal echo ON\033[37m\r\n":
+				"\r\n\033[32mlocal echo OFF\033[37m\r\n");
 }
+
 char *Fl_Term::mark_prompt()
 {
 	bPrompt = false;
@@ -873,30 +881,56 @@ int Fl_Term::recv(char **preply)
 	recv0 = cursor_x;
 	return len;
 }
-int Fl_Term::command(const char *cmd, char **preply)
+int Fl_Term::cmd(const char *cmd, char **preply)
 {
 	int rc = 0;
 	if ( preply!=NULL ) *preply = mark_prompt();
-	send(cmd);
-	send("\r");
-	if ( preply!=NULL ) rc = waitfor_prompt();
-	return rc;
-}
-int Fl_Term::selection(char **preply)
-{
-	if ( preply!=NULL ) *preply = buff+sel_left;
-	return sel_right-sel_left;
-}
-int Fl_Term::waitfor(const char *word)
-{
-	char *p = buff+recv0;
-	bWait = true;
-	for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
-		buff[cursor_x]=0;
-		if ( strstr(p, word)!=NULL ) return 1;
-		sleep(1);
+	if ( *cmd=='!' ) {
+		cmd++;
+		if ( strncmp(cmd,"Clear",5)==0 ) clear();
+		else if ( strncmp(cmd,"Log",3)==0 ) logg( cmd+3 );
+		else if ( strncmp(cmd,"Disp ",5)==0 ) disp(cmd+5);
+		else if ( strncmp(cmd,"Send ",5)==0 ) send(cmd+5);
+		else if ( strncmp(cmd,"Recv", 4)==0 ) rc = recv(preply);
+		else if ( strncmp(cmd,"Title",5)==0 ) copy_label( cmd+6 );
+		else if ( strncmp(cmd,"Timeout",7)==0 ) iTimeOut = atoi(cmd+8);
+		else if ( strncmp(cmd,"Wait ", 5)==0 ) sleep(atoi(cmd+5));
+		else if ( strncmp(cmd,"Prompt ",7)==0 ) {
+			strncpy(sPrompt, cmd+7, 31);
+			sPrompt[31] = 0;
+			fl_decode_uri(sPrompt);
+			iPrompt = strlen(sPrompt);
+		}
+		else if ( strncmp(cmd,"Selection",9)==0) {
+			if ( preply!=NULL ) *preply = buff+sel_left;
+			rc = sel_right-sel_left;
+		}
+		else if ( strncmp(cmd,"Waitfor ",8)==0 ) { 
+			bWait = true;
+			for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
+				buff[cursor_x]=0;
+				if ( strstr(buff+recv0, cmd+8)!=NULL ) {
+					rc = cursor_x-recv0;
+					break;
+				}
+				sleep(1);
+			}
+		}
+		else
+			rc = -1;
 	}
-	return 0;
+	else {
+		if ( live() ) {
+			send(cmd);
+			send("\r");
+			rc = waitfor_prompt();
+		}
+		else {
+			disp(cmd); 
+			disp("\n");
+		}
+	}
+	return rc;
 }
 void Fl_Term::putxml(const char *msg, int len)
 {
@@ -957,4 +991,90 @@ void Fl_Term::putxml(const char *msg, int len)
 			}
 		}
 	}
+}
+
+void Fl_Term::scripter(char *cmds)
+{
+	bScriptRunning = true;
+	bScriptPaused = false;
+	char *p=cmds, *p1;	
+	do {
+		p1 = strchr(p, 0x0a);
+		if ( p1!=NULL ) *p1++ = 0;
+		cmd(p, NULL);
+		while ( bScriptPaused ) usleep(1000000);
+	}
+	while ( (p=p1)!=NULL && bScriptRunning );
+	free(cmds);
+}
+void Fl_Term::run_script(char *script)
+{
+	if ( !bScriptRunning ) {
+		std::thread scripterThread(&Fl_Term::scripter, this, script);
+		scripterThread.detach();
+	}
+	else 
+		disp("\033[31mScript is already running\033[37m\n");
+}
+void Fl_Term::pause_script()
+{
+	bScriptPaused = true;
+}
+void Fl_Term::stop_script()
+{
+	bScriptPaused = bScriptRunning = false;
+}
+
+#define TNO_IAC		0xff
+#define TNO_DONT	0xfe
+#define TNO_DO		0xfd
+#define TNO_WONT	0xfc
+#define TNO_WILL	0xfb
+#define TNO_SUB		0xfa
+#define TNO_ECHO	0x01
+#define TNO_AHEAD	0x03
+#define TNO_WNDSIZE 0x1f
+#define TNO_TERMTYPE 0x18
+#define TNO_NEWENV	0x27
+unsigned char NEGOBEG[]={0xff, 0xfb, 0x03, 0xff, 0xfd, 0x03, 0xff, 0xfd, 0x01};
+unsigned char TERMTYPE[]={0xff, 0xfa, 0x18, 0x00, 0x76, 0x74, 0x31, 0x30, 0x30, 0xff, 0xf0};
+const unsigned char *Fl_Term::telnet_options( const unsigned char *buf )
+{
+	unsigned char negoreq[]={0xff,0,0,0, 0xff, 0xf0};
+	const unsigned char *p = buf+1;
+	switch ( *p++ ) {
+		case TNO_DO:
+			if ( *p==TNO_TERMTYPE || *p==TNO_NEWENV || *p==TNO_ECHO ) {
+				negoreq[1]=TNO_WILL; negoreq[2]=*p;
+				write((const char *)negoreq, 3);
+				if ( *p==TNO_ECHO ) bEcho = true;
+			}
+			else  {						// if ( *p!=TNO_AHEAD ), 08/10 why?
+				negoreq[1]=TNO_WONT; negoreq[2]=*p;
+				write((const char *)negoreq, 3);
+			}
+			break;
+		case TNO_SUB:
+			if ( *p==TNO_TERMTYPE ) {
+				write((const char *)TERMTYPE, sizeof(TERMTYPE));
+			}
+			if ( *p==TNO_NEWENV ) {
+				negoreq[1]=TNO_SUB; negoreq[2]=*p;
+				write((const char *)negoreq, 6);
+			}
+			p += 3;
+			break;
+		case TNO_WILL: 
+			if ( *p==TNO_ECHO ) bEcho = false;
+			negoreq[1]=TNO_DO; negoreq[2]=*p;
+			write((const char *)negoreq, 3);
+			break;
+		case TNO_WONT: 
+			negoreq[1]=TNO_DONT; negoreq[2]=*p;
+			write((const char *)negoreq, 3);
+		   break;
+		case TNO_DONT:
+			break;
+	}
+	return p+1; 
 }

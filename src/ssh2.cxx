@@ -212,7 +212,7 @@ void sshHost::write_keys(const char *buf, int len)
 			if ( cursor>0 ) {
 				cursor--; 
 				if ( !bPassword ) 
-					do_callback("\010 \010", 3);									
+					do_callback("\010 \010",3);									
 			}
 		}
 		else {
@@ -251,8 +251,8 @@ int sshHost::ssh_authentication()
 	if ( *password && strstr(authlist, "password")!=NULL ) {
 		if ( !libssh2_userauth_password(session, username, password) ) 
 			return 0;		//password authentication pass
-		else	// password provided, it either works or not
-			return rc;		//won't try anyting else on failure 
+		else				//for non-interactive sessions
+			return rc;		//don't try anyting else if provided password fail 
 	}
 	if ( strstr(authlist, "publickey")!=NULL ) {
 		char pubkeyfile[MAX_PATH+64], privkeyfile[MAX_PATH+64];
@@ -260,18 +260,14 @@ int sshHost::ssh_authentication()
 		strcat(pubkeyfile, ".ssh/id_rsa.pub");
 		strcpy(privkeyfile, homedir);
 		strcat(privkeyfile, ".ssh/id_rsa");
-
-		if ( !libssh2_userauth_publickey_fromfile(session, username, 
+		struct stat buf;		//verify existance of public/private key files
+		if ( stat(pubkeyfile, &buf)==0 && stat(privkeyfile, &buf)==0 ) {
+			if ( !libssh2_userauth_publickey_fromfile(session, username, 
 								pubkeyfile, privkeyfile, passphrase) ) {
-			print("\033[32m\r\npublic key authentication passed\n");
-			return 0;			// public key authentication passed
+				print("\033[32m\r\npublic key authentication passed\n");
+				return 0;			// public key authentication passed
+			}
 		}
-	}
-	if ( strstr(authlist, "keyboard-interactive")!=NULL ) {
-		for ( int i=0; i<3; i++ )
-			if (!libssh2_userauth_keyboard_interactive(session, username,
-                                              			&kbd_callback) ) 
-				return 0;
 	}
 	if ( strstr(authlist, "password")!=NULL ) {
 		//password was not set, get it interactively
@@ -285,6 +281,12 @@ int sshHost::ssh_authentication()
 			else 
 				break;
 		}
+	}
+	else if ( strstr(authlist, "keyboard-interactive")!=NULL ) {
+		for ( int i=0; i<3; i++ )
+			if (!libssh2_userauth_keyboard_interactive(session, username,
+                                              			&kbd_callback) ) 
+				return 0;
 	}
 	*username=0; *password=0; *passphrase=0;
 	return rc;
@@ -352,15 +354,19 @@ int sshHost::read()
 	*password = 0;
 
 Channel_Close:
-	mtx.lock();
-	libssh2_channel_free(channel);
-	mtx.unlock();
-	channel = NULL;
+	if ( channel!=NULL ) {
+		mtx.lock();
+		libssh2_channel_free(channel);
+		mtx.unlock();
+		channel = NULL;
+	}
 Session_Close:
-	mtx.lock();
-	libssh2_session_free(session);
-	mtx.unlock();
-	session = NULL;
+	if ( session!=NULL ) {
+		mtx.lock();
+		libssh2_session_free(session);
+		mtx.unlock();
+		session = NULL;
+	}
 TCP_Close:	
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);	//tell Fl_Term host has disconnected
@@ -370,7 +376,6 @@ TCP_Close:
 int sshHost::write(const char *buf, int len) 
 {
 	if ( bConnected ) {
-		if ( bEcho ) do_callback(buf, len);
 		int total=0, cch=0;
 		while ( total<len ) {
 			mtx.lock();
@@ -407,6 +412,14 @@ void sshHost::disconn()
 {
 	if ( readerThread!=0 ) {
 		bGets = false;
+		mtx.lock();
+		libssh2_channel_close(channel);
+		libssh2_channel_free(channel);
+		channel = NULL;
+		libssh2_session_disconnect(session, "client disconnect");
+		libssh2_session_free(session);
+		session = NULL;
+		mtx.unlock();
 		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
 		pthread_join(readerThread, NULL);
 	}
@@ -1016,14 +1029,20 @@ int confHost::read()
 	bConnected = false;
 
 Channel_Close:
-	mtx.lock();
-	libssh2_channel_free(channel);
-	if ( channel2 ) libssh2_channel_free(channel2);
-	mtx.unlock();
+	if ( channel!=NULL ) {
+		mtx.lock();
+		libssh2_channel_free(channel);
+		if ( channel2 ) libssh2_channel_free(channel2);
+		mtx.unlock();
+		channel = NULL;
+	}
 Session_Close:
-	mtx.lock();
-	libssh2_session_free(session);
-	mtx.unlock();
+	if ( session!=NULL ) {
+		mtx.lock();
+		libssh2_session_free(session);
+		mtx.unlock();
+		session = NULL;
+	}
 TCP_Close:
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);	//tell Fl_Term host has disconnected
@@ -1488,8 +1507,11 @@ int sftpHost::read()
 	*password = 0;
 
 sftp_Close:
-	libssh2_session_disconnect(session, "Normal Shutdown");
-	libssh2_session_free(session);
+	if ( session!=NULL ) {
+		libssh2_session_disconnect(session, "Normal Shutdown");
+		libssh2_session_free(session);
+		session = NULL;
+	}
 TCP_Close:
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);

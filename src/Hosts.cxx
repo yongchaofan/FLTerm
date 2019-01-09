@@ -87,7 +87,7 @@ int comHost::read()
 										//ReadTotalTimeoutConstant = 1;
 										//ReadIntervalTimeout = 10;
 
-	hCommPort = CreateFile( portname, GENERIC_READ|GENERIC_WRITE, 0, NULL,
+	hCommPort = CreateFileA( portname, GENERIC_READ|GENERIC_WRITE, 0, NULL,
 													OPEN_EXISTING, 0, NULL);
 	if ( hCommPort==INVALID_HANDLE_VALUE) {
 		rc = -1;
@@ -119,6 +119,8 @@ int comHost::read()
 		if ( ReadFile(hCommPort, buf, 4096, &cch, NULL) )
 			if ( cch > 0 )
 				do_callback(buf, cch);
+			else
+				Sleep(1);
 		else
 			if ( !ClearCommError(hCommPort, NULL, NULL ) ) break;
 	}
@@ -240,16 +242,9 @@ int tcpHost::read()
 	bConnected = true;
 	do_callback("Connected", 0);	//indicates connected
 	int cch;
-	char buf[1536], *p, *p0;
+	char buf[1536];
 	while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
-		for ( p=buf; p<buf+cch; p++ ) {
-			while ( *p==-1 && p<buf+cch ) {
-				p0 = (char *)telnet_options((unsigned char *)p);
-				memcpy(p, p0, buf+cch-p0);
-				cch -= p0-p;	//cch could become 0 after this
-			}
-		}
-		if ( cch>0 ) do_callback(buf, cch);
+		do_callback(buf, cch);
 	}
 	bConnected = false;
 
@@ -262,7 +257,6 @@ TCP_Close:
 int tcpHost::write(const char *buf, int len ) 
 {
 	if ( bConnected ) {
-		if ( bEcho ) do_callback(buf, len);
 		int total=0, cch=0;
 		while ( total<len ) {
 			cch = send( sock, buf+total, len-total, 0); 
@@ -285,57 +279,4 @@ void tcpHost::disconn()
 		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
 		pthread_join(readerThread, NULL);
 	}
-}
-#define TNO_IAC		0xff
-#define TNO_DONT	0xfe
-#define TNO_DO		0xfd
-#define TNO_WONT	0xfc
-#define TNO_WILL	0xfb
-#define TNO_SUB		0xfa
-#define TNO_ECHO	0x01
-#define TNO_AHEAD	0x03
-#define TNO_WNDSIZE 0x1f
-#define TNO_TERMTYPE 0x18
-#define TNO_NEWENV	0x27
-unsigned char NEGOBEG[]={0xff, 0xfb, 0x03, 0xff, 0xfd, 0x03, 0xff, 0xfd, 0x01};
-unsigned char TERMTYPE[]={0xff, 0xfa, 0x18, 0x00, 0x76, 0x74, 0x31, 0x30, 0x30, 0xff, 0xf0};
-unsigned char *tcpHost::telnet_options( unsigned char *buf )
-{
-	unsigned char negoreq[]={0xff,0,0,0, 0xff, 0xf0};
-	unsigned char *p = buf+1;
-	switch ( *p++ ) {
-		case TNO_DO:
-			if ( *p==TNO_TERMTYPE || *p==TNO_NEWENV || *p==TNO_ECHO ) {
-				negoreq[1]=TNO_WILL; negoreq[2]=*p;
-				send(sock, (char *)negoreq, 3, 0);
-				if ( *p==TNO_ECHO ) bEcho = true;
-			}
-			else  {						// if ( *p!=TNO_AHEAD ), 08/10 why?
-				negoreq[1]=TNO_WONT; negoreq[2]=*p;
-				send(sock, (char *)negoreq, 3, 0);
-			}
-			break;
-		case TNO_SUB:
-			if ( *p==TNO_TERMTYPE ) {
-				send(sock, (char *)TERMTYPE, sizeof(TERMTYPE), 0);
-			}
-			if ( *p==TNO_NEWENV ) {
-				negoreq[1]=TNO_SUB; negoreq[2]=*p;
-				send(sock, (char *)negoreq, 6, 0);
-			}
-			p += 3;
-			break;
-		case TNO_WILL: 
-			if ( *p==TNO_ECHO ) bEcho = false;
-			negoreq[1]=TNO_DO; negoreq[2]=*p;
-			send(sock, (char *)negoreq, 3, 0);
-			break;
-		case TNO_WONT: 
-			negoreq[1]=TNO_DONT; negoreq[2]=*p;
-			send(sock, (char *)negoreq, 3, 0);
-		   break;
-		case TNO_DONT:
-			break;
-	}
-	return p+1; 
 }

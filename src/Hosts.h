@@ -46,7 +46,6 @@ typedef void ( host_callback )(void *, const char *, int);
 class Fan_Host {
 protected:
 	int bConnected;
-	int bEcho;
 	void *host_data_;
 	host_callback* host_cb;
 	pthread_t readerThread;
@@ -54,7 +53,7 @@ protected:
 public: 
 	Fan_Host()
 	{
-		bConnected = bEcho = false;
+		bConnected = false;
 		readerThread = 0;
 		host_cb = NULL;
 	}
@@ -77,8 +76,6 @@ public:
 		host_cb(host_data_, buf, len);
 	}
 	void *host_data() { return host_data_; }
-	int echo() { return bEcho; }
-	void echo(int e) { bEcho = e; }
 	void print(const char *fmt, ...);
 };
 
