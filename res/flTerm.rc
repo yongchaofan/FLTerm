@@ -10,8 +10,8 @@ BLOCK "StringFileInfo"
 {
 	BLOCK "040904B0"
 	{
-		VALUE "FileDescription", "FLTK based terminal simulator"
-		VALUE "LegalCopyright", "©2017-2018 Yongchao Fan"
+		VALUE "FileDescription", "fltk based ssh2 terminal"
+		VALUE "LegalCopyright", "©2017-2019 Yongchao Fan"
 		VALUE "ProductName", "flTerm"
 		VALUE "ProductVersion", "1.0.0"
 	}
