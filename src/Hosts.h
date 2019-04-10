@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 2951 2018-11-08 21:12:15 $"
+// "$Id: Hosts.h 3009 2019-04-10 21:12:15 $"
 //
 // Fan_Host comHost tcpHost
 //
@@ -8,7 +8,7 @@
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GNU LGPL 3.0,
+// This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -34,7 +34,7 @@
 #endif
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
+#include <thread>
 
 #ifndef _FAN_HOST_H_
 #define _FAN_HOST_H_
@@ -48,13 +48,12 @@ protected:
 	int bConnected;
 	void *host_data_;
 	host_callback* host_cb;
-	pthread_t readerThread;
+	std::thread reader;
 
 public: 
 	Fan_Host()
 	{
 		bConnected = false;
-		readerThread = 0;
 		host_cb = NULL;
 	}
 	virtual ~Fan_Host(){}
@@ -64,6 +63,7 @@ public:
 	virtual	int read()							=0;
 	virtual	int write(const char *buf, int len)	=0;
 	virtual void send_size(int sx, int sy)		=0;
+	virtual void keepalive(int interval)		=0;
 	virtual	void disconn()						=0;	
 
 	void callback(host_callback *cb, void *data)
@@ -76,6 +76,7 @@ public:
 		host_cb(host_data_, buf, len);
 	}
 	void *host_data() { return host_data_; }
+	int live() { return reader.joinable(); }
 	void print(const char *fmt, ...);
 };
 
@@ -105,6 +106,7 @@ public:
 	virtual int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
+	virtual void keepalive(int interval){};
 	virtual void disconn();	
 //	virtual void connect();
 };
@@ -125,6 +127,7 @@ public:
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){};
+	virtual void keepalive(int interval){};
 	virtual void disconn();	
 //	virtual void connect();
 };

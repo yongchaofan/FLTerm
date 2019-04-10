@@ -1,13 +1,13 @@
 //
-// "$Id: ssh2.cxx 40009 2018-11-11 21:55:10 $"
+// "$Id: ssh2.cxx 43169 2019-04-10 21:55:10 $"
 //
 // sshHost sftpHost confHost
 //
 // ssh2 host implementation for terminal simulator flTerm
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2019 by Yongchao Fan.
 //
-// This library is free software distributed under GNU LGPL 3.0,
+// This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -18,17 +18,111 @@
 //
 
 #include <stdio.h>
-#include <unistd.h>
-#include <assert.h>
 #include <time.h>
 #include <fcntl.h>
-#include <dirent.h>
-#include <fnmatch.h>
 #include <sys/stat.h>
+#include "ssh2.h"
+void sleep_ms(int ms)
+{
+#ifdef WIN32
+	Sleep(ms);
+#else
+	usleep(ms*1000);
+#endif
+}
+
 #ifndef WIN32
 	#include <pwd.h>
-#endif
-#include "ssh2.h"
+	#include <dirent.h>
+	#include <fnmatch.h>
+#else
+	#include <shlwapi.h>
+int wchar_to_utf8(WCHAR *wbuf, int wcnt, char *buf, int cnt)
+{
+	return WideCharToMultiByte(CP_UTF8, 0, wbuf, wcnt, buf, cnt, NULL, NULL);
+}
+int utf8_to_wchar(const char *buf, int cnt, WCHAR *wbuf, int wcnt)
+{
+	return MultiByteToWideChar(CP_UTF8, 0, buf, cnt, wbuf, wcnt);
+}
+int fnmatch( char *pattern, char *file, int flag)
+{
+	return PathMatchSpecA(file, pattern) ? 0 : 1;
+}
+/****************************************************************************
+  local dirent implementation for compiling on vs2017
+****************************************************************************/
+#define DT_UNKNOWN 0
+#define DT_DIR     1
+#define DT_REG     2
+#define DT_LNK     3
+
+struct dirent {
+	unsigned char d_type;
+	char d_name[MAX_PATH * 3];
+};
+
+typedef struct tagDIR {
+	struct dirent dd_dir; 
+	HANDLE dd_handle;     
+	int dd_stat; 
+} DIR;
+
+static inline void finddata2dirent(struct dirent *ent, WIN32_FIND_DATAW *fdata)
+{
+	wchar_to_utf8(fdata->cFileName, -1, ent->d_name, sizeof(ent->d_name));
+
+	if (fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		ent->d_type = DT_DIR;
+	else
+		ent->d_type = DT_REG;
+}
+
+DIR *opendir(const char *name)
+{
+	WCHAR pattern[MAX_PATH + 2]; 
+	int len = utf8_to_wchar(name, -1, pattern, MAX_PATH+2);
+	if ( len < 0) return NULL;
+	if ( len && pattern[len - 1]!=L'/' ) wcscat(pattern, L"\\");
+	wcscat(pattern, L"*.*");
+
+	WIN32_FIND_DATAW fdata;
+	HANDLE h = FindFirstFileW(pattern, &fdata);
+	if ( h == INVALID_HANDLE_VALUE ) return NULL;
+
+	DIR *dir = (DIR *)malloc(sizeof(DIR));
+	dir->dd_handle = h;
+	dir->dd_stat = 0;
+	finddata2dirent(&dir->dd_dir, &fdata);
+	return dir;
+}
+
+struct dirent *readdir(DIR *dir)
+{
+	if (!dir) return NULL;
+
+	if (dir->dd_stat) {
+		WIN32_FIND_DATAW fdata;
+		if (FindNextFileW(dir->dd_handle, &fdata)) {
+			finddata2dirent(&dir->dd_dir, &fdata);
+		} 
+		else
+			return NULL;
+	}
+
+	++dir->dd_stat;
+	return &dir->dd_dir;
+}
+
+int closedir(DIR *dir)
+{
+	if (dir) {
+		FindClose(dir->dd_handle);
+		free(dir);
+	}
+	return 0;
+}
+#endif //WIN32
 
 static const char *errmsgs[] = { 
 "Disconnected",
@@ -107,27 +201,37 @@ sshHost::sshHost(const char *name) : tcpHost(name)
 		strcat(homedir, "/");
 	}
 }
-const char *keytypes[]={"unknown", "ssh-rsa", "ssh-dss", "ssh-ecdsa"};
-int sshHost::ssh_knownhost()
+const char *keytypes[] = {
+	"unknown", "rsa", "dss", "ecdsa256", "ecdsa384", "ecdsa521", "ed25519"
+};
+int sshHost::ssh_knownhost( int interactive )
 {
     int type, check, buff_len;
 	size_t len;
-	char buff[256];
+	char keybuf[256];
 	char knownhostfile[MAX_PATH+64];
 	strcpy(knownhostfile, homedir);
-	strcat(knownhostfile, ".ssh/known_hosts");
+	strcat(knownhostfile, ".ssh");
+	struct stat sb;
+	if ( stat(knownhostfile, &sb)!=0) {
+#ifdef WIN32
+		mkdir(knownhostfile);
+#else
+		mkdir(knownhostfile, 0700);
+#endif
+	}
+	strcat(knownhostfile, "/known_hosts");
 
 	const char *key = libssh2_session_hostkey(session, &len, &type);
 	if ( key==NULL ) return -4;
-	buff_len=sprintf(buff, "host key fingerprint(%s):\n", keytypes[type]);
+	buff_len=sprintf(keybuf, "%s key fingerprint", keytypes[type]);
 	if ( type>0 ) type++;
 	
 	const char *fingerprint = libssh2_hostkey_hash(session, 
 										LIBSSH2_HOSTKEY_HASH_SHA1);	
 	if ( fingerprint==NULL ) return -4;
 	for( int i=0; i<20; i++, buff_len+=3) 
-		sprintf(buff+buff_len, "%02X ", (unsigned char)fingerprint[i] );
-    print("%s\n", buff);
+		sprintf(keybuf+buff_len, ":%02x", (unsigned char)fingerprint[i] );
     
     LIBSSH2_KNOWNHOSTS *nh = libssh2_knownhost_init(session);
 	if ( nh==NULL ) return -4;
@@ -137,50 +241,51 @@ int sshHost::ssh_knownhost()
     check = libssh2_knownhost_check(nh, hostname, key, len,
 								LIBSSH2_KNOWNHOST_TYPE_PLAIN|
 								LIBSSH2_KNOWNHOST_KEYENC_RAW, &host);
-    if ( check==LIBSSH2_KNOWNHOST_CHECK_MATCH ) {
-		print("\033[32mmatch found in .ssh/known_hosts\n\n");
-		goto Done;
-	}
-    if ( check==LIBSSH2_KNOWNHOST_CHECK_MISMATCH ) {
+    int rc = 0;
+	char *p = NULL;
+	switch ( check ) {
+	case LIBSSH2_KNOWNHOST_CHECK_MATCH: break;
+    case LIBSSH2_KNOWNHOST_CHECK_MISMATCH:
+		if ( !interactive ) { rc = -4; break; }	
 		if ( type==((host->typemask&LIBSSH2_KNOWNHOST_KEY_MASK)
 								  >>LIBSSH2_KNOWNHOST_KEY_SHIFT) ) {
-			print("\033[31m!!!host key changed! proceed with care!!!\n\n");
+			print("%s\n\033[31m!!!Danger, host key changed!!!\n", keybuf);
+			p = ssh_gets("Update hostkey and continue?(Yes/No", true);
+			if ( p!=NULL ) {
+				if ( strcmp(p, "Yes")==0 ) 
+					libssh2_knownhost_del(nh, host);
+				else {
+					rc = -4;
+					print("\033[32mDisconnected, stay safe\n");
+					break;
+				}
+			}
 		}
-		else 
-			check=LIBSSH2_KNOWNHOST_CHECK_NOTFOUND;
-	}
- 
-	if ( check==LIBSSH2_KNOWNHOST_CHECK_NOTFOUND ) {
-		libssh2_knownhost_addc(nh, hostname, "", key, len, "**flTerm**", 10,
+		//fall through if hostkey type mismatch or hostkey deleted for update
+	case LIBSSH2_KNOWNHOST_CHECK_NOTFOUND:
+		if ( !interactive ) { rc = -4; break; }	
+		if ( p==NULL ) {
+			print("%s\n\033[33munknown host!\n", keybuf);
+			p = ssh_gets("Add hostkey to .ssh/known_hosts?(Yes/No)", true);
+		}
+		if ( p!=NULL ) {
+			if ( strcmp(p, "Yes")==0 ) {
+				libssh2_knownhost_addc(nh, hostname, "", 
+								key, len, "***flTerm***", 12,
 								LIBSSH2_KNOWNHOST_TYPE_PLAIN|
 								LIBSSH2_KNOWNHOST_KEYENC_RAW|
 								(type<<LIBSSH2_KNOWNHOST_KEY_SHIFT), &host);
-		FILE *fp = fopen(knownhostfile, "a+");
-		if ( fp==NULL ) {
-			int len = strlen(knownhostfile);
-			knownhostfile[len-12]=0;
-#ifdef WIN32
-			mkdir(knownhostfile);
-#else
-			mkdir(knownhostfile, 0700);
-#endif
-			knownhostfile[len-12]='/';
-			fp = fopen(knownhostfile, "a+");
+				if ( libssh2_knownhost_writefile(nh, knownhostfile, 
+								LIBSSH2_KNOWNHOST_FILE_OPENSSH)==0 )
+					print("\033[32mhostkey added\n");
+				else 
+					print("\033[33mcouldn't write to known_hosts\n");
+			}
 		}
-		if ( fp ) {
-			char buf[2048];
-			libssh2_knownhost_writeline(nh, host, buf, 2048, &len, 
-								LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-			fprintf(fp, "%s", buf );
-			fclose(fp);
-			print("\033[32madded to .ssh/known_hosts.\n\n");
-		} 
-		else 
-			print("\033[33mcouldn't open .ssh/known_hosts\n\n");
 	}
-Done:
+
     libssh2_knownhost_free(nh);
-	return 0;
+	return rc;
 }
 static void kbd_callback(const char *name, int name_len,
                          const char *instruction, int instruction_len,
@@ -212,7 +317,7 @@ void sshHost::write_keys(const char *buf, int len)
 			if ( cursor>0 ) {
 				cursor--; 
 				if ( !bPassword ) 
-					do_callback("\010 \010",3);									
+					do_callback("\010 \010", 3);									
 			}
 		}
 		else {
@@ -233,7 +338,7 @@ char* sshHost::ssh_gets( const char *prompt, int echo )
 	for ( int i=0; i<3000&&bGets; i++ ) {
 		if ( bReturn ) return keys;
 		if ( cursor>old_cursor ) { old_cursor=cursor; i=0; }
-		usleep(100000);
+		sleep_ms(100);
 	}
 	return NULL;
 }
@@ -251,8 +356,8 @@ int sshHost::ssh_authentication()
 	if ( *password && strstr(authlist, "password")!=NULL ) {
 		if ( !libssh2_userauth_password(session, username, password) ) 
 			return 0;		//password authentication pass
-		else				//for non-interactive sessions
-			return rc;		//don't try anyting else if provided password fail 
+		else	// password provided, it either works or not
+			return rc;		//won't try anyting else on failure 
 	}
 	if ( strstr(authlist, "publickey")!=NULL ) {
 		char pubkeyfile[MAX_PATH+64], privkeyfile[MAX_PATH+64];
@@ -260,13 +365,11 @@ int sshHost::ssh_authentication()
 		strcat(pubkeyfile, ".ssh/id_rsa.pub");
 		strcpy(privkeyfile, homedir);
 		strcat(privkeyfile, ".ssh/id_rsa");
-		struct stat buf;		//verify existance of public/private key files
-		if ( stat(pubkeyfile, &buf)==0 && stat(privkeyfile, &buf)==0 ) {
-			if ( !libssh2_userauth_publickey_fromfile(session, username, 
+
+		if ( !libssh2_userauth_publickey_fromfile(session, username, 
 								pubkeyfile, privkeyfile, passphrase) ) {
-				print("\033[32m\r\npublic key authentication passed\n");
-				return 0;			// public key authentication passed
-			}
+			print("\033[32m\npublic key authentication passed\n");
+			return 0;			// public key authentication passed
 		}
 	}
 	if ( strstr(authlist, "password")!=NULL ) {
@@ -283,10 +386,13 @@ int sshHost::ssh_authentication()
 		}
 	}
 	else if ( strstr(authlist, "keyboard-interactive")!=NULL ) {
-		for ( int i=0; i<3; i++ )
+		for ( int i=0; i<3; i++ ) {
 			if (!libssh2_userauth_keyboard_interactive(session, username,
-                                              			&kbd_callback) ) 
+                                              			&kbd_callback) ) {
+				print("\033[32m\ninteractive authentication passed\n");
 				return 0;
+			}
+		}
 	}
 	*username=0; *password=0; *passphrase=0;
 	return rc;
@@ -303,6 +409,8 @@ int sshHost::wait_socket()
 }
 int sshHost::read()
 {
+	const char *banner;
+	
 	do_callback("Connecting", 0);
 	int rc = tcp();
 	if ( rc<0 ) goto TCP_Close;
@@ -311,15 +419,18 @@ int sshHost::read()
 	if ( libssh2_session_handshake(session, sock)!=0 ) { 
 		rc=-2; goto Session_Close; 
 	}
+
 	if ( ssh_knownhost()!=0 ) { 
 		rc=-3; goto Session_Close; 
 	}
+	
+	if ( (banner=libssh2_session_banner_get(session))!=NULL ) 
+		print("%s\n\n", banner);
+
 	if ( ssh_authentication()!=0 ) { 
 		rc=-4; goto Session_Close; 
 	}
 
-	//	libssh2_keepalive_config(session, false, 60);  
-	//	some host will close connection on keep alive
 	if ( !(channel=libssh2_channel_open_session(session)) ) 
 		{ rc=-5; goto Session_Close; }
 	if ( libssh2_channel_request_pty(channel, "xterm")) 
@@ -356,7 +467,7 @@ int sshHost::read()
 Channel_Close:
 	if ( channel!=NULL ) {
 		mtx.lock();
-		libssh2_channel_free(channel);
+		libssh2_channel_close(channel);
 		mtx.unlock();
 		channel = NULL;
 	}
@@ -370,7 +481,7 @@ Session_Close:
 TCP_Close:	
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);	//tell Fl_Term host has disconnected
-	readerThread = 0;
+	reader.detach();
 	return rc;
 }
 int sshHost::write(const char *buf, int len) 
@@ -393,7 +504,7 @@ int sshHost::write(const char *buf, int len)
 		return cch<0 ? cch : total;
 	}
 	else {
-		if ( readerThread!=0 ) 
+		if ( reader.joinable() ) 
 			write_keys(buf, len);
 		else
 			if ( *buf=='\r' ) connect();
@@ -408,20 +519,29 @@ void sshHost::send_size(int sx, int sy)
 		mtx.unlock();
 	}
 }
+void sshHost::keepalive(int interval)
+{
+	if ( bConnected ) //some host will close connection when interval!=0
+		libssh2_keepalive_config(session, false, interval);  
+}
 void sshHost::disconn()
 {
-	if ( readerThread!=0 ) {
+	if ( reader.joinable() ) {
 		bGets = false;
-		mtx.lock();
-		libssh2_channel_close(channel);
-		libssh2_channel_free(channel);
-		channel = NULL;
-		libssh2_session_disconnect(session, "client disconnect");
-		libssh2_session_free(session);
-		session = NULL;
-		mtx.unlock();
+		if ( channel!=NULL ) {
+			mtx.lock();
+			libssh2_channel_close(channel);
+			channel = NULL;
+			mtx.unlock();
+		}
+		if ( session!=NULL ) {
+			mtx.lock();
+			libssh2_session_free(session);
+			session = NULL;
+			mtx.unlock();
+		}
 		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
-		pthread_join(readerThread, NULL);
+//		reader.join();//cause crash when compiled with visual studio or xcode 
 	}
 }
 int sshHost::scp_read_one(const char *rpath, const char *lpath)
@@ -437,12 +557,12 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
         if (!scp_channel) {
             if ( err_no==LIBSSH2_ERROR_EAGAIN) 
                 if ( wait_socket()>0 ) continue;
-			print("\r\n\033[31mSCP: couldn't open remote file \033[32m%s",rpath);
+			print("\n\033[31mSCP: couldn't open remote file \033[32m%s",rpath);
             return -1;
         }
     } while (!scp_channel);
 
-	print("\r\n\033[32mSCP: %s\t ", lpath);
+	print("\n\033[32mSCP: %s\t ", lpath);
 	FILE *fp = fopen(lpath, "wb");
 	if ( fp!=NULL ) {
 		time_t start = time(NULL);
@@ -476,7 +596,6 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 	else
 		print("\033[32mcouldn't write to file", lpath);
 
-Close:
 	mtx.lock();
     libssh2_channel_close(scp_channel);
     libssh2_channel_free(scp_channel);
@@ -489,7 +608,7 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 	struct stat fileinfo;
     FILE *fp =fopen(lpath, "rb");
 	if ( fp==NULL ) {
-		print("\r\n\033[31mSCP: couldn't read from \033[32m%s", lpath);
+		print("\n\033[31mSCP: couldn't read from \033[32m%s", lpath);
 		return -1;
 	}
     stat(lpath, &fileinfo);
@@ -504,13 +623,13 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
         if ( !scp_channel ) {
 			if ( err_no==LIBSSH2_ERROR_EAGAIN ) 
 				if ( wait_socket()>0 ) continue;
-			print("\r\n\033[31mSCP: couldn't open remote file \033[32m%s",rpath);
+			print("\n\033[31mSCP: couldn't open remote file \033[32m%s",rpath);
 			fclose(fp);
 			return -2;
 		}
     } while ( !scp_channel );
  
-    print("\r\n\033[32mSCP: %s\t", rpath);
+    print("\n\033[32mSCP: %s\t", rpath);
 	time_t start = time(NULL);
 	size_t nread = 0, total = 0;
 	int rc, nmeg = 0;
@@ -570,7 +689,7 @@ int sshHost::scp_read(char *lpath, char *rpath)
 	int localIsDir = false;
 	struct stat statbuf;
 	if ( stat(lpath, &statbuf)!=-1 ) {
-		if ( S_ISDIR(statbuf.st_mode) ) 
+		if ( (statbuf.st_mode & S_IFMT) == S_IFDIR ) 
 			localIsDir = true;
 	}
 
@@ -578,7 +697,7 @@ int sshHost::scp_read(char *lpath, char *rpath)
 	while ( (p1=strchr(p, 0x0a))!=NULL ) {
 		*p1++=0; 
 		if ( localIsDir ) {
-			char lfile[1024];
+			char lfile[4096];
 			char *p2 = strrchr(p, '/');
 			if ( p2==NULL ) p2=p; else p2++;
 			strcpy(lfile, lpath);
@@ -596,47 +715,49 @@ int sshHost::scp_write(char *lpath, char *rpath)
 //lpath could have wildcard characters('*','?') in it
 //rpath ends with '/' if it's a directory
 {
-	DIR *dir;
-	struct dirent *dp;
 	struct stat statbuf;
 	for ( char *p=lpath; *p; p++ ) if ( *p=='\\' ) *p='/';
 
 	if ( stat(lpath, &statbuf)!=-1 ) {		//lpath is a single file
-		if ( rpath[strlen(rpath)-1]!='/' ) 	//rpath is a filename
-			scp_write_one(lpath, rpath);
-		else {
-			char rfile[1024];
-			strcpy(rfile, rpath);
+		char rfile[4096];
+		strncpy(rfile, rpath, 1024);
+		rfile[1024] = 0;
+		if ( rpath[strlen(rpath)-1]=='/' ) {//rpath is a directory
 			char *p = strrchr(lpath, '/');
 			if ( p!=NULL ) p++; else p=lpath;
 			strcat(rfile, p);
-			scp_write_one(lpath, rfile);
 		}
+		scp_write_one(lpath, rfile);
 	}
 	else {									//lpath has wildcard chars
-		char lfile[1024]=".", rfile[1024];
-		char *lpattern=lpath;
-		char *p = (char *)strrchr(lpath, '/');
-		if ( p!=NULL ) {
-			*p++ = 0; 
-			lpattern = p;
-			strcpy(lfile, lpath);
+		const char *ldir=".";
+		char *lpattern = strrchr(lpath, '/');
+		if ( lpattern!=NULL ) {
+			*lpattern++ = 0;
+			if ( *lpath ) ldir = lpath;
 		}
-		if ( (dir=opendir(lfile) )!=NULL ) {
-			strcat(lfile, "/");
-			strcpy(rfile, rpath);
-			int llen = strlen(lfile);
-			int rlen = strlen(rfile);
+		else 
+			lpattern = lpath;
+
+		DIR *dir;
+		struct dirent *dp;
+		if ( (dir=opendir(ldir) ) != NULL ) {
 			while ( (dp=readdir(dir)) != NULL ) {
 				if ( fnmatch(lpattern, dp->d_name, 0)==0 ) {
-					strcpy(lfile+llen, dp->d_name);
-					strcpy(rfile+rlen, dp->d_name);
-					scp_write_one(lfile, rfile);
+					char lfile[1024], rfile[1024];
+					strcpy(lfile, ldir);
+					strcat(lfile, "/");
+					strcat(lfile, dp->d_name);
+					strcpy(rfile, rpath);
+					if ( rpath[strlen(rpath)-1]=='/' )
+						strcat(rfile, dp->d_name);
+					scp_write_one( lfile, rfile );
 				}
 			}
+			closedir(dir);
 		}
 		else
-			print("\r\n\033[31mSCP: couldn't open \033[32m%s\n", lfile);
+			print("\n\033[31mSCP: couldn't open \033[32m%s\n", ldir);
 	}
 	return 0;
 }
@@ -656,7 +777,7 @@ TUNNEL *sshHost::tun_add( int tun_sock, LIBSSH2_CHANNEL *tun_channel,
 		tun->next = tunnel_list;
 		tunnel_list = tun;
 		mtx.unlock();
-		print("\r\n\033[32mtunnel %d %s:%d %s:%d\n", tun_sock,
+		print("\n\033[32mtunnel %d %s:%d %s:%d\n", tun_sock,
 							localip, localport, remoteip, remoteport);
 	}
 	return tun;
@@ -675,7 +796,7 @@ void sshHost::tun_del(int tun_sock)
 			else 
 				tunnel_list = tun->next;
 			free(tun);
-			print("\r\n\033[32mtunnel %d closed\n", tun_sock);
+			print("\n\033[32mtunnel %d closed\n", tun_sock);
 			break;
 		}
 		tun_pre = tun;
@@ -714,7 +835,7 @@ void sshHost::tun_worker(int tun_sock, LIBSSH2_CHANNEL *tun_channel)
         tv.tv_usec = 100000;
         rc = select(tun_sock + 1, &fds, NULL, NULL, &tv);
         if ( rc==-1 ) {
-            print("\r\n\033[31mselect error\033[37m\n");
+            print("\n\033[31mselect error\033[37m\n");
             break;
         }
 		if ( rc==0 ) continue;
@@ -743,7 +864,7 @@ void sshHost::tun_worker(int tun_sock, LIBSSH2_CHANNEL *tun_channel)
         }
     }
 shutdown:
-    print("\r\n\033[32mTunnel %d disconnected!\n", tun_sock); 
+    print("\n\033[32mTunnel %d disconnected!\n", tun_sock); 
 	mtx.lock();
     libssh2_channel_close(tun_channel);
     libssh2_channel_free(tun_channel);
@@ -877,12 +998,12 @@ again:
 			goto again;
 		}
 		else {
-			print("\r\n\033[31mremote tunneling connect error\n");
+			print("\n\033[31mremote tunneling connect error\n");
 			closesocket(tun_sock);
 		}
 	}
 	else {
-		print("\r\n\033[31mremote tunneling address error\n");
+		print("\n\033[31mremote tunneling address error\n");
 	}	
 	mtx.lock();
 	libssh2_channel_forward_cancel(listener);
@@ -905,7 +1026,7 @@ void sshHost::tun(char *cmd)
 			std::thread tun_thread( *cmd==':' ? &sshHost::tun_remote : 
 									&sshHost::tun_local, this, lpath, rpath );
 			tun_thread.detach();
-			usleep(100000);
+			sleep_ms(100);
 		}
 	}
 	else {
@@ -933,25 +1054,29 @@ const char *IETF_HELLO="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 <hello xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\
 <capabilities><capability>urn:ietf:params:netconf:base:1.0</capability>\
 </capabilities></hello>]]>]]>";
-const char *IETF_MSG="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n\
-<rpc xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\" message-id=\"%d\">\r\n\
+const char *IETF_MSG="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<rpc xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\" message-id=\"%d\">\n\
 %s</rpc>]]>]]>";
-confHost::confHost(const char *name):sshHost(name)
+confHost::confHost(const char *name, int in):sshHost(name)
 {
 	if ( port==22 ) port = 830;
+	interactive = in;
 }	
 const int BUFLEN=65536*4-1;
 int confHost::read()
 {
 	do_callback("Connecting", 0);	//indicates connecting
 	int rc = tcp();
-	if ( rc<0 ) goto TCP_Close;
+	if ( rc<0 ) {
+		rc = -1;
+		goto TCP_Close;
+	}
 	
 	session = libssh2_session_init();
 	if ( libssh2_session_handshake(session, sock)!=0 ) { 
 		rc=-2;	goto Session_Close; 
 	}
-	if ( ssh_knownhost()!=0 ) { 
+	if ( ssh_knownhost(interactive)!=0 ) { //not interactive
 		rc=-3; goto Session_Close; 
 	}
 	if ( ssh_authentication()!=0 ) { 
@@ -1031,22 +1156,23 @@ int confHost::read()
 Channel_Close:
 	if ( channel!=NULL ) {
 		mtx.lock();
-		libssh2_channel_free(channel);
-		if ( channel2 ) libssh2_channel_free(channel2);
-		mtx.unlock();
+		libssh2_channel_close(channel);
+		if ( channel2 ) libssh2_channel_close(channel2);
 		channel = NULL;
+		channel2 = NULL;
+		mtx.unlock();
 	}
 Session_Close:
 	if ( session!=NULL ) {
 		mtx.lock();
 		libssh2_session_free(session);
-		mtx.unlock();
 		session = NULL;
+		mtx.unlock();
 	}
 TCP_Close:
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);	//tell Fl_Term host has disconnected
-	readerThread = 0;
+	reader.detach();
 	return rc;
 }
 int confHost::write(const char *msg, int len)
@@ -1073,7 +1199,7 @@ int confHost::write(const char *msg, int len)
 		return cch<0 ? cch : msg_id;
 	}
 	else {
-		if ( readerThread!=0 ) 
+		if ( reader.joinable() ) 
 			write_keys(msg, len);
 		else
 			connect();
@@ -1082,7 +1208,6 @@ int confHost::write(const char *msg, int len)
 } 
 int confHost::write2(const char *msg, int len)
 {
-	assert(bConnected);
 	if ( channel2!=NULL ) return 0;
 	do {
 		mtx.lock();
@@ -1090,7 +1215,7 @@ int confHost::write2(const char *msg, int len)
 		mtx.unlock();
         if ( !channel2 && 
 			 (libssh2_session_last_errno(session)!=LIBSSH2_ERROR_EAGAIN)) {
-            print("\r\n\033[31mcouldn't open channel2" );
+            print("\n\033[31mcouldn't open channel2" );
             return -1;
         }
     } while ( !channel2 );
@@ -1102,14 +1227,14 @@ int confHost::write2(const char *msg, int len)
 		mtx.unlock();
 		if ( rc && 
 			 (libssh2_session_last_errno(session)!=LIBSSH2_ERROR_EAGAIN)) {
-            print("\r\n\033[31mcouldn't netconf channel2" );
+            print("\n\033[31mcouldn't netconf channel2" );
 			return -2; 
 		}
 	} while ( rc );
 
 	char buf[8192];
 	len = sprintf(buf, IETF_MSG, ++msg_id, msg);
-	print("\r\n%s\n", buf);
+	print("\n%s\n", buf);
 	mtx.lock();
 	do {
 		rc = libssh2_channel_write( channel2, IETF_HELLO, strlen(IETF_HELLO) );
@@ -1331,7 +1456,7 @@ int sftpHost::sftp_get(char *src, char *dst)
 		strcpy(lfile, *dst?dst:".");
 		struct stat statbuf;
 		if ( stat(lfile, &statbuf)!=-1 ) {
-			if ( S_ISDIR(statbuf.st_mode) ) {
+			if ( (statbuf.st_mode & S_IFMT) == S_IFDIR ) {
 				strcat(lfile, "/");
 				char *p = strrchr(src, '/');
 				if ( p!=NULL ) p++; else p=src;
@@ -1463,7 +1588,7 @@ int sftpHost::sftp(char *cmd)
 	else if ( strncmp(cmd, "put",3)==0 ) sftp_put(p1, dst);
 	else if ( strncmp(cmd, "bye",3)==0 ) return -1;
 	else if ( *cmd ) 
-			print("\t\033[31m%s is not supported command,  %s\r\n\t%s\n",
+			print("\t\033[31m%s is not supported command,  %s\n\t%s\n",
 					cmd, "\033[37mtry lcd, lpwd, cd, pwd,", 
 					"ls, dir, get, put, ren, rm, del, mkdir, rmdir, bye");
 	return 0;
@@ -1502,7 +1627,6 @@ int sftpHost::read()
 	
 	libssh2_sftp_shutdown(sftp_session);
 	bConnected = false;
-	readerThread = 0;
 	*username = 0;
 	*password = 0;
 
@@ -1515,11 +1639,12 @@ sftp_Close:
 TCP_Close:
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);
+	reader.detach();
 	return rc;
 }
 int sftpHost::write(const char *buf, int len)
 {
-	if ( readerThread!=0 ) 
+	if ( reader.joinable() ) 
 		write_keys(buf, len);
 	else
 		if ( *buf=='\r' ) connect();

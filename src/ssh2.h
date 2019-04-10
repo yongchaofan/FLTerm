@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 3823 2018-11-11 23:48:10 $"
+// "$Id: ssh2.h 3982 2019-04-10 23:48:10 $"
 //
 //  sshHost sftpHost confHost
 //
@@ -8,7 +8,7 @@
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GNU LGPL 3.0,
+// This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -56,7 +56,7 @@ protected:
 	TUNNEL *tunnel_list = NULL;
 	
 	int wait_socket();
-	int ssh_knownhost();
+	int ssh_knownhost( int interactive=true );
 	int ssh_authentication();
 	void write_keys(const char *buf, int len);
 
@@ -79,6 +79,7 @@ public:
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
+	virtual void keepalive(int interval);
 	virtual void disconn();
 //	virtual void connect();
 	int scp_read(char *rpath, char *lpath);
@@ -121,10 +122,11 @@ class confHost : public sshHost {
 private: 
 	LIBSSH2_CHANNEL *channel2;
 	int msg_id;
-
+	int interactive;
+	
 public:
-	confHost(const char *name);
-
+	confHost(const char *name, int in=true );	//Nodes in NETable use 
+												//non-interactive connection
 //	virtual const char *name();
 	virtual int type() { return HOST_CONF; }
 	virtual	int read();

@@ -1,11 +1,11 @@
 //
-// "$Id: Fl_Term.cxx 26800 2018-11-15 10:08:20 $"
+// "$Id: Fl_Term.cxx 34192 2019-04-10 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2019 by Yongchao Fan.
 //
-// This library is free software distributed under GNU LGPL 3.0,
+// This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -14,24 +14,52 @@
 //
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
-#include <ctype.h>
-#include <unistd.h>
-#include <assert.h>
+#include "ssh2.h"
 #include "Fl_Term.h"
 #include <FL/Fl_Menu.H>
 #include <FL/filename.H>               // needed for fl_decode_rui
 #include <thread>
-Fl_Menu_Item rclick_menu[]={{"Paste"},{"Copy all"},{"Erase"},{0}};
+
+int move_editor(int x, int y, int w, int h);
+void sleep_ms( int ms );
+void Fl_Term::host_cb(void *data, const char *buf, int len)
+{
+	Fl_Term *term = (Fl_Term *)data;
+	term->host_cb2(buf, len);
+}
+void Fl_Term::host_cb2(const char *buf, int len)
+{
+	if ( len>0 ) {
+		if ( host->type()==HOST_CONF ) 
+			putxml(buf, len);
+		else
+			puts(buf, len);
+	}
+	else {
+		if ( len==0 ) {
+			disp(buf); disp("\r");
+			if ( strcmp(buf, "Connected")==0 ) 
+				host->send_size(size_x, size_y);
+		}
+		else {	//len<0
+			disp("\n\033[31m");
+			disp(buf);
+			disp(*buf!='D'?" failure\033[37m\n\n":
+				 ", press Enter to restart\033[37m\n\n" );
+		}
+	}
+}
+
+Fl_Menu_Item rclick_menu[]={{"Copy"}, {"Paste"},{"Select all"},{"Erase"},{0}};
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bInsert = bAlterScreen = bAppCursor = false;
 	bEscape = bGraphic = bTitle = false;
 	bCursor = true;
-	bLogging = false;
 	bEcho = false;
 	bMouseScroll = false;
 	ESC_idx = 0;
-	term_cb = NULL;
+	host = NULL;
 
 	color(FL_BLACK);
 	textsize(16);
@@ -40,21 +68,20 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	iPrompt = 2;
 	iTimeOut = 30;
 	bPrompt = true;
-	bEnter = true;
-	bEnter1 = false;
-	bDND = bLive = false;
-
+	bDND = false;
+	fpLogFile = NULL;
+	
 	line = NULL;
+	line_size = 0;
 	buff = attr = NULL;
-	line_size = 8192;
-	buff_size = line_size*64;
-	line = (int *)malloc(line_size*sizeof(int));
-	buff = (char *)malloc(buff_size);
-	attr = (char *)malloc(buff_size);
+	buff_size = 0;
+	buffsize(4096);
 	clear();
 	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
 }
-Fl_Term::~Fl_Term(){
+Fl_Term::~Fl_Term()
+{
+	if ( host!=NULL ) delete host;
 	free(attr);
 	free(buff);
 	free(line);
@@ -79,17 +106,17 @@ void Fl_Term::clear()
 void Fl_Term::resize( int X, int Y, int W, int H )
 {
 	Fl_Widget::resize(X,Y,W,H);
-	size_x_ = w()/iFontWidth;
-	size_y_ = (h()-4)/iFontHeight;
+	size_x = w()/iFontWidth;
+	size_y = (h()-4)/iFontHeight;
 	roll_top = 0;
-	roll_bot = size_y_-1;
+	roll_bot = size_y-1;
 	if ( !bAlterScreen ) {
-		screen_y = cursor_y-size_y_+1;
+		screen_y = cursor_y-size_y+1;
 		if ( screen_y<0 ) screen_y = 0;
 		scroll_y = 0;
 	}
 	redraw();
-	do_callback(NULL, 0);	//for callback to call host->send_size()
+	if ( host!=NULL ) host->send_size(size_x, size_y);
 }
 void Fl_Term::textsize( int pt )
 {
@@ -119,9 +146,10 @@ void Fl_Term::draw()
 
 	int ly = screen_y+scroll_y;
 	if ( ly<0 ) ly=0;
-	int dy = y()+iFontHeight;
-	for ( int i=0; i<size_y_; i++ ) {
-		int dx = x()+1;
+	int dx, dy = y();
+	for ( int i=0; i<size_y; i++ ) {
+		dx = x()+1;
+		dy += iFontHeight;
 		int j = line[ly+i];
 		while( j<line[ly+i+1] ) {
 			int n=j;
@@ -144,25 +172,25 @@ void Fl_Term::draw()
 				}
 				fl_color( font_color );
 			}
-			int k = n;
-			if ( buff[k-1]==0x0a ) k--;	//for winXP
-			fl_draw( buff+j, k-j, dx, dy );
+			fl_draw( buff+j, n-j, dx, dy );
 			dx += wi;
 			j=n;
 		}
-		dy += iFontHeight;
+	}
+	dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
+	dy = y()+(cursor_y-screen_y)*iFontHeight;
+	if ( bCursor && active() ) {
+		if ( !move_editor(dx+1, dy+iFontHeight/4, w()-dx-2, iFontHeight) ) {
+			fl_color(FL_WHITE);		//draw a white bar as cursor
+			fl_rectf(dx+1, dy+iFontHeight, 8, 4);
+		}
 	}
 	if ( scroll_y || bMouseScroll) {
-		fl_color(FL_DARK3);		//draw scrollbar
+		fl_color(FL_DARK3);			//draw scrollbar
 		fl_rectf(x()+w()-8, y(), 8, y()+h());
-		fl_color(FL_RED);		//draw slider
+		fl_color(FL_RED);			//draw slider
 		int slider_y = h()*(cursor_y+scroll_y)/cursor_y;
 		fl_rectf(x()+w()-8, y()+slider_y-8, 8, 16);
-	}
-	if ( bCursor && Fl::focus()==this && active() ) {
-		fl_color(FL_WHITE);		//draw a white bar as cursor
-		int wi = fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
-		fl_rectf(x()+wi+1, y()+(cursor_y-ly+1)*iFontHeight+1, 8, 3);
 	}
 }
 int Fl_Term::handle( int e ) {
@@ -196,7 +224,7 @@ int Fl_Term::handle( int e ) {
 					redraw();
 					return 1;
 				}
-				if ( x>=size_x_-2 && scroll_y!=0 ) {//push in scrollbar area
+				if ( x>=size_x-2 && scroll_y!=0 ) {//push in scrollbar area
 					bMouseScroll = true;
 					scroll_y = y*cursor_y/h()-cursor_y;
 					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
@@ -243,15 +271,12 @@ int Fl_Term::handle( int e ) {
 		case FL_RELEASE:
 			switch ( Fl::event_button() ) {
 			case FL_LEFT_MOUSE:		//left button drag to copy
-				take_focus();
 				bMouseScroll = false;
 				if ( sel_left>sel_right ) {
 					int t=sel_left; sel_left=sel_right; sel_right=t;
 				}
-				if ( sel_left<sel_right )
-					Fl::copy(buff+sel_left, sel_right-sel_left, 1);
 				break;
-			case FL_MIDDLE_MOUSE:	//middle click to paste
+			case FL_MIDDLE_MOUSE:	//middle click to paste from selection
 				write(buff+sel_left, sel_right-sel_left);
 				break;
 			case FL_RIGHT_MOUSE: {	//right click for context menu
@@ -260,9 +285,14 @@ int Fl_Term::handle( int e ) {
 					if ( m ) {
 						const char *sel = m->label();
 						switch ( *sel ) {
+						case 'C': if ( sel_left<sel_right )
+									Fl::copy( buff+sel_left, 
+												sel_right-sel_left, 1);
+								  break;
 						case 'P': Fl::paste( *this, 1 ); break;
-						case 'C': Fl::copy(buff,cursor_x,1); break;
-						case 'E': clear();
+						case 'S': sel_left=0; sel_right=cursor_x; redraw();
+								  break;
+						case 'E': clear(); redraw();
 						}
 					}
 				}
@@ -274,7 +304,10 @@ int Fl_Term::handle( int e ) {
 		case FL_DND_DRAG:
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:
-			write(Fl::event_text(), bDND?-1:Fl::event_length());
+			if ( bDND ) 
+				run_script(strdup(Fl::event_text()));
+			else
+				write(Fl::event_text(),Fl::event_length());
 			bDND = false;
 			return 1;
 		case FL_KEYDOWN:
@@ -292,14 +325,14 @@ int Fl_Term::handle( int e ) {
 				switch (key) {
 				case FL_Page_Up:
 					if ( !bAlterScreen ) {
-						scroll_y-=size_y_;
+						scroll_y-=size_y;
 						if ( scroll_y<-screen_y ) scroll_y=-screen_y;
 						redraw();
 					}
 					break;
 				case FL_Page_Down:
 					if ( !bAlterScreen ) {
-						scroll_y+=size_y_;
+						scroll_y+=size_y;
 						if ( scroll_y>0 ) scroll_y = 0;
 						redraw();
 					}
@@ -310,15 +343,7 @@ int Fl_Term::handle( int e ) {
 				case FL_Left: write(bAppCursor?"\033OD":"\033[D",3); break;
 				case FL_BackSpace: write("\177", 1); break;
 				case FL_Enter:
-					write("\015", 1);
-					scroll_y = 0;
-					bEnter = true;
-					break;
 				default:
-					if ( bEnter ) {	//to detect Prompt after each Enter
-						bEnter = false;
-						bEnter1= true;
-					}
 					write(Fl::event_text(), Fl::event_length());
 					scroll_y = 0;
 				}
@@ -329,15 +354,18 @@ int Fl_Term::handle( int e ) {
 }
 void Fl_Term::buffsize(int new_line_size)
 {
+	new_line_size += 512;
+	if ( new_line_size == line_size ) return;
+
+	int new_buff_size = new_line_size*64;
 	char *old_buff = buff;
 	char *old_attr = attr;
 	int *old_line = line;
-	int new_buff_size = new_line_size*64;
-
+	
 	Fl::lock();
 	buff = (char *)realloc(buff, new_buff_size);
 	attr = (char *)realloc(attr, new_buff_size);
-	line = (int *)realloc(line, new_line_size*sizeof(int));
+	line = (int * )realloc(line, new_line_size*sizeof(int));
 	if ( buff!=NULL && attr!=NULL && line!=NULL ) {
 		if ( new_line_size>line_size ) {
 			memset(line+line_size, 0, (new_line_size-line_size)*sizeof(int));
@@ -381,21 +409,13 @@ void Fl_Term::next_line()
 		Fl::unlock();
 	}
 	if ( scroll_y<0 ) scroll_y--;
-	if ( screen_y<cursor_y-size_y_+1 ) screen_y = cursor_y-size_y_+1;
+	if ( screen_y<cursor_y-size_y+1 ) screen_y = cursor_y-size_y+1;
 }
 void Fl_Term::append( const char *newtext, int len ){
 	const unsigned char *p = (const unsigned char *)newtext;
 	const unsigned char *zz = p+len;
 
-	if ( bEnter1 ) { //capture prompt for scripting after Enter key and pressed
-		if ( len==1 ) {//and the echo is just one letter
-			sPrompt[0] = buff[cursor_x-2];
-			sPrompt[1] = buff[cursor_x-1];
-			iPrompt = 2;
-		}
-		bEnter1 = false;
-	}
-	if ( bLogging ) fwrite( newtext, 1, len, fpLogFile );
+	if ( fpLogFile!=NULL ) fwrite( newtext, 1, len, fpLogFile );
 	if ( bEscape ) p = vt100_Escape( p, zz-p );
 	while ( p < zz ) {
 		unsigned char c=*p++;
@@ -436,7 +456,7 @@ void Fl_Term::append( const char *newtext, int len ){
 						next_line();		//hard line feed
 					}
 					break;
-		case 0x0d: 	if ( cursor_x-line[cursor_y]==size_x_+1 && *p!=0x0a ) 
+		case 0x0d: 	if ( cursor_x-line[cursor_y]==size_x+1 && *p!=0x0a ) 
 						next_line();		//soft line feed
 					else
 						cursor_x = line[cursor_y]; 
@@ -475,11 +495,11 @@ void Fl_Term::append( const char *newtext, int len ){
 					}
 					if ( bInsert ) 			//insert one space
 						vt100_Escape((unsigned char *)"[1@",3);	
-					if ( cursor_x-line[cursor_y]>=size_x_ ) {
+					if ( cursor_x-line[cursor_y]>=size_x ) {
 						int char_cnt = 0;
 						for ( int i=line[cursor_y]; i<cursor_x; i++ )
 							if ( (buff[i]&0xc0)!=0x80 ) char_cnt++;
-						if ( char_cnt==size_x_ ) {
+						if ( char_cnt==size_x ) {
 							if ( bAlterScreen ) 
 								cursor_x--;	//don't overflow in vi
 							else
@@ -539,7 +559,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					cursor_x = line[cursor_y]+x;
 					break;
 				case 'd'://line position absolute
-					if ( n0>size_y_ ) n0 = size_y_;
+					if ( n0>size_y ) n0 = size_y;
 					x = cursor_x-line[cursor_y];
 					cursor_y = screen_y+n0-1;
 					cursor_x = line[cursor_y]+x;
@@ -585,8 +605,8 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					if ( n1==0 ) n1=1;
 					if ( n2==0 ) n2=1;		//fall through to 'H'
 				case 'H': //cursor to line n1, postion n2
-					if ( n1>size_y_ ) n1 = size_y_;
-					if ( n2>size_x_ ) n2 = size_x_;
+					if ( n1>size_y ) n1 = size_y;
+					if ( n2>size_x ) n2 = size_x;
 					cursor_y = screen_y+n1-1;
 					cursor_x = line[cursor_y];
 					while ( --n2>0 ) {
@@ -599,7 +619,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					//[J, tinycore use this for CLI editing
 						if ( !bAlterScreen ) {
 							int i=cursor_y+1; line[i]=cursor_x; 
-							while (++i<=screen_y+size_y_) line[i]=0;
+							while (++i<=screen_y+size_y) line[i]=0;
 							break;
 						}
 						else //tinycore use this to clear alterScreen 
@@ -610,10 +630,10 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					  flashwave TL1 use it without [?1049h for splash screen 
 					  freeBSD use it without [?1049h* for top and vi 		*/
 					cursor_y = screen_y; cursor_x = line[cursor_y];
-					for ( int i=0; i<size_y_; i++ ) { 
-						memset(buff+cursor_x, ' ', size_x_);
-						memset(attr+cursor_x,   0, size_x_);
-						cursor_x += size_x_;
+					for ( int i=0; i<size_y; i++ ) { 
+						memset(buff+cursor_x, ' ', size_x);
+						memset(attr+cursor_x,   0, size_x);
+						cursor_x += size_x;
 						next_line();
 					}
 					cursor_y = --screen_y; cursor_x = line[cursor_y];
@@ -634,25 +654,25 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 				case 'L': //insert n0 lines
 					for ( int i=roll_bot; i>cursor_y-screen_y; i-- ) {
 						memcpy( buff+line[screen_y+i],
-								buff+line[screen_y+i-n0], size_x_ );
+								buff+line[screen_y+i-n0], size_x );
 						memcpy( attr+line[screen_y+i],
-								attr+line[screen_y+i-n0], size_x_ );
+								attr+line[screen_y+i-n0], size_x );
 					}
 					for ( int i=0; i<n0; i++ ) {
-						memset(buff+line[cursor_y+i], ' ', size_x_);
-						memset(attr+line[cursor_y+i],   0, size_x_);
+						memset(buff+line[cursor_y+i], ' ', size_x);
+						memset(attr+line[cursor_y+i],   0, size_x);
 					}
 					break;
 				case 'M': //delete n0 lines
 					for ( int i=cursor_y-screen_y; i<=roll_bot-n0; i++ ) {
 						memcpy( buff+line[screen_y+i],
-								buff+line[screen_y+i+n0], size_x_);
+								buff+line[screen_y+i+n0], size_x);
 						memcpy( attr+line[screen_y+i],
-								attr+line[screen_y+i+n0], size_x_);
+								attr+line[screen_y+i+n0], size_x);
 					}
 					for ( int i=0; i<n0; i++ ) {
-						memset(buff+line[screen_y+roll_bot-i], ' ', size_x_);
-						memset(attr+line[screen_y+roll_bot-i],   0, size_x_);
+						memset(buff+line[screen_y+roll_bot-i], ' ', size_x);
+						memset(attr+line[screen_y+roll_bot-i],   0, size_x);
 					}
 					break;
 				case '@': //insert n0 spaces
@@ -689,22 +709,22 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 				case 'S': // scroll up n0 lines
 					for ( int i=roll_top; i<=roll_bot-n0; i++ ) {
 						memcpy( buff+line[screen_y+i],
-								buff+line[screen_y+i+n0], size_x_);
+								buff+line[screen_y+i+n0], size_x);
 						memcpy( attr+line[screen_y+i],
-								attr+line[screen_y+i+n0], size_x_);
+								attr+line[screen_y+i+n0], size_x);
 					}
-					memset(buff+line[screen_y+roll_bot-n0+1], ' ', n0*size_x_);
-					memset(attr+line[screen_y+roll_bot-n0+1],   0, n0*size_x_);
+					memset(buff+line[screen_y+roll_bot-n0+1], ' ', n0*size_x);
+					memset(attr+line[screen_y+roll_bot-n0+1],   0, n0*size_x);
 					break;
 				case 'T': // scroll down n0 lines
 					for ( int i=roll_bot; i>=roll_top+n0; i-- ) {
 						memcpy( buff+line[screen_y+i],
-								buff+line[screen_y+i-n0], size_x_);
+								buff+line[screen_y+i-n0], size_x);
 						memcpy( attr+line[screen_y+i],
-								attr+line[screen_y+i-n0], size_x_);
+								attr+line[screen_y+i-n0], size_x);
 					}
-					memset(buff+line[screen_y+roll_top], ' ', n0*size_x_);
-					memset(attr+line[screen_y+roll_top],   0, n0*size_x_);
+					memset(buff+line[screen_y+roll_top], ' ', n0*size_x);
+					memset(attr+line[screen_y+roll_top],   0, n0*size_x);
 					break;
 				case 'h':
 					if ( ESC_code[1]=='4' ) bInsert=true;
@@ -729,9 +749,9 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						if ( n0==1049 ) { 	//?1049l exit alternate screen
 							bAlterScreen = false;
 							cursor_y = screen_y; cursor_x = line[cursor_y];
-							for ( int i=1; i<=size_y_+1; i++ ) 
+							for ( int i=1; i<=size_y+1; i++ ) 
 								line[cursor_y+i] = 0;
-							screen_y = cursor_y-size_y_+1;
+							screen_y = cursor_y-size_y+1;
 							if ( screen_y<0 ) screen_y = 0;
 						}
 					}
@@ -762,25 +782,25 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 			break;
 		case 'D': // scroll up one line
 			for ( int i=roll_top; i<roll_bot; i++ ) {
-				memcpy(buff+line[screen_y+i],buff+line[screen_y+i+1],size_x_);
-				memcpy(attr+line[screen_y+i],attr+line[screen_y+i+1],size_x_);
+				memcpy(buff+line[screen_y+i],buff+line[screen_y+i+1],size_x);
+				memcpy(attr+line[screen_y+i],attr+line[screen_y+i+1],size_x);
 			}
-			memset(buff+line[screen_y+roll_bot], ' ', size_x_);
-			memset(attr+line[screen_y+roll_bot],   0, size_x_);
+			memset(buff+line[screen_y+roll_bot], ' ', size_x);
+			memset(attr+line[screen_y+roll_bot],   0, size_x);
 			bEscape = false;
 			break;
 		case 'F': //cursor to lower left corner
-			cursor_y = screen_y+size_y_-1;
+			cursor_y = screen_y+size_y-1;
 			cursor_x = line[cursor_y];
 			bEscape = false;
 			break;
 		case 'M': // scroll down one line
 			for ( int i=roll_bot; i>roll_top; i-- ) {
-				memcpy(buff+line[screen_y+i],buff+line[screen_y+i-1],size_x_);
-				memcpy(attr+line[screen_y+i],attr+line[screen_y+i-1],size_x_);
+				memcpy(buff+line[screen_y+i],buff+line[screen_y+i-1],size_x);
+				memcpy(attr+line[screen_y+i],attr+line[screen_y+i-1],size_x);
 			}
-			memset(buff+line[screen_y+roll_top], ' ', size_x_);
-			memset(attr+line[screen_y+roll_top],   0, size_x_);
+			memset(buff+line[screen_y+roll_top], ' ', size_x);
+			memset(attr+line[screen_y+roll_top],   0, size_x);
 			bEscape = false;
 			break;
 		case ']': //set window title
@@ -805,7 +825,22 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 	}
 	return sz;
 }
-
+void Fl_Term::logg( const char *fn )
+{
+	if ( fpLogFile!=NULL ) {
+		fclose( fpLogFile );
+		fpLogFile = NULL;
+		disp("\r\n\033[32m***Log file closed***\033[37m\r\n");
+	}
+	else {
+		fpLogFile = fl_fopen( fn, "wb" );
+		if ( fpLogFile != NULL ) {
+			disp("\r\n\033[32m***");
+			disp(fn);
+			disp(" opened for logging***\033[37m\r\n");
+		}
+	}
+}
 void Fl_Term::srch( const char *sstr )
 {
 	int l = strlen(sstr);
@@ -825,30 +860,12 @@ void Fl_Term::srch( const char *sstr )
 	if ( p<buff+l ) sel_left = sel_right = scroll_y = 0;
 	redraw();
 }
-void Fl_Term::logg( const char *fn )
-{
-	if ( bLogging ) {
-		fclose( fpLogFile );
-		bLogging = false;
-		disp("\r\n\033[32m***Log file closed***\033[37m\r\n");
-	}
-	else {
-		fpLogFile = fl_fopen( fn, "wb" );
-		if ( fpLogFile != NULL ) {
-			bLogging = true;
-			disp("\r\n\033[32m***");
-			disp(fn);
-			disp(" opened for logging***\033[37m\r\n");
-		}
-	}
+void Fl_Term::learn_prompt()
+{//capture prompt for scripting
+	sPrompt[0] = buff[cursor_x-2];
+	sPrompt[1] = buff[cursor_x-1];
+	iPrompt = 2;
 }
-void Fl_Term::echo(int e)
-{ 
-	bEcho = e; 
-	disp(bEcho? "\r\n\033[32mlocal echo ON\033[37m\r\n":
-				"\r\n\033[32mlocal echo OFF\033[37m\r\n");
-}
-
 char *Fl_Term::mark_prompt()
 {
 	bPrompt = false;
@@ -859,7 +876,7 @@ int Fl_Term::waitfor_prompt( )
 {
 	int oldlen = recv0;
 	for ( int i=0; i<iTimeOut*10 && !bPrompt; i++ ) {
-		usleep(100000);
+		sleep_ms(100);
 		if ( cursor_x>oldlen ) { i=0; oldlen=cursor_x; }
 	}
 	bPrompt = true;
@@ -872,7 +889,7 @@ void Fl_Term::disp(const char *buf)
 }
 void Fl_Term::send(const char *buf)
 {
-	do_callback(buf, strlen(buf));
+	write(buf, strlen(buf));
 }
 int Fl_Term::recv(char **preply)
 {
@@ -881,54 +898,104 @@ int Fl_Term::recv(char **preply)
 	recv0 = cursor_x;
 	return len;
 }
+void Fl_Term::connect(const char *hostname)
+{
+	if ( live() ) {
+		if ( strncmp(hostname, "disconn", 7)==0 ) host->disconn();
+		return;
+	}
+	
+	if ( host!=NULL ) {
+		delete host;
+		host = NULL;
+	}
+	if ( strncmp(hostname, "ssh " , 4)==0 ) {
+		host = new sshHost(hostname+4);
+	}
+	else if ( strncmp(hostname, "sftp ", 5)==0 ) {
+		host = new sftpHost(hostname+5);
+	}
+	else if ( strncmp(hostname, "telnet ", 7)==0 ) {
+		host = new tcpHost(hostname+7);
+	}
+	else if ( strncmp(hostname, "serial ", 7)==0 ) {
+		host = new comHost(hostname+7);
+	}
+	else if ( strncmp(hostname, "netconf ", 8)==0 ) {
+		host = new confHost(hostname+8);
+	}
+	if ( host!=NULL ) {
+		char label[32];
+		strncpy(label, host->name(), 28);
+		label[28]=0;
+		strcat(label, "  x");
+		copy_label(label);
+		host->callback(host_cb, this);
+		host->connect();
+	}
+}
 int Fl_Term::cmd(const char *cmd, char **preply)
 {
 	int rc = 0;
-	if ( preply!=NULL ) *preply = mark_prompt();
-	if ( *cmd=='!' ) {
+	if ( *cmd!='!' ) {
+		if ( live() ) {
+			char *p = mark_prompt();
+			send(cmd);
+			send("\r");
+			rc = waitfor_prompt();
+			if ( preply!=NULL ) *preply = p;
+		}
+		else {
+			disp(cmd); 
+			disp("\n");
+		}
+	}
+	else {
 		cmd++;
 		if ( strncmp(cmd,"Clear",5)==0 ) clear();
-		else if ( strncmp(cmd,"Log",3)==0 ) logg( cmd+3 );
+		else if ( strncmp(cmd,"Log ",4)==0 ) logg( cmd+4 );
+		else if ( strncmp(cmd,"Find ",5)==0 ) srch(cmd+5);
+		else if ( strncmp(cmd,"Wait ",5)==0 ) sleep_ms(atoi(cmd+5)*1000);
 		else if ( strncmp(cmd,"Disp ",5)==0 ) disp(cmd+5);
-		else if ( strncmp(cmd,"Send ",5)==0 ) send(cmd+5);
 		else if ( strncmp(cmd,"Recv", 4)==0 ) rc = recv(preply);
-		else if ( strncmp(cmd,"Title",5)==0 ) copy_label( cmd+6 );
-		else if ( strncmp(cmd,"Timeout",7)==0 ) iTimeOut = atoi(cmd+8);
-		else if ( strncmp(cmd,"Wait ", 5)==0 ) sleep(atoi(cmd+5));
+		else if ( strncmp(cmd,"Send ",5)==0 ) {
+			mark_prompt();
+			send(cmd+5);
+		}
+		else if ( strncmp(cmd,"Hostname",8)==0 ) {
+			if ( preply!=NULL ) {
+				*preply = (char *)label();
+				rc = strlen(*preply);
+			}
+		}
+		else if ( strncmp(cmd,"Selection",9)==0) {
+			if ( preply!=NULL ) *preply = buff+sel_left;
+			rc = sel_right-sel_left;
+		}
+		else if ( strncmp(cmd,"scp ",4)==0 ) rc = scp(strdup(cmd+4),preply);
+		else if ( strncmp(cmd,"tun",3)==0 )  rc = tun(strdup(cmd+3),preply);
 		else if ( strncmp(cmd,"Prompt ",7)==0 ) {
 			strncpy(sPrompt, cmd+7, 31);
 			sPrompt[31] = 0;
 			fl_decode_uri(sPrompt);
 			iPrompt = strlen(sPrompt);
 		}
-		else if ( strncmp(cmd,"Selection",9)==0) {
-			if ( preply!=NULL ) *preply = buff+sel_left;
-			rc = sel_right-sel_left;
-		}
 		else if ( strncmp(cmd,"Waitfor ",8)==0 ) { 
+			char *p = buff+recv0;
 			bWait = true;
 			for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
 				buff[cursor_x]=0;
-				if ( strstr(buff+recv0, cmd+8)!=NULL ) {
+				if ( strstr(p, cmd+8)!=NULL ) {
+					if ( preply!=NULL ) *preply = p;
 					rc = cursor_x-recv0;
 					break;
 				}
-				sleep(1);
+				sleep_ms(100);
 			}
 		}
-		else
-			rc = -1;
-	}
-	else {
-		if ( live() ) {
-			send(cmd);
-			send("\r");
-			rc = waitfor_prompt();
-		}
-		else {
-			disp(cmd); 
-			disp("\n");
-		}
+		else if ( strncmp(cmd,"Timeout",7)==0 ) iTimeOut = atoi(cmd+8);
+		else 
+			connect(cmd);
 	}
 	return rc;
 }
@@ -1002,19 +1069,12 @@ void Fl_Term::scripter(char *cmds)
 		p1 = strchr(p, 0x0a);
 		if ( p1!=NULL ) *p1++ = 0;
 		cmd(p, NULL);
-		while ( bScriptPaused ) usleep(1000000);
+		while ( bScriptPaused ) sleep_ms(100);
 	}
 	while ( (p=p1)!=NULL && bScriptRunning );
+	bScriptPaused = false;
+	bScriptRunning = false;
 	free(cmds);
-}
-void Fl_Term::run_script(char *script)
-{
-	if ( !bScriptRunning ) {
-		std::thread scripterThread(&Fl_Term::scripter, this, script);
-		scripterThread.detach();
-	}
-	else 
-		disp("\033[31mScript is already running\033[37m\n");
 }
 void Fl_Term::pause_script()
 {
@@ -1023,6 +1083,160 @@ void Fl_Term::pause_script()
 void Fl_Term::stop_script()
 {
 	bScriptPaused = bScriptRunning = false;
+}
+
+void Fl_Term::keepalive(int interval)
+{
+	host->keepalive(interval);
+}
+char *Fl_Term::ssh_gets(const char *prompt, int echo)
+{
+	return ((sshHost *)host)->ssh_gets(prompt, echo);
+}
+void Fl_Term::term_pwd(char *dst)
+{
+	char *p1, *p2;
+	cmd("pwd", &p2);
+	p1 = strchr(p2, 0x0a);
+	if ( p1!=NULL ) {
+		p2 = p1+1;
+		p1 = strchr(p2, 0x0a);
+		if ( p1!=NULL ) {
+			strncpy(dst, p2, p1-p2);
+			dst[p1-p2]=0;
+		}
+	}
+}
+int Fl_Term::scp(char *cmd, char **preply)
+{
+	if ( host==NULL ) {
+		disp("not connected yet\n");
+		return 0;
+	}
+	if ( host->type()!=HOST_SSH ) {
+		disp("not ssh connection\n");
+		return 0;
+	}
+
+
+	learn_prompt();
+	char *reply = mark_prompt();
+	char *p = strchr(cmd, ' ');
+	if ( p!=NULL ) {
+		*p++ = 0;
+		char *local, *remote, *rpath, rlist[1024];
+		if ( *cmd==':' ) {			//scp_read
+			local = p; remote = cmd+1;
+			strcpy(rlist, "ls -1  ");
+		}
+		else {						//scp_write
+			local = cmd; remote = p+1;
+			strcpy(rlist, "ls -ld ");
+		}
+		if ( *remote=='/') 			//get remote dir
+			strcpy(rlist+7, remote);
+		else {
+			term_pwd(rlist+7);
+			if ( *remote ) {
+				strcat(rlist, "/");
+				strcat(rlist, remote);
+			}
+		}
+		if ( Fl_Term::cmd(rlist, &rpath)>0 ) {
+			reply = mark_prompt();
+			char *p = strchr(rpath, 0x0a);
+			if ( p!=NULL ) {
+				if ( *cmd==':' ) {	//scp_read
+					remote = strdup(p+1);
+					((sshHost *)host)->scp_read(local, remote);
+				}
+				else {				//scp_write
+					if ( p[1]=='d' ) strcat(rlist, "/");
+					remote = strdup(rlist+7);
+					((sshHost *)host)->scp_write(local, remote);
+				}
+				free(remote);
+			}
+		}	
+	}
+	free(cmd);
+	host->write("\r", 1);
+	if ( preply!=NULL ) *preply = reply;
+	return waitfor_prompt();
+}
+int Fl_Term::tun(char *cmd, char **preply)
+{
+	if ( host==NULL ) {
+		disp("not connected yet\n");
+		return 0;
+	}
+	if ( host->type()!=HOST_SSH ) {
+		disp("not ssh connection\n");
+		return 0;
+	}
+
+	if ( preply!=NULL ) *preply = mark_prompt();
+	((sshHost *)host)->tun(cmd);
+	free(cmd);
+	return waitfor_prompt();
+}
+void Fl_Term::copier(char *files)
+{
+	if ( host==NULL ) return;
+	if ( host->type()!=HOST_SSH && host->type()!=HOST_SFTP ) return;
+	
+	char rdir[1024];
+	term_pwd(rdir);
+	strcat(rdir, "/");
+
+	char *p=files, *p1;
+	do {
+		p1 = strchr(p, 0x0a);
+		if ( p1!=NULL ) *p1++ = 0;
+		if ( host->type()==HOST_SSH )
+			((sshHost *)host)->scp_write(p, rdir);
+		else if ( host->type()==HOST_SFTP )
+			((sftpHost *)host)->sftp_put(p, rdir);
+	}
+	while ( (p=p1)!=NULL ); 
+	host->write("\r",1);
+	free(files);
+}
+void Fl_Term::run_script(char *script)
+{
+	if ( !live() ) {
+		puts(script, strlen(script));
+		free(script);
+		return;
+	}
+	if ( host->type()==HOST_CONF ) {
+		host->write(script, strlen(script));
+		free(script);
+		return;
+	}
+
+	learn_prompt();
+	char *p0 = script;
+	char *p1=strchr(p0, 0x0a);
+	if ( p1!=NULL ) *p1=0;
+	struct stat sb;				//is this a list of files?
+	int rc = stat(p0, &sb);
+	if ( p1!=NULL ) *p1=0x0a;
+
+	if ( rc!=-1 ) {
+		if ( host->type()==HOST_SSH || host->type()==HOST_SFTP ) {
+			std::thread scripterThread(&Fl_Term::copier, this, script);
+			scripterThread.detach();
+		}
+	}
+	else {
+		if ( !bScriptRunning ) {
+			std::thread scripterThread(&Fl_Term::scripter, this, script);
+			scripterThread.detach();
+		}
+		else 
+			disp("\033[31mScript is already running\033[37m\n");
+	}
 }
 
 #define TNO_IAC		0xff
@@ -1038,10 +1252,9 @@ void Fl_Term::stop_script()
 #define TNO_NEWENV	0x27
 unsigned char NEGOBEG[]={0xff, 0xfb, 0x03, 0xff, 0xfd, 0x03, 0xff, 0xfd, 0x01};
 unsigned char TERMTYPE[]={0xff, 0xfa, 0x18, 0x00, 0x76, 0x74, 0x31, 0x30, 0x30, 0xff, 0xf0};
-const unsigned char *Fl_Term::telnet_options( const unsigned char *buf )
+const unsigned char *Fl_Term::telnet_options( const unsigned char *p )
 {
 	unsigned char negoreq[]={0xff,0,0,0, 0xff, 0xf0};
-	const unsigned char *p = buf+1;
 	switch ( *p++ ) {
 		case TNO_DO:
 			if ( *p==TNO_TERMTYPE || *p==TNO_NEWENV || *p==TNO_ECHO ) {

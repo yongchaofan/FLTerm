@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 8522 2018-11-15 22:15:10 $"
+// "$Id: Hosts.cxx 6833 2019-04-10 22:15:10 $"
 //
 // Fan_Host tcpHost comHost
 //
@@ -8,7 +8,7 @@
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GNU LGPL 3.0,
+// This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
 //     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
@@ -20,31 +20,29 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <stdarg.h>
 #ifndef WIN32
 	#include <termios.h>
+	#include <unistd.h>
 	#include <fcntl.h>
 	#include <errno.h>
 #endif
 #include "Hosts.h"
 
-void* host_reader(void *p)
-{
-	((Fan_Host *)p)->read();
-	return NULL;
-}
+
 void Fan_Host::connect()
 {
-	if ( readerThread==0 ) 
-		pthread_create(&readerThread, NULL, host_reader, this);
+	if ( reader.joinable() == false ) {
+		std::thread new_reader(&Fan_Host::read, this);
+		reader.swap(new_reader);
+	}
 }
 void Fan_Host::print( const char *fmt, ... ) 
 {
 	char buff[4096];
 	va_list args;
-	va_start(args, (char *)fmt);
-	int len = vsnprintf(buff, 4096, (char *)fmt, args);
+	va_start(args, fmt);
+	int len = vsnprintf(buff, 4096, fmt, args);
 	va_end(args);
 	do_callback(buff, len);
 	do_callback("\033[37m",5);
@@ -74,7 +72,7 @@ void comHost::disconn()
 {
 	if ( bConnected ) {
 		bConnected = false;
-		pthread_join(readerThread, NULL);
+		if ( reader.joinable() ) reader.join();
 	}
 }
 #ifdef WIN32
@@ -128,7 +126,7 @@ int comHost::read()
 	CloseHandle(hCommPort);
 shutdown:
 	do_callback(errmsgs[-rc], -1);
-	readerThread = 0;
+	reader.detach();
 	return rc;
 }
 int comHost::write(const char *buf, int len)
@@ -139,7 +137,7 @@ int comHost::write(const char *buf, int len)
 			disconn();
 	}
 	else
-		if ( readerThread==0 && *buf=='\r' )
+		if ( reader.joinable()==false && *buf=='\r' )
 			connect();
 	return dwWrite;
 }
@@ -191,7 +189,7 @@ int comHost::read()
 	close(ttySfd);
 shutdown:
 	do_callback(errmsgs[-rc], -1);
-	readerThread = 0;
+	reader.detach();
 	return -1;
 }
 int comHost::write(const char *buf, int len)
@@ -202,7 +200,7 @@ int comHost::write(const char *buf, int len)
 			disconn();
 	}
 	else
-		if ( readerThread==0 && *buf=='\r' )
+		if ( reader.joinable()==false && *buf=='\r' )
 			connect();
 	return 0;
 }
@@ -251,7 +249,7 @@ int tcpHost::read()
 TCP_Close:
 	closesocket(sock);
 	do_callback(errmsgs[-rc], -1);	//tell Fl_Term host has disconnected
-	readerThread = 0;
+	reader.detach();
 	return rc;
 }
 int tcpHost::write(const char *buf, int len ) 
@@ -269,14 +267,14 @@ int tcpHost::write(const char *buf, int len )
 		return total;
 	}
 	else {
-		if ( readerThread==0 && *buf=='\r' ) connect();
+		if (  reader.joinable()==false && *buf=='\r' ) connect();
 	}
 	return 0;
 }
 void tcpHost::disconn()
 {
-	if ( readerThread!=0 ) {
+	if ( reader.joinable() ) {
 		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
-		pthread_join(readerThread, NULL);
+//		reader.join();//cause crash when compiled with visual studio or xcode 
 	}
 }
