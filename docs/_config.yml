@@ -1,0 +1,6 @@
+theme: jekyll-theme-cayman
+show_downloads: true
+github:
+  store_url: https://www.microsoft.com/store/apps/9NXGN9LJTL05
+  zip_url: https://github.com/yongchaofan/flTerm/releases/download/1.0/flTerm-1.0.zip
+  description: simple, small and scriptable terminal emulator
