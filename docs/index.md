@@ -1,6 +1,6 @@
 ## Introduction
 
-tinyTerm started as a simple telnet client used to work with telecom transport equipment through command line interface(TL1). Over time  it has grown to a full function terminal emulator supporting serial, telnet, ssh, sftp and netconf connections with xterm emulation,  plus unique features like: **command autocompletion**, **scp integration**, **batch automation**, and **scripting**. 
+tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions as was in tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.1, the win32 exectuable is 520KB, win64 executable 640KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
 	
 <table>
 	<tr>
@@ -11,17 +11,15 @@ tinyTerm started as a simple telnet client used to work with telecom transport e
 		</video>
 	    </td>
 	    <td>
-		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm">1.3</a></h4>
+		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm2">1.1</a></h4>
 		<h4>Appx package:<br/><a href="https://www.microsoft.com/store/apps/9NXGN9LJTL05">Microsoft Store</a></h4>
 		<h4>Portable version:<br/>
-	32-bit: <a href="https://github.com/yongchaofan/tinyTerm/releases/download/1.3/tinyTerm.exe">tinyTerm.exe</a><br/>
-	64-bit: <a href="https://github.com/yongchaofan/tinyTerm/releases/download/1.3/tinyTerm64.exe">tinyTerm64.exe</a></h4>
-		<h4>License: <a href="https://github.com/yongchaofan/tinyTerm/blob/master/LICENSE">GPL 3.0</a></h4>
+	32-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.1/tinyTerm2.exe">tinyTerm.exe</a><br/>
+	64-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.1/tinyTerm2_64.exe">tinyTerm64.exe</a></h4>
+		<h4>License: <a href="https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE">GPL 3.0</a></h4>
 	    </td>
 	</tr>
 </table>
-
-tinyTerm is written in C with Win32 API, [libssh2](http://libssh2.org) used for SSH2 functions.
 
 Windows 10 user should install from Microsoft Store, users on older versions of Windows, or prefer portable apps download exe files.
 
