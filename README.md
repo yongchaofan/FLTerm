@@ -9,9 +9,9 @@ source files included:
 
     ssh2.h and ssh2.cxx implements ssh, sftp and netconf hosts
 
-    Hosts.h and Hosts.cxx implements telnet and serial hosts, plus ftp and tftp daemon for win32
+    host.h and host.cxx implements telnet and serial hosts, plus ftp and tftp daemon for win32
 
-    tiny2.cxx combines Fl_Term, Hosts and sftp to create the simple terminal application
+    tiny2.cxx combines Fl_Term, host and ssh2 to create the simple terminal application
   
 tinyTerm2 can be compiled on Windows using mingW or Visual Studio command line tools, on MacOS using command line development tool or on UNIX/Linux using gnu tools
 
