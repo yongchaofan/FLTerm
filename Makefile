@@ -6,7 +6,7 @@ LDFLAGS = ${shell fltk-config --ldstaticflags} -lc++ -lssl -lcrypto
 
 all: tinyTerm2
 
-tinyTerm2: obj/flTerm.o obj/Fl_Term.o obj/Fl_Browser_Input.o obj/host.o obj/ssh2.o
+tinyTerm2: obj/tiny2.o obj/Fl_Term.o obj/Fl_Browser_Input.o obj/host.o obj/ssh2.o
 	cc -o "$@" obj/flTerm.o obj/Fl_Term.o obj/Fl_Browser_Input.o obj/host.o obj/ssh2.o ${LIBS} ${LDFLAGS}
 
 obj/%.o: src/%.cxx 
