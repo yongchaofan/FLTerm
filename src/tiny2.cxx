@@ -1,7 +1,7 @@
 //
 // "$Id: flTerm.cxx 19951 2019-01-31 21:05:10 $"
 //
-// flTerm -- FLTK based terminal emulator
+// tinyTerm2 -- FLTK based terminal emulator
 //
 //    example application using the Fl_Term widget.
 //
@@ -17,16 +17,21 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 
-const char ABOUT_TERM[]="\n\n\
-    flTerm is a terminal emulator designed for network engineers,\n\n\
-    with focus on simplicity and scriptibility for CLI users:\n\n\n\
-        * serial/telnet/ssh/sftp/netconf client\n\n\
-        * single executable smaller than 1MB\n\n\
-        * Windows, macOS and Linux compatible\n\n\
-        * simple automation of command batches\n\n\
-        * scriptable through \033[34mxmlhttp://127.0.0.1:%s\033[37m\n\n\n\
-    by yongchaofan@gmail.com		11-11-2018\n\n\
-    https://github.com/zoudaokou/flTerm\n\n\n";
+const char ABOUT_TERM[]="\n\
+\ttinyTerm2 is a simple, small and scriptable terminal emulator,\n\n\
+\ta serial/telnet/ssh/sftp/netconf client with unique features:\n\n\n\
+\t    * cross platform, Windows, macOS and Linux\n\n\
+\t    * win64 portable exe smaller than 640KB\n\n\
+\t    * command history and autocompletion\n\n\
+\t    * text based batch command automation\n\n\
+\t    * drag and drop to transfer files via scp\n\n\
+\t    * scripting interface at xmlhttp://127.0.0.1:%s\n\n\n\
+\tmacOS:  https://www.microsoft.com/store/apps/9NXGN9LJTL05\n\n\
+\tWindows: https://www.microsoft.com/store/apps/9NXGN9LJTL05\n\n\
+\thomepage: https://yongchaofan.github.io/tinyTerm2/\n\n\n\
+\tVerision 1.1, �2018-2019 Yongchao Fan, All rights reserved\r\n";
+
+#ifdef WIN32
 const char SCP_TO_FOLDER[]="\
 var xml = new ActiveXObject(\"Microsoft.XMLHTTP\");\n\
 var port = \"8080/?\";\n\
@@ -40,25 +45,32 @@ function term( cmd ) {\n\
    xml.Send();\n\
    return xml.responseText;\n\
 }";
+#else
+const char SCP_TO_HOME[]="#!/bin/sh\n\
+FILENAME=`curl \"http://127.0.0.1:8080/%3F%21Selection\"`\n\
+curl \"http://127.0.0.1:8080/%3F%21scp%20%3A$FILENAME%20%2E%2E\"";
+#endif
 
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #ifdef WIN32
+	#include <direct.h>
 	#include <process.h>
+#else
+	#include <pwd.h>
 #endif
 #include <thread>
-#include "Hosts.h"
+#include "host.h"
 #include "ssh2.h"
 #include "Fl_Term.h"
 #include "Fl_Browser_Input.h"
 
-#define CMDHEIGHT	24
-#define TABHEIGHT 	28
+#define TABHEIGHT 	24
 #ifdef __APPLE__
   #define MENUHEIGHT 0
 #else
-  #define MENUHEIGHT 28
+  #define MENUHEIGHT 24
 #endif
 #include <FL/platform.H>               // needed for fl_display
 #include <FL/Fl.H>
@@ -100,6 +112,7 @@ Fl_Button *pConnect;
 Fl_Button *pCancel;
 
 #define CHOOSE_FILE 		Fl_Native_File_Chooser::BROWSE_FILE
+#define CHOOSE_DIR			Fl_Native_File_Chooser::BROWSE_DIRECTORY 	
 #define CHOOSE_SAVE_FILE 	Fl_Native_File_Chooser::BROWSE_SAVE_FILE
 #define CHOOSE_SAVE_DIR 	Fl_Native_File_Chooser::BROWSE_SAVE_DIRECTORY
 static Fl_Native_File_Chooser fnfc;
@@ -117,7 +130,6 @@ const char *file_chooser(const char *title, const char *filter, int type,
 	}
 	return NULL;  			// cancel or error
 }
-
 void about_cb(Fl_Widget *w, void *data)
 {
 	char buf[4096];
@@ -133,8 +145,7 @@ const char *kb_gets(const char *prompt, int echo)
 }
 void tab_init()
 {
-	pTabs = new Fl_Tabs(0, MENUHEIGHT, pWindow->w(), 
-					pWindow->h()-MENUHEIGHT-(Fl::focus()==pCmd?CMDHEIGHT:0));
+	pTabs = new Fl_Tabs(0, MENUHEIGHT, pWindow->w(), pWindow->h()-MENUHEIGHT);
 	pTabs->when(FL_WHEN_RELEASE|FL_WHEN_CHANGED|FL_WHEN_NOT_CHANGED);
 	pTabs->callback(tab_cb);
 	pTabs->selection_color(FL_CYAN);
@@ -208,6 +219,7 @@ void tab_del()
 	else {
 		pTerm->clear();
 		pTerm->label("term");
+		pWindow->label("tinyTerm2");
 	}
 	pTabs->redraw();
 }
@@ -288,7 +300,7 @@ void connect_cb(Fl_Widget *w)
 	}
 	pDialog->hide();
 	if ( pCmd->add(buf)!=0 )
-		pMenuBar->insert(6, buf+1, 0, menu_host_cb);
+		pMenuBar->insert(7, buf+1, 0, menu_host_cb);
 	if ( pTerm->live() ) tab_new();
 	pTerm->connect(buf+1);
 	pMenuDisconn->activate();
@@ -311,6 +323,11 @@ void cmd_cb(Fl_Widget *o)
 		case '!':	if ( strncmp(cmd, "!scp ", 5)==0 ) {
 						std::thread scp_thread(&Fl_Term::scp, pTerm, 
 												strdup(cmd+5), (char **)NULL);
+						scp_thread.detach();
+					}
+					else if ( strncmp(cmd, "!tun", 4)==0 ) {
+						std::thread scp_thread(&Fl_Term::tun, pTerm, 
+												strdup(cmd+4), (char **)NULL);
 						scp_thread.detach();
 					}
 					else
@@ -455,6 +472,17 @@ void menu_host_cb(Fl_Widget *w, void *data)
 	pTerm->connect(pMenuBar->text());
 	pMenuDisconn->activate();
 }
+void daemon_host_cb(Fl_Widget *w, void *data)
+{
+	char cmd[MAX_PATH];
+	const char *fname = file_chooser("choose root directory", "*", CHOOSE_DIR);
+	if ( fname!=NULL ) {
+		if ( pTerm->live() ) tab_new();
+		strcpy(cmd, pMenuBar->text());
+		strcat(cmd, fname);
+		pTerm->connect(cmd);
+	}
+}
 void close_cb(Fl_Widget *w, void *data)
 {
 	if ( pTabs==NULL ) {	//not multi-tab
@@ -483,13 +511,14 @@ Fl_Menu_Item menubar[] = {
 {"&Connect...", FL_ALT+'c', menu_cb},
 {"&Disconnect", FL_ALT+'d', menu_cb},
 {"Logging...",	0,			menu_cb, 	0, 	FL_MENU_TOGGLE},
-{"Local Echo",	0,			menu_cb,	0,	FL_MENU_TOGGLE},
-{"About", 		0,			about_cb,	0,	FL_MENU_DIVIDER},
+{"Local Echo",	0,			menu_cb,	0,	FL_MENU_TOGGLE|FL_MENU_DIVIDER},
+{"ftpd ", 		0, 	daemon_host_cb},
+{"tftpd ", 		0,	daemon_host_cb},		
 {0},
 {"Script", 		0,	0,		0, 	FL_SUBMENU},
 {"Run...",		FL_ALT+'r',	menu_cb},
 {"Pause",		FL_ALT+'p',	menu_cb},
-{"Stop",		FL_ALT+'q',	menu_cb,	0,	FL_MENU_DIVIDER},		
+{"Stop",		FL_ALT+'q',	menu_cb,		0,	FL_MENU_DIVIDER},
 {0},
 {"Options", 	0,	0,		0, 	FL_SUBMENU},
 {"Local Edit",	FL_ALT+'e',	editor_cb,	0,	FL_MENU_TOGGLE},
@@ -524,9 +553,65 @@ Fl_Menu_Item menubar[] = {
 {"5 minutes",	0,	menu_cb,0,	FL_MENU_RADIO},
 {"15 minutes",	0,	menu_cb,0,	FL_MENU_RADIO},
 {0},
+{"About tinyTerm2", 0, about_cb},
 {0},
 {0}
 };
+void load_script()			// set working directory and load scripts to menu
+{
+#ifdef WIN32
+ 	if ( GetFileAttributes("tinyTerm.hist")==INVALID_FILE_ATTRIBUTES ) 
+ 	{						// if current directory doesn't have .hist
+		_chdir(getenv("USERPROFILE"));
+		_mkdir("Documents\\tinyTerm");
+		_chdir("Documents\\tinyTerm");
+	}
+
+	WIN32_FIND_DATA FindFileData;
+	HANDLE hFind = FindFirstFile("script\\*.*", &FindFileData);
+	if (hFind != INVALID_HANDLE_VALUE) 
+	{
+		do {
+			if ( FindFileData.cFileName[0]!='.' )
+				pMenuBar->insert(12, FindFileData.cFileName, 0, script_cb);
+		} while( FindNextFile(hFind, &FindFileData) );
+	}
+	else {
+		_mkdir("script");
+		FILE *fp = fopen("script\\scp_to_folder.js", "w+");
+		if ( fp!=NULL ) {
+			fprintf(fp, "%s", SCP_TO_FOLDER); 
+			fclose(fp);
+			pMenuBar->insert(12, "scp_to_folder.js", 0, script_cb);
+		}
+	}
+#else
+	char *homedir = getenv("HOME");
+	if ( homedir==NULL ) homedir = getpwuid(getuid())->pw_dir;
+	chdir(homedir);
+	mkdir(".tinyTerm", 0755);
+	chdir(".tinyTerm");
+	DIR *dir;
+	struct dirent *dp;
+	if ( (dir=opendir("script") ) != NULL ) {
+		while ( (dp=readdir(dir)) != NULL ) {
+			if ( dp->d_name[0]!='.' )
+				pMenuBar->insert(12, dp->d_name, 0, script_cb);
+		}
+		closedir(dir);
+	}
+	else {
+		mkdir("script", 0755);
+		FILE *fp = fopen("script/scp_to_home.sh", "w+");
+		if ( fp!=NULL ) {
+			fprintf(fp, "%s", SCP_TO_HOME); 
+			fclose(fp);
+			chmod("script/scp_to_home.sh", 0755);
+			pMenuBar->insert(12, "scp_to_home.sh", 0, script_cb);
+		}
+	}		
+#endif
+}
 void load_dict()
 {
 	FILE *fp = fopen("tinyTerm.hist", "r");
@@ -541,7 +626,7 @@ void load_dict()
 					strncmp(line+1, "serial",6)==0 ||
 					strncmp(line+1, "sftp",4)==0 || 
 					strncmp(line+1, "netconf",7)==0 )
-						pMenuBar->insert(6, line+1, 0, menu_host_cb);
+						pMenuBar->insert(7, line+1, 0, menu_host_cb);
 			}
 			if ( *line=='~' ) {
 				char name[256] = "Options/";
@@ -595,7 +680,7 @@ void save_dict()
 			fprintf(fp, "~LocalEdit\n");
 		if ( textsize!=14 ) 
 			fprintf(fp, "~FontSize %d\n", textsize);
-		if ( buffsize!=8192 ) 
+		if ( buffsize!=4096 ) 
 			fprintf(fp, "~BuffSize %d\n", buffsize);
 		if ( pWindow->w()!=800 || pWindow->h()!=640 ) {
 			fl_font(FL_COURIER, textsize);
@@ -623,7 +708,7 @@ int main(int argc, char **argv)
 	Fl::set_font(FL_COURIER, "Consolas");
 #endif
 	
-	pWindow = new Fl_Double_Window(800, 640, "Term");
+	pWindow = new Fl_Double_Window(800, 640, "tinyTerm2");
 	{
 		pMenuBar=new Fl_Sys_Menu_Bar(0, 0, pWindow->w(), MENUHEIGHT);
 		pMenuBar->menu(menubar);
@@ -675,42 +760,8 @@ int main(int argc, char **argv)
 	Fl::lock();
 #ifdef WIN32
     pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
-
-	FILE *fp = fopen("tinyTerm.hist", "r");
- 	if ( fp==NULL )
- 	{
-		char hist_fn[MAX_PATH], *homedir;
-		homedir = getenv("USERPROFILE");
-		strcpy(hist_fn, homedir);
-		strcat( hist_fn, "\\Documents\\tinyTerm\\" );
-		if ( GetFileAttributesA( hist_fn )!= FILE_ATTRIBUTE_DIRECTORY )
-			CreateDirectoryA( hist_fn, NULL );
-		_chdir( hist_fn );
-	}
-	else
-		fclose(fp);
-	if ( GetFileAttributesA( "script\\" )!= FILE_ATTRIBUTE_DIRECTORY )
-	{
-		CreateDirectoryA( "script\\", NULL );
-		FILE *fp = fopen("script\\scp_to_folder.js", "w+");
-		if ( fp!=NULL ) 
-		{
-			fprintf(fp, "%s", SCP_TO_FOLDER); 
-			fclose(fp);
-		}
-	}
-
-	WIN32_FIND_DATA FindFileData;
-	HANDLE hFind = FindFirstFile("script\\*.*", &FindFileData);
-	if (hFind != INVALID_HANDLE_VALUE) 
-	{
-		do {
-			if ( FindFileData.cFileName[0]!=L'.' )
-				pMenuBar->insert(11, FindFileData.cFileName, 0, script_cb);
-		} while( FindNextFile(hFind, &FindFileData) );
-	}
 #endif
-
+	load_script();
 	load_dict();
 	pWindow->show();
 	while ( Fl::wait() ) {
@@ -724,7 +775,7 @@ int main(int argc, char **argv)
 }
 /**********************************HTTPd**************************************/
 const char HEADER[]="HTTP/1.1 200 OK\
-					\nServer: flTerm-httpd\
+					\nServer: tinyTerm2-httpd\
 					\nAccess-Control-Allow-Origin: *\
 					\nContent-Type: text/plain\
 					\nContent-length: %d\
@@ -746,7 +797,7 @@ const char *mime[]={"text/plain",
 					};
 void httpFile( int s1, char *file)
 {
-	char reply[4096], timebuf[128];
+	char reply[32768], timebuf[128];
 	int len, i, j;
 	time_t now;
 
@@ -755,23 +806,22 @@ void httpFile( int s1, char *file)
 
     struct stat sb;
 	if ( stat( file, &sb ) ==-1 ) {
-		len=sprintf(reply, "HTTP/1.1 404 not found\nDate: %s\nServer: flTerm\n",
-																	timebuf);
-		len+=sprintf(reply+len, "Content-Type: text/html\nContent-Length: 14\n\n");
-	    send(s1, reply, len, 0);
-	    len=sprintf(reply, "file not found");
+		len=sprintf(reply, "HTTP/1.1 404 not found\nDate: %s\n", timebuf);
+		len+=sprintf(reply+len, "Server: tinyTerm2\nContent-Type: text/html\n");
+	    len+=sprintf(reply+len, "Content-Length: 14\n\nfile not found");
 		send(s1, reply, len, 0);
 		return;
 	}
 
 	FILE *fp = fopen( file, "rb" );	
 	if ( fp!=NULL ) {
-		len=sprintf(reply, "HTTP/1.1 200 Ok\nDate: %s\nServer: flTerm\n",
-																	timebuf);
-		const char *filext=file+strlen(file)-1;
-		while ( *filext!='.' ) filext--;
-		for ( i=0, j=0; j<8; j++ ) if ( strcmp(filext, exts[j])==0 ) i=j;
-		len+=sprintf(reply+len, "Content-Type: %s\n", mime[i]);
+		len=sprintf(reply, "HTTP/1.1 200 Ok\nDate: %s\n", timebuf);
+		const char *filext=strrchr(file, '.');
+		if ( filext!=NULL ) {
+			for ( i=0, j=0; j<8; j++ ) 
+				if ( strcmp(filext, exts[j])==0 ) i=j;
+		}
+		len+=sprintf(reply+len,"Server: tinyTerm2\nContent-Type: %s\n",mime[i]);
 
 		long filesize = sb.st_size;
 		len+=sprintf(reply+len, "Content-Length: %ld\n", filesize );
@@ -779,7 +829,7 @@ void httpFile( int s1, char *file)
 		len+=sprintf(reply+len, "Last-Modified: %s\n\n", timebuf );
 
 		send(s1, reply, len, 0);
-		while ( (len=fread(reply, 1, 4096, fp))>0 )
+		while ( (len=fread(reply, 1, 32768, fp))>0 )
 			if ( send(s1, reply, len, 0)==-1)	break;
 		fclose(fp);
 	}

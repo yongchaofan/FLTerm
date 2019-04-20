@@ -18,7 +18,7 @@
 //     https://github.com/zoudaokou/flTerm/issues/new
 //
 
-#include "Hosts.h"
+#include "host.h"
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 #include <thread>
@@ -43,6 +43,7 @@ protected:
 	char username[64];
 	char password[64];
 	char passphrase[64];
+	char subsystem[64];
 	char homedir[MAX_PATH];
 	int bGets;				//gets() function is waiting for return bing pressed
 	int bReturn;			//true if during gets() return has been pressed
@@ -53,7 +54,7 @@ protected:
 	std::mutex mtx;
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
-	TUNNEL *tunnel_list = NULL;
+	TUNNEL *tunnel_list;
 	
 	int wait_socket();
 	int ssh_knownhost( int interactive=true );
@@ -75,7 +76,7 @@ public:
 	sshHost(const char *name); 
 
 //	virtual const char *name();
-	virtual int type() { return HOST_SSH; }
+	virtual int type() { return *subsystem ? HOST_CONF : HOST_SSH; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
@@ -117,28 +118,4 @@ public:
 	int sftp_put(char *src, char *dst);
 	int sftp(char *p);
 };
-
-class confHost : public sshHost {
-private: 
-	LIBSSH2_CHANNEL *channel2;
-	int msg_id;
-	int interactive;
-	
-public:
-	confHost(const char *name, int in=true );	//Nodes in NETable use 
-												//non-interactive connection
-//	virtual const char *name();
-	virtual int type() { return HOST_CONF; }
-	virtual	int read();
-	virtual int write(const char *buf, int len);
-	int write2(const char *buf, int len);
-	virtual void send_size(int sx, int sy){};
-//	virtual void disconn();		//use from sshHost
-//	virtual void connect();		
-	void set_user_pass( const char *user, const char *pass ) { 
-		if ( *user ) strncpy(username, user, 31); 
-		if ( *pass ) strncpy(password, pass, 31); 
-	}
-};
-
 #endif //_SSH2_H_

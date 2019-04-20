@@ -16,7 +16,8 @@
 //
 #include <FL/Fl.H>
 #include <FL/fl_draw.H>
-#include "Hosts.h"
+#include "host.h"
+#include <atomic>
 
 #ifndef _FL_TERM_H_
 #define _FL_TERM_H_
@@ -42,6 +43,7 @@ class Fl_Term : public Fl_Widget {
 	int iFontWidth;		//current font width in pixels
 	int iFontHeight;	//current font height in pixels
 	int font_size;		//current font weight
+	std::atomic<bool> redraw_complete;
 	int bMouseScroll;	//if mouse is dragged on scrollbar
 	
 	int bEscape;		//escape sequence processing mode
@@ -75,7 +77,7 @@ class Fl_Term : public Fl_Widget {
 	int bScriptRunning;
 	int bScriptPaused;
 
-	Fan_Host *host;
+	HOST *host;
 
 protected: 
 	void draw();
@@ -127,7 +129,7 @@ public:
 
 	void puts(const char *buf, int len) { append(buf, len); }
 	void putxml(const char *msg, int len);
-	void set_host(Fan_Host *host);
+	void set_host(HOST *host);
 	void host_cb2(const char *buf, int len);
 static void host_cb(void *data, const char *buf, int len);
 	char *ssh_gets(const char *prompt, int echo);

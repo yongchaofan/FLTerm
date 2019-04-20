@@ -36,16 +36,17 @@ void Fl_Term::host_cb2(const char *buf, int len)
 			puts(buf, len);
 	}
 	else {
-		if ( len==0 ) {
-			disp(buf); disp("\r");
-			if ( strcmp(buf, "Connected")==0 ) 
+		if ( len==0 ) {	//Connected or Disconnected
+			disp("\033[33m"); disp(buf); 
+			disp("\033[37m");
+			if ( *buf=='C' ) 
 				host->send_size(size_x, size_y);
+			if ( *buf=='D' ) 
+				disp(", press Enter to restart\n\n");
 		}
 		else {	//len<0
-			disp("\n\033[31m");
-			disp(buf);
-			disp(*buf!='D'?" failure\033[37m\n\n":
-				 ", press Enter to restart\033[37m\n\n" );
+			disp("\033[31m"); disp(buf);
+			disp(" failure\033[37m\n\n");
 		}
 	}
 }
@@ -63,7 +64,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 
 	color(FL_BLACK);
 	textsize(16);
-	strcpy(sTitle, "flTerm");
+	strcpy(sTitle, "Term");
 	strcpy(sPrompt, "> ");
 	iPrompt = 2;
 	iTimeOut = 30;
@@ -75,6 +76,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	line_size = 0;
 	buff = attr = NULL;
 	buff_size = 0;
+	redraw_complete = false;
 	buffsize(4096);
 	clear();
 	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
@@ -133,6 +135,7 @@ const unsigned int VT_attr[8] = {
 };
 void Fl_Term::draw()
 {
+	redraw_complete = true;
 	fl_color(color());
 	fl_rectf(x(),y(),w(),h());
 	fl_font(FL_COURIER, font_size);
@@ -512,8 +515,12 @@ void Fl_Term::append( const char *newtext, int len ){
 		}
 	}
 	if ( !bPrompt )
-		bPrompt = (strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0);
-	Fl::awake( this );
+		if (strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0) 
+			bPrompt = true;
+	if ( visible() && redraw_complete ) {
+		redraw_complete = false;
+		Fl::awake( this );
+	}
 }
 
 const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
@@ -864,6 +871,7 @@ void Fl_Term::learn_prompt()
 {//capture prompt for scripting
 	sPrompt[0] = buff[cursor_x-2];
 	sPrompt[1] = buff[cursor_x-1];
+	sPrompt[2] = 0;
 	iPrompt = 2;
 }
 char *Fl_Term::mark_prompt()
@@ -922,8 +930,19 @@ void Fl_Term::connect(const char *hostname)
 		host = new comHost(hostname+7);
 	}
 	else if ( strncmp(hostname, "netconf ", 8)==0 ) {
-		host = new confHost(hostname+8);
+		char netconf[256];
+		strcpy(netconf, "-s ");
+		strcat(netconf, hostname);
+		host = new sshHost(netconf);
 	}
+#ifdef WIN32
+	else if ( strncmp(hostname, "ftpd ", 5)==0 ) {
+		host = new ftpdHost(hostname+5);
+	}
+	else if ( strncmp(hostname, "tftpd ", 6)==0 ) {
+		host = new tftpdHost(hostname+6);
+	}
+#endif
 	if ( host!=NULL ) {
 		char label[32];
 		strncpy(label, host->name(), 28);
@@ -1027,35 +1046,28 @@ void Fl_Term::putxml(const char *msg, int len)
 			}
 			append("\033[32m",5);
 			q = strchr(p, '>');
-			if ( q!=NULL ) {
-				const char *r = strchr(p, ' ');
-				if ( r!=NULL && r<q ) {
-					append(p, r-p);
-					append("\033[35m",5);
-					append(r, q-r);
-				}
-				else
-					append(p, q-p);
-				append("\033[32m>",6);
-				if ( q[-1]=='/' ) xmlTagIsOpen = false;
-				p = q+1;
+			if ( q==NULL ) q = p+strlen(p);
+			const char *r = strchr(p, ' ');
+			if ( r!=NULL && r<q ) {
+				append(p, r-p);
+				append("\033[34m",5);
+				append(r, q-r);
 			}
-			else { //incomplete tag ( pair of '<' and '>'
-				append(p, strlen(p));
-				break;
+			else
+				append(p, q-p);
+			append("\033[32m>",6);
+			p = q;
+			if ( *q=='>' ) {
+				p++;
+				if ( q[-1]=='/' ) xmlTagIsOpen = false;
 			}
 		}
 		else {			//data
 			append("\033[33m",5);
 			q = strchr(p, '<');
-			if ( q!=NULL ) {
-				append(p, q-p);
-				p = q;
-			}
-			else { //not xml or incomplete xml
-				append(p, strlen(p));
-				break;
-			}
+			if ( q==NULL ) q = p+strlen(p);
+			append(p, q-p);
+			p = q;
 		}
 	}
 }
@@ -1117,7 +1129,6 @@ int Fl_Term::scp(char *cmd, char **preply)
 		disp("not ssh connection\n");
 		return 0;
 	}
-
 
 	learn_prompt();
 	char *reply = mark_prompt();
@@ -1210,6 +1221,7 @@ void Fl_Term::run_script(char *script)
 		return;
 	}
 	if ( host->type()==HOST_CONF ) {
+		if ( bEcho ) putxml(script, strlen(script));
 		host->write(script, strlen(script));
 		free(script);
 		return;
