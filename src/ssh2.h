@@ -1,12 +1,12 @@
 //
-// "$Id: ssh2.h 3982 2019-04-10 23:48:10 $"
+// "$Id: ssh2.h 3348 2019-05-10 23:48:10 $"
 //
-//  sshHost sftpHost confHost
+//  sshHost sftpHost
 //
 //	host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2019 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -111,9 +111,9 @@ public:
 	virtual int type() { return HOST_SFTP; }
 	virtual int read();
 	virtual int write(const char *buf, int len);
-	virtual void send_size(int sx, int sy){}
-//	virtual void disconn();		//from sshHost	
-//	virtual void connect();
+//	virtual void send_size(int sx, int sy)	//from sshHost
+//	virtual void disconn();					//from sshHost	
+//	virtual void connect();					//from sshHost	
 	int sftp_get(char *src, char *dst);
 	int sftp_put(char *src, char *dst);
 	int sftp(char *p);

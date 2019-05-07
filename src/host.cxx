@@ -1,10 +1,10 @@
 //
-// "$Id: Hosts.cxx 6833 2019-04-10 22:15:10 $"
+// "$Id: Hosts.cxx 23839 2019-05-10 22:15:10 $"
 //
-// HOST tcpHost comHost
+// HOST tcpHost comHost pipeHost and daemon hosts
 //
-//	  host implementation for terminal simulator
-//    used with the Fl_Term widget in flTerm
+//	host implementation for terminal simulator
+//	used with the Fl_Term widget in flTerm
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
@@ -21,18 +21,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#ifndef WIN32
+#ifdef WIN32
+	#include <sys/stat.h>
+	#include <io.h>
+	#include <time.h>
+#else
 	#include <termios.h>
 	#include <unistd.h>
 	#include <fcntl.h>
 	#include <errno.h>
-#else
-	#include <sys/stat.h>
-	#include <io.h>
-	#include <time.h>
 #endif
 #include "host.h"
-
 
 void HOST::connect()
 {
@@ -107,7 +106,7 @@ int comHost::read()
 	}
 
 	bConnected = true;
-	do_callback("Connected\r", 0);
+	do_callback("Connected", 0);
 	while ( bConnected ) {
 		DWORD cch;
 		char buf[4096];
@@ -160,20 +159,20 @@ int comHost::read()
 	cfsetispeed(&SerialPortSettings, baud);
 	cfsetospeed(&SerialPortSettings, baud);
 	cfmakeraw(&SerialPortSettings);
-	SerialPortSettings.c_cflag |=  CREAD|CLOCAL;	//turn on reader
-//	SerialPortSettings.c_cflag &= ~CSIZE; 	//Clears the size Mask
-//	SerialPortSettings.c_cflag |=  CS8;  	//Set the data bits = 8
-//	SerialPortSettings.c_cflag &= ~PARENB; 	//CLEAR Parity Bit
-//	SerialPortSettings.c_cflag &= ~CSTOPB; 	//Stop bits = 1
-//	SerialPortSettings.c_cflag &= ~CRTSCTS;	//no RTS/CTS
+	SerialPortSettings.c_cflag |=  CREAD|CLOCAL;		//turn on reader
+//	SerialPortSettings.c_cflag &= ~CSIZE;				//Clears the size Mask
+//	SerialPortSettings.c_cflag |=  CS8;					//Set the data bits = 8
+//	SerialPortSettings.c_cflag &= ~PARENB;				//CLEAR Parity Bit
+//	SerialPortSettings.c_cflag &= ~CSTOPB;				//Stop bits = 1
+//	SerialPortSettings.c_cflag &= ~CRTSCTS;				//no RTS/CTS
 //	SerialPortSettings.c_iflag &= ~(IXON|IXOFF|IXANY);	//no XON/XOFF
 //	SerialPortSettings.c_iflag &= ~(ICANON|ECHO|ECHOE|ISIG);//NON Canonical
-	SerialPortSettings.c_cc[VMIN]  = 0; 	//read can return 0 at timeout
-	SerialPortSettings.c_cc[VTIME] = 1;  	//timeout at 100ms
+	SerialPortSettings.c_cc[VMIN]  = 0; 		//read can return 0 at timeout
+	SerialPortSettings.c_cc[VTIME] = 1; 		//timeout at 100ms
 	tcsetattr(ttySfd,TCSANOW,&SerialPortSettings);
 
 	bConnected = true;
-	do_callback("Connected\r", 0);
+	do_callback("Connected", 0);
 	while ( bConnected ) {
 		char buf[4096];
 		int len = ::read(ttySfd, buf, 4096);
@@ -222,22 +221,21 @@ tcpHost::tcpHost(const char *name):HOST()
 }
 int tcpHost::tcp()
 {
-    struct addrinfo *ainfo;    
-    if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
-    ((struct sockaddr_in *)(ainfo->ai_addr))->sin_port = htons(port);
-    
-    int rc = -1;
-    sock = socket(ainfo->ai_family, SOCK_STREAM, 0);
-    if ( sock!=-1 ) 
+	struct addrinfo *ainfo;	   
+	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
+	((struct sockaddr_in *)(ainfo->ai_addr))->sin_port = htons(port);
+	
+	int rc = -1;
+	sock = socket(ainfo->ai_family, SOCK_STREAM, 0);
+	if ( sock!=-1 ) 
 		rc = ::connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
-    freeaddrinfo(ainfo);
+	freeaddrinfo(ainfo);
 	return rc;
 }
 int tcpHost::read()
 {
-	do_callback("trying...", 0);
 	if ( tcp()==0 ) {
-		do_callback("Connected\n", 0);
+		do_callback("Connected", 0);
 		int cch;
 		char buf[1536];
 		while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
@@ -281,9 +279,136 @@ void tcpHost::disconn()
 //		reader.join();//cause crash when compiled with visual studio or xcode 
 	}
 }
+pipeHost::pipeHost(const char *name):HOST()
+{
+	strncpy(cmdline, name, 255);
+	cmdline[255] = 0;
+#ifndef WIN32
+	pPipe = NULL;
+#else
+	hStdioRead = NULL;
+	hStdioWrite = NULL;
+#endif
+}
+int pipeHost::write( const char *buf, int len )
+{
+	if ( *buf==3 && len==1 ) 
+		disconn();
+	return 0;
+}
+#ifndef WIN32
+int pipeHost::read()
+{
+	if ( (pPipe=popen(cmdline, "r"))!=NULL ) {
+		char buf[1536];
+		while ( fgets(buf, 1536, pPipe) ) {
+			do_callback(buf, strlen(buf));
+		}
+		do_callback("", 0);
+	}
+	else
+		do_callback("Command execution", -1);
 
-#ifdef WIN32
-/**********************************FTPd*******************************/
+	if ( pPipe!=NULL ) {
+		pclose(pPipe);
+		pPipe = NULL;
+	}
+	reader.detach();
+	return 0;
+}
+void pipeHost::disconn()
+{
+	if ( pPipe!=NULL ) {
+		pclose(pPipe);
+		pPipe = NULL;
+	}
+}
+#else
+int pipeHost::read()
+{
+	HANDLE Stdin_Rd, Stdin_Wr ;
+	HANDLE Stdout_Rd, Stdout_Wr, Stderr_Wr;
+	memset( &piStd, 0, sizeof(PROCESS_INFORMATION) );
+
+	SECURITY_ATTRIBUTES saAttr;
+	saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	saAttr.bInheritHandle = TRUE;			//Set the bInheritHandle flag
+	saAttr.lpSecurityDescriptor = NULL;		//so pipe handles are inherited
+
+	CreatePipe(&Stdout_Rd, &Stdout_Wr, &saAttr, 0);//pipe for child's STDOUT
+	SetHandleInformation(Stdout_Rd, HANDLE_FLAG_INHERIT, 0);
+	// Ensure the read handle to the pipe for STDOUT is not inherited
+	CreatePipe(&Stdin_Rd, &Stdin_Wr, &saAttr, 0);	//pipe for child's STDIN
+	SetHandleInformation(Stdin_Wr, HANDLE_FLAG_INHERIT, 0);
+	// Ensure the write handle to the pipe for STDIN is not inherited
+	DuplicateHandle(GetCurrentProcess(),Stdout_Wr,
+					GetCurrentProcess(),&Stderr_Wr,0,
+					TRUE,DUPLICATE_SAME_ACCESS);
+	DuplicateHandle(GetCurrentProcess(),Stdout_Rd,
+					GetCurrentProcess(),&hStdioRead,0,
+					TRUE,DUPLICATE_SAME_ACCESS);
+	DuplicateHandle(GetCurrentProcess(),Stdin_Wr,
+					GetCurrentProcess(),&hStdioWrite,0,
+					TRUE,DUPLICATE_SAME_ACCESS);
+	CloseHandle( Stdin_Wr );
+	CloseHandle( Stdout_Rd );
+
+	struct _STARTUPINFOA siStartInfo;
+	memset( &siStartInfo, 0, sizeof(STARTUPINFO) );	// Set STARTUPINFO
+	siStartInfo.cb = sizeof(STARTUPINFO);
+	siStartInfo.hStdError = Stderr_Wr;
+	siStartInfo.hStdOutput = Stdout_Wr;
+	siStartInfo.hStdInput = Stdin_Rd;
+	siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+	if ( CreateProcessA( NULL,			// Create the child process.
+						cmdline,	// command line
+						NULL,			// process security attributes
+						NULL,			// primary thread security attributes
+						TRUE,			// handles are inherited
+						CREATE_NO_WINDOW,// creation flags
+						NULL,			// use parent's environment
+						NULL,			// use parent's current directory
+						&siStartInfo,	// STARTUPINFO pointer
+						&piStd) ) {		// receives PROCESS_INFORMATION
+		CloseHandle( Stdin_Rd );
+		CloseHandle( Stdout_Wr );
+		CloseHandle( Stderr_Wr );
+
+		while ( TRUE ) {
+			DWORD dwCCH;
+			char buf[1536];
+			if ( ReadFile( hStdioRead, buf, 1500, &dwCCH, NULL) > 0 ) {
+				if ( dwCCH > 0 ) {
+					buf[dwCCH] = 0;
+					do_callback( buf, dwCCH );
+				}
+				else
+					Sleep(1);
+			}
+			else
+				break;
+		}
+		do_callback( "", 0 );
+	}
+	else
+		do_callback( "command execution", -1 );
+
+	CloseHandle( hStdioRead );
+	CloseHandle( hStdioWrite );
+	reader.detach();
+	return 1;
+}
+void pipeHost::disconn()
+{
+	if ( WaitForSingleObject(piStd.hProcess, 100)==WAIT_TIMEOUT )
+		TerminateProcess(piStd.hProcess,0);
+	CloseHandle(piStd.hThread);
+	CloseHandle(piStd.hProcess);
+}
+//end if pipeHost WIN32 definition
+
+//begin ftpd tftpd Win32 definition
 int sock_select( SOCKET s, int secs )
 {
 	struct timeval tv = { 0, 0 };

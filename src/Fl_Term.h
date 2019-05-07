@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4495 2019-04-10 13:08:10 $"
+// "$Id: Fl_Term.h 4473 2019-04-10 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -40,43 +40,42 @@ class Fl_Term : public Fl_Widget {
 	int roll_bot;		//the range of lines that will scroll in vi
 	int sel_left;
 	int sel_right;		//begin and end of selection on screen
-	int iFontWidth;		//current font width in pixels
-	int iFontHeight;	//current font height in pixels
+	int font_width;		//current font width in pixels
+	int font_height;	//current font height in pixels
 	int font_size;		//current font weight
 	std::atomic<bool> redraw_complete;
-	int bMouseScroll;	//if mouse is dragged on scrollbar
-	
-	int bEscape;		//escape sequence processing mode
+	bool bMouseScroll;	//if mouse is dragged on scrollbar
+
+	bool bEscape;		//escape sequence processing mode
 	int ESC_idx;		//current index for ESC_code
 	char ESC_code[20];	//cumulating the current escape sequence before process
 
-	int bInsert;		//insert mode, for inline editing for commands
-	int bGraphic;		//graphic character mode, for text mode drawing
-	int bCursor;		//display cursor or not
-	int bAppCursor;		//app cursor mode for vi
-	int bAlterScreen;	//alternative screen for vi
-	
+	bool bInsert;		//insert mode, for inline editing for commands
+	bool bGraphic;		//graphic character mode, for text mode drawing
+	bool bCursor;		//display cursor or not
+	bool bAppCursor;	//app cursor mode for vi
+	bool bAlterScreen;	//alternative screen for vi
+
 	int bTitle;			//title mode, changed through escape sequence
 	int title_idx;
 	char sTitle[256];	//window title set by host
 
 	char sPrompt[32];	//wait for sPrompt before next command when scripting
 	int iPrompt;		//length of sPrompt
-	int bPrompt;		//if sPrompt was found after the last append
+	bool bPrompt;		//if sPrompt was found after the last append
 
 	int iTimeOut;		//time out in seconds while waiting for sPrompt
 	int recv0;			//cursor_x at the start of last command
 	int xmlIndent;		//used by putxml
 	int xmlTagIsOpen;	//used by putxml
-	
-	int bDND;			//if a FL_PASTE is result of drag&drop
-	int bWait;			//waitfor() function is waiting for string in buffer
-	int bEcho;			//if local echo is active
-	FILE *fpLogFile;
-	
-	int bScriptRunning;
-	int bScriptPaused;
 
+	bool bDND;			//if a FL_PASTE is result of drag&drop
+	bool bWait;			//waitfor() function is waiting for string in buffer
+	bool bEcho;			//if local echo is active
+	bool bScriptRun;
+	bool bScriptPause;
+
+	FILE *fpLogFile;
 	HOST *host;
 
 protected: 
@@ -89,29 +88,35 @@ protected:
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
 	~Fl_Term();
+	void clear();
 	int  handle( int e );
 	void resize( int X, int Y, int W, int H );
-	void clear();
-
-	int live() { return host!=NULL ? host->live() : false; }
-	int logg() { return fpLogFile!=NULL; }
-	int echo() { return bEcho; }
-
-	void echo( int e ) { bEcho = e; }
-	void logg( const char *fn );
-	void keepalive(int interval);
-	void srch( const char *word );	
-	void connect(const char *hostname);
-
 	void textsize( int pt=0 );
 	void buffsize( int lines );
 	const char *title() { return sTitle; }
+
+	int logg() { return fpLogFile!=NULL; }
+	int echo() { return bEcho; }
+	int cols() { return size_x; }
+	int rows() { return size_y; }
+	void echo( int e ) { bEcho = e; }
+	void logg( const char *fn );
+	void keepalive(int interval);
+	void srch( const char *word );
+
+	int connected() { return host!=NULL ? host->live() : false; }
+	void connect( const char *hostname );
+	void host_cb( const char *buf, int len );
+	void disconn();
+	void puts(const char *buf, int len);
+	char *gets(const char *prompt, int echo);
+
 
 	void write(const char *buf, int len) { 
 		if ( bEcho ) append(buf, len);
 		if ( host ) host->write(buf, len);
 	}
-	
+
 	void learn_prompt();
 	char *mark_prompt();
 	int  waitfor_prompt();
@@ -121,18 +126,10 @@ public:
 	int recv(char **preply);
 	int cmd(const char *cmd, char **preply);
 
-	
 	void scripter(char *cmds);
 	void run_script(char *script);
-	void pause_script();
-	void stop_script();
-
-	void puts(const char *buf, int len) { append(buf, len); }
-	void putxml(const char *msg, int len);
-	void set_host(HOST *host);
-	void host_cb2(const char *buf, int len);
-static void host_cb(void *data, const char *buf, int len);
-	char *ssh_gets(const char *prompt, int echo);
+	void pause_script( );
+	void quit_script();
 
 	void term_pwd(char *dst);
 	int scp(char *cmd, char **preply);

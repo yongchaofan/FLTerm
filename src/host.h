@@ -1,7 +1,7 @@
 //
-// "$Id: Hosts.h 3009 2019-04-10 21:12:15 $"
+// "$Id: Hosts.h 4490 2019-04-10 21:12:15 $"
 //
-// HOST comHost tcpHost ftpd tftpd
+// HOST pipeHost comHost tcpHost ftpd tftpd 
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
@@ -39,7 +39,7 @@
 #ifndef _HOST_H_
 #define _HOST_H_
 
-enum {  HOST_COM=1, HOST_TCP, 
+enum {  HOST_COM=1, HOST_PIPE, HOST_TCP,
 		HOST_SSH, HOST_SFTP, HOST_CONF, 
 		HOST_FTPD, HOST_TFTPD };
 
@@ -62,9 +62,10 @@ public:
 	virtual	void connect();
 	virtual	int read()							=0;
 	virtual	int write(const char *buf, int len)	=0;
-	virtual void send_size(int sx, int sy)		=0;
 	virtual void keepalive(int interval)		=0;
-	virtual	void disconn()						=0;	
+	virtual	void disconn()						=0;
+	virtual void send_size(int sx, int sy){}
+	virtual void set_user_pass( const char *user, const char *pass ){};
 
 	void callback(host_callback *cb, void *data)
 	{
@@ -94,21 +95,35 @@ private:
 
 public:
 	comHost(const char *address);
-	
-	virtual const char *name()
-	{ 
-#ifdef WIN32
-		return portname+4;
-#else
-		return portname;
-#endif //WIN32
-	}
+
+	virtual const char *name() { return portname; }
 	virtual int type() { return HOST_COM; }
 	virtual int read();
 	virtual int write(const char *buf, int len);
-	virtual void send_size(int sx, int sy){};
 	virtual void keepalive(int interval){};
-	virtual void disconn();	
+	virtual void disconn();
+//	virtual void connect();
+};
+class pipeHost : public HOST {
+private:
+	char cmdline[256];
+#ifdef WIN32
+	HANDLE hStdioRead;
+	HANDLE hStdioWrite;
+	PROCESS_INFORMATION piStd;
+#else
+	FILE *pPipe;
+#endif
+public:
+	pipeHost(const char *name);
+	~pipeHost(){}
+
+	virtual const char *name(){ return cmdline; }
+	virtual int type() { return HOST_PIPE; }
+	virtual	int read();
+	virtual int write(const char *buf, int len);
+	virtual void keepalive(int interval){};
+	virtual void disconn();
 //	virtual void connect();
 };
 
@@ -128,9 +143,8 @@ public:
 	virtual int type() { return HOST_TCP; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void send_size(int sx, int sy){};
 	virtual void keepalive(int interval){};
-	virtual void disconn();	
+	virtual void disconn();
 //	virtual void connect();
 };
 
@@ -152,7 +166,6 @@ public:
 	virtual int type() { return HOST_FTPD; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void send_size(int sx, int sy){}
 	virtual void keepalive(int interval){}
 	virtual void disconn();	
 //	virtual void connect();
@@ -181,5 +194,4 @@ public:
 //	virtual void connect();
 };
 #endif //WIN32
-
 #endif //_HOST_H_

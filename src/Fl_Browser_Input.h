@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.h 967 2019-04-09 13:48:10 $"
+// "$Id: Fl_Browser_Input.h 967 2019-05-09 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -31,11 +31,11 @@ private:
 public:
 	Fl_Browser_Input(int X,int Y,int W,int H,const char* L=0);
 	~Fl_Browser_Input() {}
+	void resize( int X, int Y, int W, int H );
 	int handle( int e );
 	int add( const char *cmd );
 	const char *first();
 	const char *next();
-	void resize( int X, int Y, int W, int H );
 	void close();
 };
 #endif  //acInput
