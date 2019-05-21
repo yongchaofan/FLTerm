@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 37775 2019-04-10 21:55:10 $"
+// "$Id: ssh2.cxx 38487 2019-05-21 21:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -125,9 +125,9 @@ int closedir(DIR *dir)
 #endif //WIN32
 
 static const char *errmsgs[] = { 
-"Disconnected", "Connection", "Session",
-"Verification", "Authentication",
-"Channel", "pty", "Shell", "Subsystem"
+"Disconnected", "Connection failure", "Session failure",
+"Verification failure", "Authentication failure",
+"Channel failure", "pty failure", "Shell failure", "Subsystem failure"
 };
 
 const char *kb_gets(const char *prompt, int echo);
@@ -326,7 +326,7 @@ void sshHost::write_keys(const char *buf, int len)
 			bReturn=true; 
 			do_callback("\n", 2);
 		}
-		else if ( buf[i]=='\177' ) {
+		else if ( buf[i]=='\177' || buf[i]=='\b' ) {
 			if ( cursor>0 ) {
 				cursor--; 
 				if ( !bPassword ) 
@@ -360,7 +360,7 @@ int sshHost::ssh_authentication()
 {
 	int rc = -5;
 	if ( *username==0 ) {
-		const char *p = ssh_gets("username:", true);
+		const char *p = ssh_gets("\nusername:", true);
 		if ( p==NULL ) return rc; 
 		strncpy(username, p, 31);
 	}
@@ -420,58 +420,61 @@ int sshHost::wait_socket()
 	if ( dir & LIBSSH2_SESSION_BLOCK_OUTBOUND ) wfd = &fds;
 	return select(sock+1, rfd, wfd, NULL, NULL );
 }
+const char *IETF_HELLO="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<hello xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\
+<capabilities><capability>urn:ietf:params:netconf:base:1.0</capability>\
+</capabilities></hello>]]>]]>";
 int sshHost::read()
 {
-	int rc = tcp();
-	if ( rc==-1 ) goto TCP_Close;
+	if ( tcp()==-1 ) goto TCP_Close;
 
+	channel = NULL;
 	session = libssh2_session_init();
 	if ( libssh2_session_handshake(session, sock)!=0 ) { 
-		rc = -2;
+		do_callback(errmsgs[2], -2);
 		goto Session_Close; 
 	}
 	const char *banner;
-	if ( (banner=libssh2_session_banner_get(session))!=NULL ) {
-		do_callback(banner, strlen(banner));
-		do_callback("\n", 1);
-	}
+	banner=libssh2_session_banner_get(session);
+	if ( banner!=NULL ) do_callback(banner, strlen(banner));
 
 	if ( ssh_knownhost()!=0 ) { 
-		rc = -3;
+		do_callback(errmsgs[3], -3);
 		goto Session_Close; 
 	}
 	if ( ssh_authentication()!=0 ) { 
-		rc = -4;
+		do_callback(errmsgs[4], -4);
 		goto Session_Close; 
 	}
 	if ( !(channel=libssh2_channel_open_session(session)) ) {
-		rc = -5;
+		do_callback(errmsgs[5], -5);
 		goto Session_Close; 
 	}
 	if ( *subsystem==0 ) {
-		if ( libssh2_channel_request_pty(channel, "xterm")) { 
-			rc = -6;
+		if (libssh2_channel_request_pty(channel, "xterm")) { 
+			do_callback(errmsgs[6], -6);
 			goto Channel_Close; 
 		}
 		if ( libssh2_channel_shell(channel)) {
-			rc = -7;
+			do_callback(errmsgs[7], -7);
 			goto Channel_Close; 
 		}
 	}
 	else {
 		if (libssh2_channel_subsystem(channel, subsystem)) {
-			rc = -8;
+			do_callback(errmsgs[8], -8);
 			goto Channel_Close;
 		}
+		libssh2_channel_write(channel, IETF_HELLO, strlen(IETF_HELLO));
 	}
 	libssh2_session_set_blocking(session, 0); 
 
 	do_callback("Connected", 0);
 	while ( true ) {
 		int len;
-		char buf[32769];
+		char buf[32768];
 		mtx.lock();
-		len=libssh2_channel_read(channel, buf, 32768);
+		len=libssh2_channel_read(channel, buf, 32767);
 		mtx.unlock();
 		if ( len>0 ) {
 			buf[len] = 0;
@@ -485,6 +488,7 @@ int sshHost::read()
 			break;
 		}
 	}
+	do_callback("Disonnected\n", -1);
 	tun_closeall();
 	*username = 0;
 	*password = 0;
@@ -506,7 +510,6 @@ Session_Close:
 TCP_Close:
 	closesocket(sock);
 	reader.detach();
-	do_callback(errmsgs[-rc], rc);
 	return 0;
 }
 int sshHost::write(const char *buf, int len) 
@@ -1423,24 +1426,28 @@ int sftpHost::sftp(char *cmd)
 }
 int sftpHost::read()
 {
-	int rc = tcp();
-	if ( rc==-1 ) goto TCP_Close;
+	if ( tcp()==-1 ) goto TCP_Close;
 
+	channel = NULL;
 	session = libssh2_session_init();
 	if ( libssh2_session_handshake(session, sock)!=0 ) { 
-		rc = -2;
+		do_callback(errmsgs[2], -2);
 		goto Sftp_Close; 
 	}
+	const char *banner;
+	banner=libssh2_session_banner_get(session);
+	if ( banner!=NULL ) do_callback(banner, strlen(banner));
+
 	if ( ssh_knownhost()!=0 ) {
-		rc = -3;
+		do_callback(errmsgs[3], -3);
 		goto Sftp_Close; 
 	}
 	if ( ssh_authentication()!=0 ) { 
-		rc = -4;
+		do_callback(errmsgs[4], -4);
 		goto Sftp_Close; 
 	}
 	if ( !(sftp_session=libssh2_sftp_init(session)) ) { 
-		rc = -6;
+		do_callback(errmsgs[6], -6);
 		goto Sftp_Close; 
 	}
 	if ( libssh2_sftp_realpath(sftp_session, ".", realpath, 1024)<0 )
@@ -1454,6 +1461,7 @@ int sftpHost::read()
 		if ( (p=ssh_gets("> ", true))==NULL ) break;
 	} while ( sftp((char *)p)!=-1 );
 	libssh2_sftp_shutdown(sftp_session);
+	do_callback("Disonnected\n", -1);
 	*username = 0;
 	*password = 0;
 
@@ -1466,7 +1474,6 @@ Sftp_Close:
 TCP_Close:
 	closesocket(sock);
 	reader.detach();
-	do_callback(errmsgs[-rc], rc);
 	return 0;
 }
 int sftpHost::write(const char *buf, int len)

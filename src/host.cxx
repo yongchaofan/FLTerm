@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 23839 2019-05-10 22:15:10 $"
+// "$Id: Hosts.cxx 24644 2019-05-21 22:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -183,7 +183,7 @@ int comHost::read()
 	}
 	close(ttySfd);
 	bConnected = false;
-	do_callback("Disconnected", 0);
+	do_callback("Disconnected\n", -1);
 	
 shutdown:
 	reader.detach();
@@ -222,14 +222,41 @@ tcpHost::tcpHost(const char *name):HOST()
 int tcpHost::tcp()
 {
 	struct addrinfo *ainfo;	   
-	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) return -1;
+	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) {
+		print("invalid hostname or ip address\n");
+		return -1;
+	}
 	((struct sockaddr_in *)(ainfo->ai_addr))->sin_port = htons(port);
 	
-	int rc = -1;
 	sock = socket(ainfo->ai_family, SOCK_STREAM, 0);
 	if ( sock!=-1 ) 
-		rc = ::connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
+		print("Trying...");
+	int rc = ::connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
 	freeaddrinfo(ainfo);
+	if ( rc!=-1 ) 
+		print("connected\n");
+	else {
+		const char *errmsg = "connection failure\n";
+#ifdef WIN32 
+		switch( WSAGetLastError() ) {
+		case WSAEHOSTUNREACH:
+		case WSAENETUNREACH: errmsg ="host unreachable\n"; break;
+		case WSAECONNRESET:  errmsg ="connection reset\n"; break;
+		case WSAETIMEDOUT:   errmsg ="connection timeout\n"; break;
+		case WSAECONNREFUSED:errmsg ="connection refused\n"; break;
+		}
+#else
+		switch( errno ) {
+		case EHOSTUNREACH:
+		case ENETUNREACH: errmsg ="host unreachable\n"; break;
+		case ECONNRESET:  errmsg ="connection reset\n"; break;
+		case ETIMEDOUT:   errmsg ="connection timeout\n"; break;
+		case ECONNREFUSED:errmsg ="connection refused\n"; break;
+		}
+#endif
+		do_callback( errmsg, -1 );
+		closesocket(sock);
+	}
 	return rc;
 }
 int tcpHost::read()
@@ -241,10 +268,8 @@ int tcpHost::read()
 		while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
 			do_callback(buf, cch);
 		}
-		do_callback("Disconnected", 0);
+		do_callback("Disconnected\n", -1);
 	}
-	else
-		do_callback("Connection", -1);
 		
 	if ( sock!=-1 ) {
 		closesocket(sock);
@@ -307,7 +332,7 @@ int pipeHost::read()
 		do_callback("", 0);
 	}
 	else
-		do_callback("Command execution", -1);
+		do_callback("Command execution error\n", -1);
 
 	if ( pPipe!=NULL ) {
 		pclose(pPipe);
@@ -392,7 +417,7 @@ int pipeHost::read()
 		do_callback( "", 0 );
 	}
 	else
-		do_callback( "command execution", -1 );
+		do_callback( "command execution error\n", -1 );
 
 	CloseHandle( hStdioRead );
 	CloseHandle( hStdioWrite );
@@ -408,7 +433,7 @@ void pipeHost::disconn()
 }
 //end if pipeHost WIN32 definition
 
-//begin ftpd tftpd Win32 definition
+/*begin ftpd tftpd Win32 definition
 int sock_select( SOCKET s, int secs )
 {
 	struct timeval tv = { 0, 0 };
@@ -904,4 +929,5 @@ void tftpdHost::disconn( )
 		tftp_s0 = INVALID_SOCKET;
 	}
 }
+*/
 #endif //WIN32

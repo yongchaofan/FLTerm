@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 3348 2019-05-10 23:48:10 $"
+// "$Id: ssh2.h 3348 2019-05-21 23:48:10 $"
 //
 //  sshHost sftpHost
 //
@@ -55,7 +55,7 @@ protected:
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
 	TUNNEL *tunnel_list;
-	
+
 	int wait_socket();
 	int ssh_knownhost( int interactive=true );
 	int ssh_authentication();
@@ -76,13 +76,13 @@ public:
 	sshHost(const char *name); 
 
 //	virtual const char *name();
-	virtual int type() { return *subsystem ? HOST_CONF : HOST_SSH; }
+	virtual int type() { return *subsystem && channel ? HOST_CONF : HOST_SSH; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
-	virtual void keepalive(int interval);
 	virtual void disconn();
 //	virtual void connect();
+	void keepalive(int interval);
 	int scp_read(char *rpath, char *lpath);
 	int scp_write(char *lpath, char *rpath);
 	void tun(char *cmd);
@@ -112,8 +112,8 @@ public:
 	virtual int read();
 	virtual int write(const char *buf, int len);
 //	virtual void send_size(int sx, int sy)	//from sshHost
-//	virtual void disconn();					//from sshHost	
-//	virtual void connect();					//from sshHost	
+//	virtual void disconn();					//from sshHost
+//	virtual void connect();					//from sshHost
 	int sftp_get(char *src, char *dst);
 	int sftp_put(char *src, char *dst);
 	int sftp(char *p);

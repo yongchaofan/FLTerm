@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 4490 2019-04-10 21:12:15 $"
+// "$Id: Hosts.h 4149 2019-05-21 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd 
 //
@@ -40,8 +40,8 @@
 #define _HOST_H_
 
 enum {  HOST_COM=1, HOST_PIPE, HOST_TCP,
-		HOST_SSH, HOST_SFTP, HOST_CONF, 
-		HOST_FTPD, HOST_TFTPD };
+		HOST_FTPD, HOST_TFTPD,
+		HOST_SSH, HOST_SFTP, HOST_CONF };
 
 typedef void ( host_callback )(void *, const char *, int);
 
@@ -62,7 +62,6 @@ public:
 	virtual	void connect();
 	virtual	int read()							=0;
 	virtual	int write(const char *buf, int len)	=0;
-	virtual void keepalive(int interval)		=0;
 	virtual	void disconn()						=0;
 	virtual void send_size(int sx, int sy){}
 	virtual void set_user_pass( const char *user, const char *pass ){};
@@ -76,7 +75,6 @@ public:
 	{
 		host_cb(host_data_, buf, len);
 	}
-	void *host_data() { return host_data_; }
 	int live() { return reader.joinable(); }
 	void print(const char *fmt, ...);
 };
@@ -100,7 +98,6 @@ public:
 	virtual int type() { return HOST_COM; }
 	virtual int read();
 	virtual int write(const char *buf, int len);
-	virtual void keepalive(int interval){};
 	virtual void disconn();
 //	virtual void connect();
 };
@@ -122,7 +119,6 @@ public:
 	virtual int type() { return HOST_PIPE; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void keepalive(int interval){};
 	virtual void disconn();
 //	virtual void connect();
 };
@@ -133,7 +129,6 @@ protected:
 	short port;
 	int sock;
 	int tcp();
-	unsigned char *telnet_options(unsigned char *buf);
 
 public:
 	tcpHost(const char *name);
@@ -143,7 +138,6 @@ public:
 	virtual int type() { return HOST_TCP; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void keepalive(int interval){};
 	virtual void disconn();
 //	virtual void connect();
 };
@@ -166,10 +160,10 @@ public:
 	virtual int type() { return HOST_FTPD; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void keepalive(int interval){}
 	virtual void disconn();	
 //	virtual void connect();
 };
+/*
 class tftpdHost : public HOST {
 private:
 	int tftp_s0;
@@ -189,9 +183,9 @@ public:
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){}
-	virtual void keepalive(int interval){}
 	virtual void disconn();	
 //	virtual void connect();
 };
+*/
 #endif //WIN32
 #endif //_HOST_H_

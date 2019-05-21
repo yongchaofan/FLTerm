@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.cxx 3410 2015-04-09 13:48:10 $"
+// "$Id: Fl_Browser_Input.cxx 3846 2015-05-21 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -16,6 +16,11 @@
 //
 #include "Fl_Browser_Input.h"
 #include <string.h>
+#ifdef __APPLE__
+#define FL_CMD FL_META
+#else
+#define FL_CMD FL_ALT
+#endif
 Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L)
 													: Fl_Input(X,Y,W,H,L)
 {
@@ -71,31 +76,38 @@ void Fl_Browser_Input::close()
 int Fl_Browser_Input::handle( int e ) 
 {
 	if ( e!=FL_KEYDOWN ) return Fl_Input::handle(e);
+	char cmd[2]={ 0, 0 };
 	int key = Fl::event_key();
-	if ( key==FL_Escape ) {
-		browserWin->hide();		//prevent ESCAPE from close the program
-		return 1;
+	switch ( key ) 
+	{
+	case FL_Page_Up:
+	case FL_Page_Down: return 0;		//let Fl_Term handle it
+	case FL_Tab: 	cmd[0] = key; cut();
+					do_callback(this, (void *)value());
+					do_callback(this, (void *)cmd);
+	case FL_Escape: value("");			//prevent ESCAPE from close the program
+					browserWin->hide();
+					return 1;
+	case FL_BackSpace:
+	case FL_Delete:	if ( Fl::event_state(FL_CMD) ) {
+						browser->remove(id--);
+						if ( id<0 ) id=0;
+						browser->value(id);
+						browser->middleline(id);
+						return 1;
+					}
 	}
 	int rc = Fl_Input::handle(e);
 	if ( Fl::event_state(FL_CTRL) ) {
-		if ( key==FL_Delete ) {
-			browser->remove(id--);
-			if ( id<0 ) id=0;
-			browser->value(id);
-			browser->middleline(id);
-		}
-		else {
-			char cmd[2]={ 0, 0 };
-			if ( key>='a' && key<='z' ) *cmd=key-'a'+1;//A-Z, 1-26
-			if ( key>218&&key<222 ) *cmd = key-192; //[\], 27, 28, 29
-			if ( key=='^' ) *cmd = 30;				//^, 30
-			value(cmd);
-			do_callback();
-		}
+		char cmd[2]={ 0, 0 };
+		if ( key>='a' && key<='z' ) *cmd=key-'a'+1;//A-Z, 1-26
+		if ( key>218&&key<222 ) *cmd = key-192; //[\], 27, 28, 29
+		if ( key=='^' ) *cmd = 30;				//^, 30
+		if ( *cmd ) do_callback(this, (void *)cmd);
 		return rc;
 	}
 	switch ( Fl::event_key() ) {
-	case FL_BackSpace:
+	case FL_BackSpace: if ( size()==0 ) do_callback(this, (void *)"\b");
 	case FL_Delete:
 	case FL_Enter: browserWin->hide(); break;
 	case FL_Up:

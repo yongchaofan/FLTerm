@@ -1,5 +1,5 @@
 //
-// "$Id: tinyTerm2.cxx 24016 2019-05-07 21:05:10 $"
+// "$Id: tinyTerm2.cxx 24096 2019-05-07 21:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -26,8 +26,7 @@ const char ABOUT_TERM[]="\n\
 \t    * text based batch command automation\n\n\
 \t    * drag and drop to transfer files via scp\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%s\n\n\n\
-\tmacOS:  https://www.microsoft.com/store/apps/9NXGN9LJTL05\n\n\
-\tWindows: https://www.microsoft.com/store/apps/9NXGN9LJTL05\n\n\
+\tDownlaod: https://www.microsoft.com/store/apps/9PBX72DJMZT5\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2/\n\n\n\
 \tVerision 1.0, ©2018-2019 Yongchao Fan, All rights reserved\r\n";
 
@@ -85,7 +84,7 @@ void httpd_exit();
 void tab_cb(Fl_Widget *w);
 void editor_cb(Fl_Widget *w, void *data);
 void menu_cb(Fl_Widget *w, void *data);
-void menu_host_cb(Fl_Widget *w, void *data);
+void term_menu_cb(Fl_Widget *w, void *data);
 
 Fl_Term *pTerm;
 Fl_Window *pWindow;
@@ -147,7 +146,7 @@ void term_cb(Fl_Widget *w, void *data )			//called when term disconnects
 	if ( localedit ) 
 		term->disp("\n\033[32mtinyTerm2 > \033[37m");
 	else
-		term->disp("\033[37m, press Enter to restart\n");
+		term->disp("\n\033[33mPress Enter to restart\033[37m\n\n");
 }
 
 void tab_init()
@@ -310,7 +309,7 @@ void connect_cb(Fl_Widget *w)
 	}
 	pDialog->hide();
 	if ( pCmd->add(buf)!=0 )
-		pMenuBar->insert(7, buf+1, 0, menu_host_cb);
+		pMenuBar->insert(7, buf+1, 0, term_menu_cb);
 	term_connect(buf+1);
 	pMenuDisconn->activate();
 }
@@ -324,14 +323,34 @@ void conn_dialog()
 	pDialog->show();
 	pHostname->take_focus();
 }
-void cmd_cb(Fl_Widget *o) 
+
+void script_open( const char *fn )
 {
-	const char *cmd = pCmd->value();
-	if ( *cmd<' ' ) {	//control characters
-		pTerm->send(cmd);
-		pCmd->value("");
-		return; 
+	const char *ext = fl_filename_ext(fn);
+	if ( ext!=NULL ) {
+		if ( strcmp(ext, ".html")==0 ) {
+			char url[256], msg[512];
+			sprintf(url, "http://127.0.0.1:%s/%s", http_port, fn);
+			if ( !fl_open_uri(url, msg, 512) ) fl_alert("Error:%s",msg);
+			return;
+		}
 	}
+	pTerm->learn_prompt();
+#ifdef WIN32
+	ShellExecuteA(NULL, "Open", fn, http_port, NULL, SW_SHOW);
+#else
+	if ( fork()==0 ) execlp(fn, http_port, NULL);
+#endif
+}
+
+void cmd_cb(Fl_Widget *o, void *p) 
+{
+	if ( p!=NULL ) { 						//from do_callback
+		pTerm->send((const char *)p); 
+		return;
+	}
+
+	const char *cmd = pCmd->value();		//normal callback
 	pCmd->add( cmd );
 	if ( *cmd=='!' ) {
 		if ( strncmp(cmd, "!scp ", 5)==0 ) {
@@ -344,9 +363,10 @@ void cmd_cb(Fl_Widget *o)
 									strdup(cmd+4), (char **)NULL);
 			scp_thread.detach();
 		}
+		else if ( strncmp(cmd, "!script ",8)==0 ) 
+			script_open(cmd+8);
 		else
-			if ( pTerm->cmd(cmd, NULL)==-1 ) 
-				term_connect(cmd+1);
+			pTerm->cmd(cmd, NULL);
 	}
 	else {
 		if ( pTerm->connected() ) {
@@ -378,28 +398,27 @@ int move_editor(int x, int y, int w, int h)
 	}
 	return localedit;
 }
-void script_open( const char *fn )
+void script_menu_cb(Fl_Widget *w, void *data)
 {
-	const char *ext = fl_filename_ext(fn);
-	if ( ext!=NULL ) {
-		if ( strcmp(ext, ".html")==0 ) {
-			char url[256], msg[512];
-			sprintf(url, "http://127.0.0.1:%s/%s", http_port, fn);
-			if ( !fl_open_uri(url, msg, 512) ) fl_alert("Error:%s",msg);
-			return;
-		}
+	script_open( (char *)data );
+}
+void term_menu_cb(Fl_Widget *w, void *data)
+{
+	term_connect( data!=NULL? (const char *)data: pMenuBar->text() );
+}
+/*
+void daemon_host_cb(Fl_Widget *w, void *data)
+{
+	char cmd[MAX_PATH];
+	const char *fname = file_chooser("choose root directory", "*", CHOOSE_DIR);
+	if ( fname!=NULL ) {
+		if ( pTerm->connected() ) tab_new();
+		strcpy(cmd, pMenuBar->text());
+		strcat(cmd, fname);
+		term_connect(cmd);
 	}
-	pTerm->learn_prompt();
-#ifdef WIN32
-	ShellExecuteA(NULL, "Open", fn, http_port, NULL, SW_SHOW);
-#else
-	if ( fork()==0 ) execlp(fn, http_port, NULL);
-#endif
 }
-void script_cb(Fl_Widget *w, void *data)
-{
-	script_open( pMenuBar->text() );
-}
+*/
 void menu_cb(Fl_Widget *w, void *data)
 {
 	const char *menutext = pMenuBar->text();
@@ -410,7 +429,7 @@ void menu_cb(Fl_Widget *w, void *data)
 		pTerm->disconn();
 		pMenuDisconn->deactivate();
 	}
-	else if ( strcmp(menutext, "Logging...")==0 ) {
+	else if ( strcmp(menutext, "&Logging...")==0 ) {
 		if ( pTerm->logg() ) {
 			pTerm->logg( NULL );
 		}
@@ -424,24 +443,27 @@ void menu_cb(Fl_Widget *w, void *data)
 		else
 			pMenuLogg->clear();
 	}
-	else if ( strcmp(menutext, "Local Echo")==0 ) {
+	else if ( strcmp(menutext, "local &Echo")==0 ) {
 		pTerm->echo(!pTerm->echo());
 	}
-	else if ( strcmp(menutext, "Run...")==0 ) {
+	else if ( strcmp(menutext, "&Run...")==0 ) {
 		const char *fname = file_chooser("script:", "All\t*.*", CHOOSE_FILE);
 		if ( fname!=NULL ) {
 			char relative_name[FL_PATH_MAX+8]="!script ";
 			fl_filename_relative(relative_name+8,sizeof(relative_name),fname); 
-			script_open(relative_name+8);
-			pMenuBar->insert(pMenuBar->find_index("Options")-1,
-										relative_name+8, 0, script_cb);
 			pCmd->add(relative_name);
+			script_open(relative_name+8);
+			char *userdata = strdup(relative_name+8);
+			for ( char *p=relative_name+8; *p; p++ ) 
+				if ( *p=='/' || *p=='\\' ) *p = '|';
+			pMenuBar->insert(pMenuBar->find_index("Options")-1,
+								relative_name+8, 0, script_menu_cb, userdata);
 		}
 	}
-	else if ( strcmp(menutext, "Pause")==0 ) {
+	else if ( strcmp(menutext, "&Pause")==0 ) {
 		pTerm->pause_script( );
 	}
-	else if ( strcmp(menutext, "Quit")==0 ) {
+	else if ( strcmp(menutext, "&Quit")==0 ) {
 		pTerm->quit_script();
 	}
 	else if ( strcmp(menutext, "Courier New")==0 ||
@@ -470,29 +492,6 @@ void menu_cb(Fl_Widget *w, void *data)
 		buffsize = atoi(menutext);
 		pTerm->buffsize(buffsize);
 	}
-	else if ( strcmp(menutext, "0 disable")==0 ||
-			  strcmp(menutext, "1 minute" )==0 ||
-			  strcmp(menutext, "5 minutes")==0 ||
-			  strcmp(menutext, "15minutes")==0 ){
-		keepalive = atoi(menutext)*60;
-		pTerm->keepalive(keepalive);
-	}
-}
-void menu_host_cb(Fl_Widget *w, void *data)
-{
-	term_connect(pMenuBar->text());
-	pMenuDisconn->activate();
-}
-void daemon_host_cb(Fl_Widget *w, void *data)
-{
-	char cmd[MAX_PATH];
-	const char *fname = file_chooser("choose root directory", "*", CHOOSE_DIR);
-	if ( fname!=NULL ) {
-		if ( pTerm->connected() ) tab_new();
-		strcpy(cmd, pMenuBar->text());
-		strcat(cmd, fname);
-		term_connect(cmd);
-	}
 }
 void close_cb(Fl_Widget *w, void *data)
 {
@@ -517,54 +516,53 @@ void close_cb(Fl_Widget *w, void *data)
 	pCmd->close();
 	pWindow->hide();
 }
-Fl_Menu_Item menubar[] = {
-{"Term", 		FL_ALT+'t',	0,			0,	FL_SUBMENU},
-{"&Connect...", FL_ALT+'c', menu_cb},
-{"&Disconnect", FL_ALT+'d', menu_cb},
-{"Local Echo",	0,			menu_cb,	0,	FL_MENU_TOGGLE},
-{"Logging...",	0,			menu_cb,	0,	FL_MENU_TOGGLE|FL_MENU_DIVIDER},
-{"ftpd ", 		0, 			daemon_host_cb},
-{"tftpd ", 		0,			daemon_host_cb},
-{0},
-{"Script", 		FL_ALT+'s',	0,			0,	FL_SUBMENU},
-{"Run...", 		0,			menu_cb},
-{"Pause", 		0,			menu_cb},
-{"Quit", 		0,			menu_cb, 	0,	FL_MENU_DIVIDER},
-{0},
-{"Options", 	FL_ALT+'o',	0,			0,	FL_SUBMENU},
-{"Local Edit",	FL_ALT+'e',	editor_cb,	0,	FL_MENU_TOGGLE},
-{"Font Face",	0,			0,			0,	FL_SUBMENU},
 #ifdef __APPLE__
-{"Menlo",	 	0,	menu_cb,0,	FL_MENU_RADIOE},
-{"Monaco", 		0,	menu_cb,0,	FL_MENU_RADIO},
-{"Courier New", 0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALU},
+#define FL_CMD FL_META
 #else
-{"Consolas", 	0,	menu_cb,0,	FL_MENU_RADIO},
+#define FL_CMD FL_ALT
+#endif
+Fl_Menu_Item menubar[] = {
+{"Term", 		FL_CMD+'t',0,	0,	FL_SUBMENU},
+{"&Connect...", 0,	menu_cb},
+{"&Disconnect", 0,	menu_cb},
+{"local &Echo",	0,	menu_cb,0,	FL_MENU_TOGGLE},
+{"&Logging...",	0,	menu_cb,0,	FL_MENU_TOGGLE|FL_MENU_DIVIDER},
+//{"ftpd ",		0, 	daemon_host_cb},
+//{"tftpd ",		0,	daemon_host_cb},
+{0},
+{"Script",		FL_CMD+'s',0,	0,	FL_SUBMENU},
+{"&Run...",		0,	menu_cb},
+{"&Pause",		0,	menu_cb},
+{"&Quit",		0,	menu_cb,0,	FL_MENU_DIVIDER},
+{0},
+{"Options", 	FL_CMD+'o',0,		0,	FL_SUBMENU},
+{"Local &Edit",	FL_CMD+'e',editor_cb,0,	FL_MENU_TOGGLE},
+{"Font &Face",	0,	0,		0,	FL_SUBMENU},
+#ifdef __APPLE__
+{"Menlo",		0,	menu_cb,0,	FL_MENU_RADIO},
+{"Monaco",		0,	menu_cb,0,	FL_MENU_RADIO},
+{"Courier New", 0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
+#else
+{"Consolas",	0,	menu_cb,0,	FL_MENU_RADIO},
 {"Courier New",	0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
 {"Lucida Console",0,menu_cb,0,	FL_MENU_RADIO},
 #endif
 {0},
-{"Font Size", 	0,	0,		0,	FL_SUBMENU},
+{"Font &Size",	0,	0,		0,	FL_SUBMENU},
 {"12",			0,	menu_cb,0,	FL_MENU_RADIO},
 {"14",			0,	menu_cb,0,	FL_MENU_RADIO},
 {"16",			0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
 {"18",			0,	menu_cb,0,	FL_MENU_RADIO},
 {"20",			0,	menu_cb,0,	FL_MENU_RADIO},
 {0},
-{"Buffer Size", 0,	0,		0,	FL_SUBMENU},
+{"&Buffer Size", 0,	0,		0,	FL_SUBMENU},
 {"2048",		0,	menu_cb,0,	FL_MENU_RADIO},
-{"4096",		0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
-{"8192",		0,	menu_cb,0,	FL_MENU_RADIO},
+{"4096",		0,	menu_cb,0,	FL_MENU_RADIO},
+{"8192",		0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
 {"16384",		0,	menu_cb,0,	FL_MENU_RADIO},
 {"32768",		0,	menu_cb,0,	FL_MENU_RADIO},
 {0},
-{"Keep Alive",	0,	0,		0,	FL_SUBMENU},
-{"none", 		0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
-{"1 minute",	0,	menu_cb,0,	FL_MENU_RADIO},
-{"5 minutes",	0,	menu_cb,0,	FL_MENU_RADIO},
-{"15 minutes",	0,	menu_cb,0,	FL_MENU_RADIO},
-{0},
-{"About tinyTerm2", 0, about_cb},
+{"&About tinyTerm2", 0, about_cb},
 {0},
 {0}
 };
@@ -606,12 +604,28 @@ void load_dict()
 					strncmp(line+1, "telnet",6)==0 ||
 					strncmp(line+1, "serial",6)==0 ||
 					strncmp(line+1, "sftp",4)==0 || 
-					strncmp(line+1, "netconf",7)==0 )
-					pMenuBar->insert(pMenuBar->find_index("Script")-1, 
-													line+1, 0, menu_host_cb);
-				if ( strncmp(line+1, "script", 6)==0 ) 
+					strncmp(line+1, "netconf",7)==0 ) {
+					char *p = strchr(line+1, '\t');
+					if ( p==NULL ) 
+						pMenuBar->insert(pMenuBar->find_index("Script")-1, 
+											line+1, 0, term_menu_cb);
+					else {
+						*p++ = 0;
+						while ( *p=='\t' || *p=='#' ) p++;
+						pMenuBar->insert(pMenuBar->find_index("Script")-1, 
+											p, 0, term_menu_cb, strdup(line+1));
+					}
+					p = strchr(line+1, ' ');
+					if ( p!=NULL ) pHostname->add( p );
+
+				}
+				if ( strncmp(line+1, "script", 6)==0 ) {
+					char *userdata = strdup(line+8);
+					for ( char *p = line+8; *p; p++ ) 
+						if ( *p=='/' || *p=='\\' ) *p = '|';
 					pMenuBar->insert(pMenuBar->find_index("Options")-1,
-													line+8, 0, script_cb);
+										line+8, 0, script_menu_cb, userdata);
+				}
 			}
 			if ( *line=='~' ) {
 				char name[256] = "Options/";
@@ -625,8 +639,10 @@ void load_dict()
 					strcpy(name+8, "Font Size/");
 					strcat(name, line+10);
 				}
-				else if ( strncmp(line+1, "TermSize", 8)==0 ) {
-					sscanf(line+10, "%dx%d", &termcols, &termrows);
+				else if ( strncmp(line+1, "WndSize ", 8)==0 ) {
+					int w, h;
+					sscanf(line+9, "%dx%d", &w, &h);
+					pWindow->size(w, h);
 				}
 				else if ( strncmp(line+1, "BuffSize", 8)==0 ) {
 					buffsize = atoi(line+10);
@@ -647,8 +663,8 @@ void load_dict()
 		fclose(fp);
 	}
 	pMenuDisconn = (Fl_Menu_Item *)pMenuBar->find_item("Term/&Disconnect");
-	pMenuLogg = (Fl_Menu_Item *)pMenuBar->find_item("Term/Logging...");
-	pMenuEcho = (Fl_Menu_Item *)pMenuBar->find_item("Term/Local Echo");
+	pMenuLogg = (Fl_Menu_Item *)pMenuBar->find_item("Term/&Logging...");
+	pMenuEcho = (Fl_Menu_Item *)pMenuBar->find_item("Term/local &Echo");
 }
 void save_dict()
 {
@@ -662,8 +678,7 @@ void save_dict()
 			fprintf(fp, "~FontSize %d\n", fontsize);
 		if ( buffsize!=4096 ) 
 			fprintf(fp, "~BuffSize %d\n", buffsize);
-		if ( pTerm->cols()!=80 || pTerm->rows()!=25 ) 
-			fprintf(fp, "~TermSize %dx%d\n", pTerm->cols(), pTerm->rows());
+		fprintf(fp, "~WndSize %dx%d\n", pWindow->w(), pWindow->h());
 			
 		const char *p = pCmd->first();
 		while ( p!=NULL ) { 
@@ -689,11 +704,11 @@ int main(int argc, char **argv)
 		pTerm->callback( term_cb );
 		pCmd = new Fl_Browser_Input( 0, pWindow->h()-1, 1, 1, "");
 		pCmd->box(FL_FLAT_BOX);
-	  	pCmd->color(FL_BLACK);
+		pCmd->color(FL_BLACK);
 		pCmd->textcolor(FL_YELLOW);
 		pCmd->cursor_color(FL_WHITE);
-	  	pCmd->when(FL_WHEN_ENTER_KEY_ALWAYS);
-	  	pCmd->callback(cmd_cb);
+		pCmd->when(FL_WHEN_ENTER_KEY_ALWAYS);
+		pCmd->callback(cmd_cb);
 	}
 	pWindow->callback(close_cb);
 	pWindow->resizable(pTerm);
@@ -731,12 +746,11 @@ int main(int argc, char **argv)
 #endif
 	load_script();
 	load_dict();
-	pTerm->buffsize(buffsize);
 	Fl::set_font(FL_COURIER, fontface);
-	fl_font(FL_COURIER, fontsize);
 	pTerm->textsize(fontsize);
+	pTerm->buffsize(buffsize);
+	pCmd->textfont(FL_COURIER);
 	pCmd->textsize(fontsize);
-	pWindow->size(termcols*fl_width('a'), termrows*fl_height()+MENUHEIGHT);
 	pWindow->show();
 
 		if ( localedit ) 
@@ -829,7 +843,7 @@ void httpd( int s0 )
 				cmd = buf+5;
 				char *p = strchr(cmd, ' ');
 				if ( p!=NULL ) *p = 0;
-				for ( char *p=cmd; *p!=0; p++ )
+				for ( char *p=cmd; *p; p++ )
 					if ( *p=='+' ) *p=' ';
 				fl_decode_uri(cmd);
 

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 35301 2019-04-10 10:08:20 $"
+// "$Id: Fl_Term.cxx 36368 2019-05-21 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -18,8 +18,9 @@
 #include "Fl_Term.h"
 #include <FL/fl_ask.H>
 #include <FL/Fl_Menu.H>
-#include <FL/filename.H>               // needed for fl_decode_rui
+#include <FL/filename.H>               // needed for fl_decode_uri
 #include <thread>
+using namespace std;
 
 int move_editor(int x, int y, int w, int h);
 void sleep_ms( int ms );
@@ -31,27 +32,39 @@ void host_cb0(void *data, const char *buf, int len)
 }
 void Fl_Term::host_cb( const char *buf, int len )
 {
-	if ( len>0 ) {					//display new text
-		puts(buf, len); return;
-	}
-	if ( len==0 && *buf=='C' ) {	//Connected, send term size
-		host->send_size(size_x, size_y); return;
-	}
-									//Disconnected, or failure
-	disp("\033[31m"); disp(buf);
-	if ( len<0 ) disp(" failure");
-	do_callback( this, (void *)buf );
+	if ( len==0 )					//Connected, send term size
+		host->send_size(size_x, size_y);
+	else
+		if ( len>0 ) {				//data from host, display 
+			if ( host->type()==HOST_CONF )
+				put_xml(buf, len);
+			else
+				append(buf, len); 
+		}
+		else {//len<0				//Disconnected, or failure
+			disp("\033[31m"); disp(buf);
+			do_callback( this, (void *)buf );
+		}
 }
+#ifdef __APPLE__
+#define FL_CMD FL_META
+#else
+#define FL_CMD FL_ALT
+#endif
 Fl_Menu_Item rclick_menu[]={
-	{"Copy"}, {"Paste"}, {"Copy all"}, {"Paste selection"},{0}
+	{"&Copy", 		FL_CMD+'c'},
+	{"&Paste",		FL_CMD+'v'},
+	{"select &All", FL_CMD+'a'},
+	{"paste &Selection",0},
+	{0}
 };
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bInsert = bAlterScreen = bAppCursor = false;
-	bEscape = bGraphic = bTitle = false;
+	bEscape = bGraphic = bTitle = bBracket = false;
 	bCursor = true;
 	bEcho = false;
-	bMouseScroll = false;
+	bScrollbar = false;
 	ESC_idx = 0;
 	host = NULL;
 
@@ -71,7 +84,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	buff = attr = NULL;
 	buff_size = 0;
 	redraw_complete = false;
-	buffsize(4096);
+	buffsize(8192);
 	clear();
 	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
 }
@@ -89,7 +102,7 @@ void Fl_Term::clear()
 	if ( buff!=NULL ) memset(buff, 0, buff_size);
 	if ( attr!=NULL ) memset(attr, 0, buff_size);
 	cursor_y = cursor_x = 0;
-	screen_y = scroll_y = 0;
+	screen_y = 0;
 	sel_left = sel_right= 0;
 	c_attr = 7;				//default black background, white foreground
 	recv0 = 0;
@@ -106,13 +119,9 @@ void Fl_Term::resize( int X, int Y, int W, int H )
 	size_y = h()/font_height;
 	roll_top = 0;
 	roll_bot = size_y-1;
-	if ( !bAlterScreen ) {
-		screen_y = cursor_y-size_y+1;
-		if ( screen_y<0 ) screen_y = 0;
-		scroll_y = 0;
-	}
-	redraw();
+	if ( !bAlterScreen ) screen_y = max(0, cursor_y-size_y+1);
 	if ( host!=NULL ) host->send_size(size_x, size_y);
+	redraw();
 }
 void Fl_Term::textsize( int pt )
 {
@@ -123,9 +132,11 @@ void Fl_Term::textsize( int pt )
 	resize(x(), y(), w(), h());
 }
 
-const unsigned int VT_attr[8] = {
-	FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW,	//0,1,2,3
-	FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE	//4,5,6,7
+const unsigned int VT_attr[] = {
+	0x00000000, 0xc0000000, 0x00c00000, 0xc0c00000,	//0,1,2,3
+	0x2060c000, 0xc000c000, 0x00c0c000, 0xc0c0c000,	//4,5,6,7
+	FL_BLACK, FL_RED, FL_GREEN, FL_YELLOW,
+	FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE
 };
 void Fl_Term::draw()
 {
@@ -141,7 +152,7 @@ void Fl_Term::draw()
 		sel_r = sel_left;
 	}
 
-	int ly = screen_y+scroll_y;
+	int ly = screen_y;
 	if ( ly<0 ) ly=0;
 	int dx, dy = y()-4;
 	for ( int i=0; i<size_y; i++ ) {
@@ -154,8 +165,8 @@ void Fl_Term::draw()
 				if ( ++n==line[ly+i+1]) break;
 				if ( n==sel_r || n==sel_l ) break;
 			}
-			unsigned int font_color = VT_attr[(int)attr[j]&7];
-			unsigned int bg_color = VT_attr[(int)((attr[j]&0x70)>>4)];
+			unsigned int font_color = VT_attr[(int)attr[j]&0x0f];
+			unsigned int bg_color = VT_attr[(int)((attr[j]>>4)&0x0f)];
 			int wi = fl_width(buff+j, n-j);
 			if ( j>=sel_l && j<sel_r ) {
 				fl_color(selection_color());
@@ -183,17 +194,17 @@ void Fl_Term::draw()
 			take_focus();
 		}
 		else 
-			drawCursor = !move_editor(dx, dy, w()-dx, font_height);
+			drawCursor = !move_editor(dx, dy, w()-dx, font_height-1);
 		if ( drawCursor ) {
 			fl_color(FL_WHITE);		//draw a white bar as cursor
 			fl_rectf(dx+1, dy+font_height-4, 8, 4);
 		}
 	}
-	if ( scroll_y || bMouseScroll) {
+	if ( bScrollbar) {
 		fl_color(FL_DARK3);			//draw scrollbar
 		fl_rectf(x()+w()-8, y(), 8, y()+h());
 		fl_color(FL_RED);			//draw slider
-		int slider_y = h()*(cursor_y+scroll_y)/cursor_y;
+		int slider_y = h()*screen_y/cursor_y;
 		fl_rectf(x()+w()-8, y()+slider_y-8, 8, 16);
 	}
 }
@@ -202,9 +213,10 @@ int Fl_Term::handle( int e ) {
 		case FL_FOCUS: redraw(); return 1;
 		case FL_MOUSEWHEEL:
 			if ( !bAlterScreen ) {
-				scroll_y += Fl::event_dy();
-				if ( scroll_y<-screen_y ) scroll_y = -screen_y;
-				if ( scroll_y>0 ) scroll_y = 0;
+				screen_y += Fl::event_dy();
+				if ( screen_y<0 ) screen_y = 0;
+				if ( screen_y>cursor_y ) screen_y = cursor_y;
+				bScrollbar = (screen_y < cursor_y-size_y+1);
 				redraw();
 			}
 			return 1;
@@ -213,7 +225,7 @@ int Fl_Term::handle( int e ) {
 				int x=Fl::event_x()/font_width;
 				int y=Fl::event_y()-Fl_Widget::y();
 				if ( Fl::event_clicks()==1 ) {	//double click to select word
-					y = y/font_height + screen_y+scroll_y;
+					y = y/font_height + screen_y;
 					sel_left = line[y]+x;
 					sel_right = sel_left;
 					while ( --sel_left>line[y] )
@@ -228,14 +240,12 @@ int Fl_Term::handle( int e ) {
 					redraw();
 					return 1;
 				}
-				if ( x>=size_x-2 && scroll_y!=0 ) {//push in scrollbar area
-					bMouseScroll = true;
-					scroll_y = y*cursor_y/h()-cursor_y;
-					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
+				if ( x>=size_x-2 && bScrollbar) {//push in scrollbar area
+					if ( y>0 && y<h() ) screen_y = y*cursor_y/h();
 					redraw();
 				}
 				else {								//push to start draging
-					y = y/font_height + screen_y+scroll_y;
+					y = y/font_height + screen_y;
 					sel_left = line[y]+x;
 					if ( sel_left>line[y+1] ) sel_left=line[y+1] ;
 					while ( (buff[sel_left]&0xc0)==0x80 ) sel_left--;
@@ -247,21 +257,19 @@ int Fl_Term::handle( int e ) {
 			if ( Fl::event_button()==FL_LEFT_MOUSE ) {
 				int x = Fl::event_x()/font_width;
 				int y = Fl::event_y()-Fl_Widget::y();
-				if ( bMouseScroll) {
-					scroll_y = y*cursor_y/h()-cursor_y;
-					if ( scroll_y<-screen_y ) scroll_y = -screen_y;
-					if ( scroll_y>0 ) scroll_y=0;
+				if ( bScrollbar && y>0 && y<h()) {
+					screen_y = y*cursor_y/h();
 				}
 				else {
 					if ( y<0 ) {
-						scroll_y += y/8;
-						if ( scroll_y<-cursor_y ) scroll_y = -cursor_y;
+						screen_y += y/8;
+						if ( screen_y<0 ) screen_y = 0;
 					}
 					if ( y>h() ) {
-						scroll_y += (y-h())/8;
-						if ( scroll_y>0 ) scroll_y=0;
+						screen_y += (y-h())/8;
+						if ( screen_y>cursor_y ) screen_y=cursor_y;
 					}
-					y = y/font_height + screen_y+scroll_y;
+					y = y/font_height + screen_y;
 					if ( y<0 ) y=0;
 					if ( !bAlterScreen && y>cursor_y ) y = cursor_y;
 					//cursor_y may not be the last line in AlterScreen mode
@@ -275,7 +283,6 @@ int Fl_Term::handle( int e ) {
 		case FL_RELEASE:
 			switch ( Fl::event_button() ) {
 			case FL_LEFT_MOUSE:		//left button drag to copy
-				bMouseScroll = false;
 				if ( sel_left>sel_right ) {
 					int t=sel_left; sel_left=sel_right; sel_right=t;
 				}
@@ -290,20 +297,20 @@ int Fl_Term::handle( int e ) {
 					if ( m ) {
 						const char *sel = m->label();
 						switch ( *sel ) {
-						case 'C':
-							if ( sel[4]==' ' ) {//"Copy all" or "Copy"
-								sel_right = cursor_x; 
-								sel_left = 0; 
-								redraw();
-							}
+						case 's':	//"select All"
+							sel_left = 0; sel_right = cursor_x; redraw();
+							break;
+						case 'C':	//"Copy"
 							if ( sel_left<sel_right )
 								Fl::copy( buff+sel_left, sel_right-sel_left, 1);
 							break;
-						case 'P':
-							if ( sel[5]==' ' )	//"Paste selection" or "Paste"
+						case 'P':	//"Paste"
+							Fl::paste( *this, 1 ); 
+							break;
+						case 'p':	//"paste Selection"
+							if ( sel_left<sel_right )
 								write(buff+sel_left, sel_right-sel_left);
-							else
-								Fl::paste( *this, 1 ); break;
+							break;
 						}
 					}
 				}
@@ -315,14 +322,36 @@ int Fl_Term::handle( int e ) {
 		case FL_DND_DRAG:
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:
-			if ( bDND ) 
-				run_script(strdup(Fl::event_text()));
-			else
+			if ( !connected() ) {		//just display the text if not connected
+				append(Fl::event_text(), Fl::event_length ());
+			}
+			else if ( !bDND || host->type()==HOST_CONF ) {	//paste or netconf
+				if ( bBracket ) write( "\033[200~", 6 );	//bracketed paste
 				write(Fl::event_text(),Fl::event_length());
+				if ( bBracket ) write( "\033[201~", 6 );
+			}
+			else {						//drop text to run as script
+				run_script(strdup(Fl::event_text()));
+			}
 			bDND = false;
 			return 1;
+		case FL_SHORTCUT:
 		case FL_KEYDOWN:
-			if ( Fl::event_state(FL_ALT)==0 ) {
+			if ( Fl::event_state(FL_CMD) ) {
+				switch ( Fl::event_key() )
+				{
+				case 'a': sel_left = 0; sel_right = cursor_x; redraw();
+						  return 1;
+				case 'c': if ( sel_left<sel_right )
+							Fl::copy( buff+sel_left, sel_right-sel_left, 1);
+						  return 1;
+				case 'b': if ( sel_left<sel_right )
+							write(buff+sel_left, sel_right-sel_left); 
+						  return 1;
+				case 'v': Fl::paste( *this, 1 ); return 1;
+				}
+			}
+			else {
 #ifdef __APPLE__
 				int del;
 				if ( Fl::compose(del) ) {
@@ -336,15 +365,17 @@ int Fl_Term::handle( int e ) {
 				switch (key) {
 				case FL_Page_Up:
 					if ( !bAlterScreen ) {
-						scroll_y-=size_y;
-						if ( scroll_y<-screen_y ) scroll_y=-screen_y;
+						bScrollbar = true;
+						screen_y -= size_y-1;
+						if ( screen_y<0 ) screen_y = 0;
 						redraw();
 					}
 					break;
 				case FL_Page_Down:
 					if ( !bAlterScreen ) {
-						scroll_y+=size_y;
-						if ( scroll_y>0 ) scroll_y = 0;
+						screen_y += size_y-1;
+						if ( screen_y>cursor_y-size_y ) bScrollbar = false;
+						if ( screen_y>cursor_y ) screen_y = cursor_y;
 						redraw();
 					}
 					break;
@@ -353,10 +384,12 @@ int Fl_Term::handle( int e ) {
 				case FL_Right:write(bAppCursor?"\033OC":"\033[C",3); break;
 				case FL_Left: write(bAppCursor?"\033OD":"\033[D",3); break;
 				case FL_BackSpace: write("\177", 1); break;
+				case FL_Pause: pause_script(); break;
 				case FL_Enter:
 				default:
 					write(Fl::event_text(), Fl::event_length());
-					scroll_y = 0;
+					if ( screen_y < cursor_y-size_y+1 ) 
+						screen_y = cursor_y-size_y+1;
 				}
 				return 1;
 			}
@@ -401,6 +434,7 @@ void Fl_Term::buffsize(int new_line_size)
 void Fl_Term::next_line()
 {
 	line[++cursor_y]=cursor_x;
+	if ( screen_y==cursor_y-size_y ) screen_y++;
 	if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
 	
 	if ( cursor_x>=buff_size-1024 || cursor_y==line_size-2 ) {
@@ -409,18 +443,16 @@ void Fl_Term::next_line()
 		recv0 -= len;
 		cursor_x -= len;
 		cursor_y -= 1024;
+		screen_y -= 1024;
+		if ( screen_y<0 ) screen_y = 0;
 		memmove(buff, buff+len, buff_size-len);
 		memset(buff+cursor_x, 0, buff_size-cursor_x);
 		memmove(attr, attr+len, buff_size-len);
 		memset(attr+cursor_x, 0, buff_size-cursor_x);
 		for ( i=0; i<cursor_y+2; i++ ) line[i] = line[i+1024]-len;
 		while ( i<line_size ) line[i++]=0;
-		screen_y -= 1024;
-		scroll_y = 0;
 		Fl::unlock();
 	}
-	if ( scroll_y<0 ) scroll_y--;
-	if ( screen_y<cursor_y-size_y+1 ) screen_y = cursor_y-size_y+1;
 }
 void Fl_Term::append( const char *newtext, int len ){
 	const unsigned char *p = (const unsigned char *)newtext;
@@ -460,7 +492,7 @@ void Fl_Term::append( const char *newtext, int len ){
 					}
 					else {	//not on alter screen, store LF at end of line
 						cursor_x = line[cursor_y+1];
-//if the next line is not empty, assum it's a ESC[2J cleared buffer like in top
+//if the next line is not empty, assume it's a ESC[2J cleared buffer like in top
 						if ( line[cursor_y+2]!=0 ) cursor_x--;
 						attr[cursor_x] = c_attr;
 						buff[cursor_x++] = 0x0a;
@@ -643,7 +675,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					/*[2J, mostly used after [?1049h to clear screen
 					  and when screen size changed during vi or raspi-config
 					  flashwave TL1 use it without [?1049h for splash screen 
-					  freeBSD use it without [?1049h* for top and vi 		*/
+					  freeBSD use it without [?1049h* for top and vi*/
 					cursor_y = screen_y; cursor_x = line[cursor_y];
 					for ( int i=0; i<size_y; i++ ) { 
 						memset(buff+cursor_x, ' ', size_x);
@@ -747,11 +779,17 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						n0 = atoi(ESC_code+2);
 						if ( n0==1 ) bAppCursor=true;
 						if ( n0==25 ) bCursor=true;
+						if ( n0==2004 ) bBracket = true;
 						if ( n0==1049 ) {	//?1049h enter alternate screen
 							bAlterScreen = true;
 							screen_y = cursor_y; cursor_x = line[cursor_y];
-/* 	should clear alterScreen here, but all apps(vi, raspi-config etc) use 
-	ESC[2J or ESC[J to clear the screen following ESC[?1049h any way 	*/
+							for ( int i=0; i<size_y; i++ ) { 
+								memset(buff+cursor_x, ' ', size_x);
+								memset(attr+cursor_x,   0, size_x);
+								cursor_x += size_x;
+								next_line();
+							}
+							cursor_y = --screen_y; cursor_x = line[cursor_y];
 						}
 					}
 					break;
@@ -761,26 +799,29 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						n0 = atoi(ESC_code+2);
 						if ( n0==1 )  bAppCursor=false;
 						if ( n0==25 ) bCursor=false;
+						if ( n0==2004 ) bBracket = false;
 						if ( n0==1049 ) { 	//?1049l exit alternate screen
 							bAlterScreen = false;
 							cursor_y = screen_y; cursor_x = line[cursor_y];
 							for ( int i=1; i<=size_y+1; i++ ) 
 								line[cursor_y+i] = 0;
-							screen_y = cursor_y-size_y+1;
-							if ( screen_y<0 ) screen_y = 0;
+							screen_y = max(0, cursor_y-size_y+1);
 						}
 					}
 					break;
 				case 'm': //text style, color attributes
+					if ( ESC_code[ESC_idx-2]=='[' ) n0 = 0; 
 					if ( n0==0 && n2!=1 ) n0 = n2;	//ESC[0;0m	ESC[01;34m
 					switch ( int(n0/10) ) {			//ESC[34m
-					case 0: if ( n0%10==7 ) {c_attr = 0x70; break;}
-					case 1:
-					case 2: c_attr = 7; break;
-					case 3: if ( n0==39 ) n0 = 37;	//39 default foreground
+					case 0: if ( n0==1 ) { c_attr|=0x08; break; }//bright
+							if ( n0==7 ) { c_attr =0x70; break; }//negative
+					case 2: c_attr = 7; break;					 //normal
+					case 3: if ( n0==39 ) n0 = 7;	//39 default foreground
 							c_attr = (c_attr&0xf0)+n0%10; break;
-					case 4: if ( n0==49 ) n0 = 40;	//49 default background
+					case 4: if ( n0==49 ) n0 = 0;	//49 default background
 							c_attr = (c_attr&0x0f)+((n0%10)<<4); break;
+					case 9: c_attr = (c_attr&0xf0) + n0%10 + 8; break;
+					case 10:c_attr = (c_attr&0x0f) + ((n0%10+8)<<4); break;
 					}
 					break;
 				case 'r': roll_top=n1-1; roll_bot=n2-1; break;
@@ -868,19 +909,21 @@ void Fl_Term::srch( const char *sstr )
 		if ( i==-1 ) {
 			sel_left = p-l-buff;
 			sel_right = sel_left+l;
-			while ( line[screen_y+scroll_y]>sel_left ) scroll_y--;
+			while ( line[screen_y]>sel_left ) screen_y--;
 			break;
 		}
 	}
-	if ( p<buff+l ) sel_left = sel_right = scroll_y = 0;
+	if ( p<buff+l ) sel_left = sel_right = 0;
 	redraw();
 }
 void Fl_Term::learn_prompt()
 {//capture prompt for scripting
-	sPrompt[0] = buff[cursor_x-2];
-	sPrompt[1] = buff[cursor_x-1];
-	sPrompt[2] = 0;
-	iPrompt = 2;
+	if ( cursor_x>1 ) {
+		sPrompt[0] = buff[cursor_x-2];
+		sPrompt[1] = buff[cursor_x-1];
+		sPrompt[2] = 0;
+		iPrompt = 2;
+	}
 }
 char *Fl_Term::mark_prompt()
 {
@@ -923,6 +966,7 @@ void Fl_Term::connect( const char *hostname )
 			while( host->live() ) sleep_ms(100);
 		}
 		delete host;
+		host = NULL;
 	}
 	if ( strncmp(hostname, "ssh " , 4)==0 ) {
 		host = new sshHost(hostname+4);
@@ -942,6 +986,7 @@ void Fl_Term::connect( const char *hostname )
 		strcat(netconf, hostname);
 		host = new sshHost(netconf);
 	}
+/*
 #ifdef WIN32
 	else if ( strncmp(hostname, "ftpd ", 5)==0 ) {
 		host = new ftpdHost(hostname+5);
@@ -950,6 +995,7 @@ void Fl_Term::connect( const char *hostname )
 		host = new tftpdHost(hostname+6);
 	}
 #endif
+*/
 	else 
 		host = new pipeHost(hostname);
 	if ( host!=NULL ) {
@@ -965,10 +1011,6 @@ void Fl_Term::connect( const char *hostname )
 void Fl_Term::disconn()
 {
 	host->disconn();
-}
-void Fl_Term::keepalive(int interval)
-{
-	host->keepalive(interval);
 }
 char *Fl_Term::gets(const char *prompt, int echo)
 {
@@ -1051,11 +1093,7 @@ int Fl_Term::cmd(const char *cmd, char **preply)
 	}
 	return rc;
 }
-void Fl_Term::puts(const char *buf, int len) { 
-	if ( host->type()!=HOST_CONF ) {
-		append(buf, len); 
-		return;
-	}
+void Fl_Term::put_xml(const char *buf, int len) { 
 	const char *p=buf, *q;
 	const char spaces[256]="\r\n                                               \
                                                                               ";
@@ -1114,8 +1152,7 @@ void Fl_Term::scripter(char *cmds)
 	bScriptRun = true; bScriptPause = false;
 	while ( bScriptRun && p1!=NULL ) 
 	{
-		sleep_ms(200);
-		if ( bScriptPause ) continue;
+		if ( bScriptPause ) { sleep_ms(100); continue; }
 
 		p0 = p1;
 		p1 = strchr(p0, 0x0a);
@@ -1254,12 +1291,6 @@ void Fl_Term::copier(char *files)
 }
 void Fl_Term::run_script(char *script)
 {
-	if (host!=NULL ) if ( host->type()==HOST_CONF ) {
-		if ( bEcho ) puts(script, strlen(script));
-		host->write(script, strlen(script));
-		free(script);
-		return;
-	}
 	if ( bScriptRun ) {
 		fl_alert("another script is still running");
 		free(script);
@@ -1271,7 +1302,7 @@ void Fl_Term::run_script(char *script)
 	char *p1=strchr(p0, 0x0a);
 	if ( p1!=NULL ) *p1=0;
 	struct stat sb;				//is this a list of files?
-	int rc = stat(p0, &sb);
+	int rc = fl_stat(p0, &sb);
 	if ( p1!=NULL ) *p1=0x0a;
 
 	if ( rc!=-1 && (host->type()==HOST_SSH || host->type()==HOST_SFTP) ) {

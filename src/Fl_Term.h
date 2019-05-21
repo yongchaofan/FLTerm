@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4473 2019-04-10 13:08:10 $"
+// "$Id: Fl_Term.h 4419 2019-05-21 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -35,7 +35,6 @@ class Fl_Term : public Fl_Widget {
 	int save_x;			//save_x/save_y also used to save and restore cursor
 	int save_y;			//previous cursor_y when switch to alternate screen
 	int screen_y;		//the line at top of screen
-	int scroll_y;		//scroll offset for the current top line
 	int roll_top;
 	int roll_bot;		//the range of lines that will scroll in vi
 	int sel_left;
@@ -44,7 +43,6 @@ class Fl_Term : public Fl_Widget {
 	int font_height;	//current font height in pixels
 	int font_size;		//current font weight
 	std::atomic<bool> redraw_complete;
-	bool bMouseScroll;	//if mouse is dragged on scrollbar
 
 	bool bEscape;		//escape sequence processing mode
 	int ESC_idx;		//current index for ESC_code
@@ -55,6 +53,8 @@ class Fl_Term : public Fl_Widget {
 	bool bCursor;		//display cursor or not
 	bool bAppCursor;	//app cursor mode for vi
 	bool bAlterScreen;	//alternative screen for vi
+	bool bScrollbar;	//show scrollbar when true
+	bool bBracket;		//bracketed paste mode
 
 	int bTitle;			//title mode, changed through escape sequence
 	int title_idx;
@@ -81,9 +81,10 @@ class Fl_Term : public Fl_Widget {
 protected: 
 	void draw();
 	void next_line();
-	void append( const char *newtxt, int len );
-	const unsigned char *vt100_Escape( const unsigned char *sz, int cnt );
-	const unsigned char *telnet_options( const unsigned char *p);
+	void append( const char *buf, int len );
+	void put_xml(const char *buf, int len);
+	const unsigned char *vt100_Escape( const unsigned char *buf, int cnt );
+	const unsigned char *telnet_options( const unsigned char *buf );
 
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
@@ -101,15 +102,13 @@ public:
 	int rows() { return size_y; }
 	void echo( int e ) { bEcho = e; }
 	void logg( const char *fn );
-	void keepalive(int interval);
 	void srch( const char *word );
 
 	int connected() { return host!=NULL ? host->live() : false; }
 	void connect( const char *hostname );
 	void host_cb( const char *buf, int len );
-	void disconn();
-	void puts(const char *buf, int len);
 	char *gets(const char *prompt, int echo);
+	void disconn();
 
 
 	void write(const char *buf, int len) { 
