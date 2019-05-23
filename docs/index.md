@@ -6,7 +6,7 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 	<tr>
 	    <td width="568">
 		<video width="560" height="412" controls>
-			<source src="https://yongchaofan.github.io/tinyTerm/docs/tinyTerm.mp4" type="video/mp4">
+			<source src="tinyTerm2.mp4" type="video/mp4">
 			Your browser does not support the video tag.
 		</video>
 	    </td>
@@ -22,6 +22,7 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 </table>
 
 Windows 10 user should install from Microsoft Store, users on older versions of Windows, or prefer portable apps download exe files.
+Apple computer use should install from apple app store.
 
 ---
 
