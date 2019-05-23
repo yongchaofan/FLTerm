@@ -32,8 +32,11 @@ void host_cb0(void *data, const char *buf, int len)
 }
 void Fl_Term::host_cb( const char *buf, int len )
 {
-	if ( len==0 )					//Connected, send term size
+	if ( len==0 ) {					//Connected, send term size
 		host->send_size(size_x, size_y);
+		if ( host->type()==HOST_CONF ) bEcho = true;
+		do_callback( this, (void *)sTitle );
+	}
 	else
 		if ( len>0 ) {				//data from host, display 
 			if ( host->type()==HOST_CONF )
@@ -43,7 +46,9 @@ void Fl_Term::host_cb( const char *buf, int len )
 		}
 		else {//len<0				//Disconnected, or failure
 			disp("\033[31m"); disp(buf);
-			do_callback( this, (void *)buf );
+			if ( host->type()==HOST_CONF ) bEcho = false;
+			sTitle[10] = 0;
+			do_callback( this, (void *)NULL );
 		}
 }
 #ifdef __APPLE__
@@ -70,7 +75,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 
 	color(FL_BLACK);
 	textsize(16);
-	strcpy(sTitle, "Term");
+	strcpy(sTitle, "tinyTerm2 ");
 	strcpy(sPrompt, "> ");
 	iPrompt = 2;
 	iTimeOut = 30;
@@ -188,14 +193,21 @@ void Fl_Term::draw()
 	dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
 	dy = y()+(cursor_y-screen_y)*font_height;
 	if ( bCursor && active() ) {
-		bool drawCursor = true;
+		bool drawCursor = false;
+		if ( host!=NULL ) {
+			if ( host->status()==HOST_AUTHENTICATING ) {
+				drawCursor = true;
+			}
+		}
 		if ( bAlterScreen ) {
+			drawCursor = true;
+		}
+		if ( drawCursor==false ) {
+			drawCursor = !move_editor(dx, dy, w()-dx, font_height-1);
+		}
+		if ( drawCursor ) {
 			move_editor(0, 0, 1, 1);
 			take_focus();
-		}
-		else 
-			drawCursor = !move_editor(dx, dy, w()-dx, font_height-1);
-		if ( drawCursor ) {
 			fl_color(FL_WHITE);		//draw a white bar as cursor
 			fl_rectf(dx+1, dy+font_height-4, 8, 4);
 		}
@@ -466,9 +478,11 @@ void Fl_Term::append( const char *newtext, int len ){
 			if ( c==0x07 ) {
 				bTitle = false;
 				sTitle[title_idx]=0;
+				do_callback( this, (void *)sTitle );
 			}
-			else
-				sTitle[title_idx++] = c;
+			else {
+				if ( title_idx<128 ) sTitle[title_idx++] = c;
+			}
 			continue;
 		}
 		switch ( c ) {
@@ -863,7 +877,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 			if ( ESC_code[ESC_idx-1]==';' ) {
 				if ( ESC_code[1]=='0' ) {
 					bTitle = true;
-					title_idx = 0;
+					title_idx = 10;
 				}
 				bEscape = false;
 			}
@@ -1010,7 +1024,8 @@ void Fl_Term::connect( const char *hostname )
 }
 void Fl_Term::disconn()
 {
-	host->disconn();
+	if ( host!=NULL ) 
+		if ( host->live() ) host->disconn();
 }
 char *Fl_Term::gets(const char *prompt, int echo)
 {
@@ -1144,6 +1159,7 @@ void Fl_Term::put_xml(const char *buf, int len) {
 			p = q;
 		}
 	}
+	if ( strncmp(p-6, "]]>]]>", 6)==0 ) append("\n\033[37m", 6);
 }
 
 void Fl_Term::scripter(char *cmds)
@@ -1245,7 +1261,7 @@ int Fl_Term::scp(char *cmd, char **preply)
 		}	
 	}
 	free(cmd);
-	host->write("\r", 1);
+	if ( host!=NULL ) host->write("\r", 1);
 	if ( preply!=NULL ) *preply = reply;
 	return waitfor_prompt();
 }
@@ -1269,7 +1285,7 @@ void Fl_Term::copier(char *files)
 {
 	if ( host==NULL ) return;
 	if ( host->type()!=HOST_SSH && host->type()!=HOST_SFTP ) return;
-	
+
 	bScriptRun = true;
 	char rdir[1024];
 	term_pwd(rdir);
@@ -1284,8 +1300,8 @@ void Fl_Term::copier(char *files)
 		else if ( host->type()==HOST_SFTP )
 			((sftpHost *)host)->sftp_put(p, rdir);
 	}
-	while ( (p=p1)!=NULL ); 
-	host->write("\r",1);
+	while ( (p=p1)!=NULL && host!=NULL ); 
+	if ( host!=NULL ) host->write("\r",1);
 	free(files);
 	bScriptRun = false;
 }
@@ -1305,7 +1321,7 @@ void Fl_Term::run_script(char *script)
 	int rc = fl_stat(p0, &sb);
 	if ( p1!=NULL ) *p1=0x0a;
 
-	if ( rc!=-1 && (host->type()==HOST_SSH || host->type()==HOST_SFTP) ) {
+	if ( rc!=-1 && host!=NULL ) {
 		std::thread scripterThread(&Fl_Term::copier, this, script);
 		scripterThread.detach();
 	}

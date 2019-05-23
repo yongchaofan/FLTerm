@@ -1,5 +1,5 @@
 //
-// "$Id: tinyTerm2.cxx 24096 2019-05-07 21:05:10 $"
+// "$Id: tinyTerm2.cxx 24093 2019-05-07 21:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -26,8 +26,8 @@ const char ABOUT_TERM[]="\n\
 \t    * text based batch command automation\n\n\
 \t    * drag and drop to transfer files via scp\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%s\n\n\n\
-\tDownlaod: https://www.microsoft.com/store/apps/9PBX72DJMZT5\n\n\
-\thomepage: https://yongchaofan.github.io/tinyTerm2/\n\n\n\
+\thomepage: https://yongchaofan.github.io/tinyTerm2\n\n\
+\tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\n\n\
 \tVerision 1.0, ©2018-2019 Yongchao Fan, All rights reserved\r\n";
 
 #ifdef WIN32
@@ -140,15 +140,23 @@ const char *kb_gets(const char *prompt, int echo)
 	return NULL;
 }
 
-void term_cb(Fl_Widget *w, void *data )			//called when term disconnects
+void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 {
 	Fl_Term *term = (Fl_Term *)w;
-	if ( localedit ) 
-		term->disp("\n\033[32mtinyTerm2 > \033[37m");
-	else
-		term->disp("\n\033[33mPress Enter to restart\033[37m\n\n");
+	if ( term==pTerm ) {
+		pWindow->label(pTerm->title());
+		pTerm->connected()  ? pMenuDisconn->activate()
+							: pMenuDisconn->deactivate();
+		pTerm->echo() ? pMenuEcho->set() : pMenuEcho->clear();
+		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
+	}
+	if ( data==NULL ) {					//disconnected
+		if ( localedit ) 
+			term->disp("\n\033[32mtinyTerm2 > \033[37m");
+		else
+			term->disp("\n\033[33mPress Enter to restart\033[37m\n\n");
+	}
 }
-
 void tab_init()
 {
 	pTabs = new Fl_Tabs(0, MENUHEIGHT, pWindow->w(), pWindow->h()-MENUHEIGHT);
@@ -184,21 +192,10 @@ void tab_act(Fl_Term *pt)
 	strcat(label, "  x");
 	pTerm->copy_label(label);
 	pTabs->redraw();
-
-	if ( pTerm->connected() )	//update "Term" menu items
-		pMenuDisconn->activate();
-	else
-		pMenuDisconn->deactivate();
-	if ( pTerm->echo() ) 
-		pMenuEcho->set();
-	else
-		pMenuEcho->clear();
-	if ( pTerm->logg() )
-		pMenuLogg->set();
-	else
-		pMenuLogg->clear();
-
 	pWindow->label(pTerm->title());
+	pTerm->connected() ? pMenuDisconn->activate() : pMenuDisconn->deactivate();
+	pTerm->echo() ? pMenuEcho->set() : pMenuEcho->clear();
+	pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	pWindow->redraw();
 }
 void tab_new()
