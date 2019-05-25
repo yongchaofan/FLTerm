@@ -32,6 +32,8 @@ Apple computer use should install from apple app store, currently in the process
 > ### Terminal Emulation
 > Each time a connection is made using the connect dialog, an entry will be added to the Term menu, simply select the menu entry to make the same connection again. 
 > 
+> When local edit is enabled, user is presented with a "tinyTerm >" prompt, simply type commands like "telnet 192.168.1.1" or "ssh admin@172.16.1.1" to make connection, or type commands like "ipconfig", "ping 192.168.1.1", "tracert google.com" to execute
+>
 > For serial connections, available serial ports will be auto detected and added to the ports dropdown list in connection dialog on Windows.
 > 
 > for netconf connections, typing netconf messages is possible but not really practical, it's better to use a text or xml editor to compose the messages and then drag&drop to the terminal window. 
