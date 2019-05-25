@@ -1,6 +1,6 @@
 ## Introduction
 
-tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions as was in tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.0, the win32 exectuable is 520KB, win64 executable 640KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
+tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions same as tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.0, the win32 exectuable is 520KB, win64 executable 640KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
 	
 <table>
 	<tr>
@@ -21,8 +21,9 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 	</tr>
 </table>
 
-Windows 10 user should install from Microsoft Store, users on older versions of Windows, or prefer portable apps download exe files.
-Apple computer use should install from apple app store.
+Windows 10 user should install from Microsoft Store, users on older versions of Windows, or prefer portable apps download exe files
+
+Apple computer use should install from apple app store, currently in the process of being submitted.
 
 ---
 
@@ -31,17 +32,18 @@ Apple computer use should install from apple app store.
 > ### Terminal Emulation
 > Each time a connection is made using the connect dialog, an entry will be added to the Term menu, simply select the menu entry to make the same connection again. 
 > 
-> For serial connections, available serial ports will be auto detected and added to the ports dropdown list in connection dialog.
+> For serial connections, available serial ports will be auto detected and added to the ports dropdown list in connection dialog on Windows.
 > 
 > for netconf connections, typing netconf messages is possible but not really practical, it's better to use a text or xml editor to compose the messages and then drag&drop to the terminal window. 
 > 
-> Press left mouse button and drag to select text, selected text are copied to clipboard when left button is released. Double click to select and copy the whole word under mouse pointer. Right click to paste text from clipboard
+> Press left mouse button and drag to select text, double click to select the whole word under mouse pointer, middle click to paste selected text without copying to clipboard. Right click bring up context menu for copy, paste, select all and paste selection
 >
-> Scroll back buffer holds 8000 lines of text, the "Save all" function from Term menu allows user to save the whole buffer to a file. Use pageup key or mouse wheel to scroll back, scrollbar will appear when pageup is pressed, and will hide when scrolled all the way down. 
+> Scroll back buffer holds 8000 lines of text by default, use the options menu to change buffer size if desired. Use pageup key or mouse wheel to scroll back, scrollbar will appear when scrolled back, and will hide when scrolled all the way down.
+>
 > ### Command Autocompletion
-> When local edit mode is enabled, key presses are not sent to remote host until "Enter" key is pressed, and the input is auto completed using command history, every command typed in local edit mode is added to command history to complete future inputs. Command history is saved to tinyTerm.hist at exit, then loaded into memory at the next start of tinyTerm. 
+> When local edit mode is enabled, key presses are not sent to remote host until "Enter" or "Tab" key is pressed, and the input is auto completed using command history, every command typed in local edit mode is added to command history to complete future inputs. Command history is saved to tinyTerm.hist at exit, then loaded into memory at the next start of tinyTerm. 
 > 
-> Command history file is saved as %USERPROFILE%\documents\tinyTerm\tinyTerm.hist by default, copy tinyTerm.hist to the same folder as tinyTerm.exe for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all command TL1 commands in the history list to use as a dictionary.
+> Command history file is saved as %USERPROFILE%\documents\tinyTerm\tinyTerm.hist on Windows, ~/tinyTerm/tinyTerm.hist on macOS/Unix/Linux by default, copy tinyTerm.hist to the same folder as tinyTerm.exe for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary.
 > 
 > ### Batch Automation
 > To automate the execution of commands, simply drag and drop a list of commands from text editor, or select "Run..." from Script menu and select a text file with all the commands to be executed, tinyTerm send one command at a time, wait for prompt string before sending the next command, to avoid overflowing the receive buffer of the remote host or network device. 
@@ -54,9 +56,7 @@ Apple computer use should install from apple app store.
 > To copy file from server to a local folder, select the filename in the terminal window, then chose "scp_to_folder.js" from script menu.
 > 
 > ### FTPd/TFTPd/HTTPd
-> A built in FTP server can be used for simple file transfer tasks, like software download to network devices. Only one user name "tiny" is allowed to login, with password "term". For security, user session to the FTP server is timed out in 1 minute without action, and FTP server will time out in 15 minutes without active connection.
-> 
-> Similarly a built in TFTP server can be used for file transfer with simpler devices like cable modems. TFTP server times out after 5 minutes. 
+> FTPd/TFTPd has been removed to reduce amount of platform specific code, user require FTPd/TFTPd can continue to use tinyTerm
 > 
 > A built in HTTP server is started as soon as tinyTerm is started, for the first instance of tinyTerm running, HTTPd listens at 127.0.0.1:8080, the second instance listens at 127.0.0.1:8081, the third instance listens at 127.0.0.1:8082, so on and so forth. Since it's listening on 127.0.0.1 only, the HTTPd will only accept connections from local machine, for the purpose of scripting. 
 > 
@@ -116,7 +116,6 @@ These commands can be used programatically for scripting or interactively in loc
     !Timeout 30	        set time out to 30 seconds for CLI script
     !Wait 10            wait 10 seconds during execution of CLI script
     !Waitfor 100%       wait for “100%” from host during execution of CLI script
-    !Loop 2             repeat two times from start of CLI script
     !Log test.log       start/stop logging with log file test.log
 
 ### Scripting
@@ -134,9 +133,6 @@ These commands can be used programatically for scripting or interactively in loc
     ~FontSize 18        set font size to 18
 
 ### Extras
-    !Ftpd c:/tmp        start/stop ftp server using c:/tmp as root directory
-    !Tftpd c:/tmp       start/stop tftp server using c:/tmp as root directory
-
     !scp tt.txt :t1.txt secure copy local file tt.txt to remote host as t1.txt
     !scp :*.txt d:/     secure copy remote files *.txt to local d:/
 
