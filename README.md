@@ -18,8 +18,7 @@ User interface design is minimal, program starts with no tabs, tabs are enabled 
             ./configure --with-crypto=wincng --without-libz
             make install
             
-    mbedTLS Since Windows XP doesn't have WinCNG support, external crypto library has to be used, 
-    download mbedtls-2.16.1, 
+    mbedTLS crypto library is used on macOS/UNIX/Linux/WindowsXP, download mbedtls-2.16.1, 
             "make no_test install"          //add WINDOWS_BUILD=1 on windows 
     then build libssh2
             ./configure --with-crypto=mbedtls --without-libz
