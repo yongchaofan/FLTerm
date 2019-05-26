@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/pages-themes/minimal.svg?branch=master)](https://travis-ci.org/pages-themes/minimal) 
 *Minimalist terminal emulator, designed by network engineer for network engineers, with unique features for effeciency and effectiveness when managing network devices like routers, switches, transponders and ROADMs through command line interface.*
 
-![Thumbnail of minimal](tinyTerm2-0.png)
+![Thumbnail of minimal](docs/tinyTerm2-0.png)
 
 
 ## Project philosophy
