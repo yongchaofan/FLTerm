@@ -1,3 +1,4 @@
+#Makefile for MSYS2/MingW64/MacOS/Linux
 HEADERS = Fl_Term.h host.h ssh2.h
 LIBS =  /usr/local/lib/libssh2.a /usr/local/lib/libmbedcrypto.a
 
