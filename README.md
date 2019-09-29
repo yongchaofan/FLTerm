@@ -15,7 +15,7 @@ User interface design is minimal, program starts with no tabs, tabs are enabled 
     
 ### Librarys
 
-    libssh2 using any daily snapshot from master branch for full support of WinCNG crypto functions
+    libssh2 1.9.0 for full support of WinCNG crypto functions
             ./configure --with-crypto=wincng --without-libz
             make install
             
@@ -43,7 +43,6 @@ User interface design is minimal, program starts with no tabs, tabs are enabled 
 tinyTerm2 can be compiled on Windows using mingW or Visual Studio command line tools, on MacOS using command line development tool or on UNIX/Linux using gnu tools. Makefiles are provided for building with MSYS2+MingW64/32, also a cmd file for building with Visual Studio building tools.
 
     Makefile        building tinyTerm on macOS/Linux or on windows using mingw64
-    Makefile.w64    building 64bit tinyTerm64.exe for Windows 7/10 using wincng crypto
     make.cmd        command for Visual Studio 2017 build tool on windows using wincng crypto
 
 The Makefiles provided assumes that FLTK and libssh2 are installed in /usr/local. MacOS and Linux Makefile are the same, mingW64 Makefile is a little different in that it uses Windows native crypto library(WinCNG) and includes a resource file to provide file version information and application icon. 
