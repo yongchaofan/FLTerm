@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 36368 2019-05-21 10:08:20 $"
+// "$Id: Fl_Term.cxx 37447 2019-09-28 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -309,15 +309,14 @@ int Fl_Term::handle( int e ) {
 					if ( m ) {
 						const char *sel = m->label();
 						switch ( *sel ) {
-						case 's':	//"select All"
-							sel_left = 0; sel_right = cursor_x; redraw();
-							break;
-						case 'C':	//"Copy"
-							if ( sel_left<sel_right )
+						case '&': //Copy or Paste
+							if ( sel[1]=='P' ) 
+								Fl::paste( *this, 1 ); 
+							else if ( sel_left<sel_right )
 								Fl::copy( buff+sel_left, sel_right-sel_left, 1);
 							break;
-						case 'P':	//"Paste"
-							Fl::paste( *this, 1 ); 
+						case 's':	//"select All"
+							sel_left = 0; sel_right = cursor_x; redraw();
 							break;
 						case 'p':	//"paste Selection"
 							if ( sel_left<sel_right )
@@ -1077,6 +1076,7 @@ int Fl_Term::cmd(const char *cmd, char **preply)
 		}
 		else if ( strncmp(cmd,"scp ",4)==0 ) rc = scp(strdup(cmd+4),preply);
 		else if ( strncmp(cmd,"tun",3)==0 )  rc = tun(strdup(cmd+3),preply);
+		else if ( strncmp(cmd,"xmodem ",7)==0 ) rc = xmodem(cmd+7);
 		else if ( strncmp(cmd,"Timeout",7)==0 ) iTimeOut = atoi(cmd+8);
 		else if ( strncmp(cmd,"Prompt ",7)==0 ) {
 			strncpy(sPrompt, cmd+7, 31);
@@ -1209,6 +1209,26 @@ void Fl_Term::term_pwd(char *dst)
 		}
 	}
 }
+int Fl_Term::xmodem(const char *fn)
+{
+	if ( host==NULL ) {
+		disp("not connected yet\n");
+		return 0;
+	}
+	if ( host->type()!=HOST_COM ) {
+		disp("not ssh connection\n");
+		return 0;
+	}
+	FILE *fp = fopen(fn, "rb");
+	if ( fp==NULL ) {
+		disp("xmodem couldn't open file ");
+		disp(fn);
+		disp("\n");
+		return 0;
+	}
+	((comHost *)host)->xmodem(fp);
+	return 1;
+}
 int Fl_Term::scp(char *cmd, char **preply)
 {
 	if ( host==NULL ) {
@@ -1258,7 +1278,7 @@ int Fl_Term::scp(char *cmd, char **preply)
 				}
 				free(remote);
 			}
-		}	
+		}
 	}
 	free(cmd);
 	if ( host!=NULL ) host->write("\r", 1);
@@ -1305,7 +1325,7 @@ void Fl_Term::copier(char *files)
 	free(files);
 	bScriptRun = false;
 }
-void Fl_Term::run_script(char *script)
+void Fl_Term::run_script(char *script)	//called on drag&drop
 {
 	if ( bScriptRun ) {
 		fl_alert("another script is still running");
@@ -1321,11 +1341,16 @@ void Fl_Term::run_script(char *script)
 	int rc = fl_stat(p0, &sb);
 	if ( p1!=NULL ) *p1=0x0a;
 
-	if ( rc!=-1 && host!=NULL ) {
-		std::thread scripterThread(&Fl_Term::copier, this, script);
-		scripterThread.detach();
+	if ( rc!=-1 && host!=NULL ) {	//files dropped
+		if ( host->type()==HOST_COM ) {
+			xmodem(script);			//xmodem send on SERIAL host
+		}
+		else {
+			std::thread scripterThread(&Fl_Term::copier, this, script);
+			scripterThread.detach();
+		}
 	}
-	else {
+	else {							//script dropped
 		std::thread scripterThread(&Fl_Term::scripter, this, script);
 		scripterThread.detach();
 	}

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4419 2019-05-21 13:08:10 $"
+// "$Id: Fl_Term.h 4448 2019-09-28 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -134,5 +134,6 @@ public:
 	int scp(char *cmd, char **preply);
 	int tun(char *cmd, char **preply);
 	void copier(char *files);
+	int xmodem(const char *fn);
 };
 #endif

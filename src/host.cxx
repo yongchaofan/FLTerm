@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 24644 2019-05-21 22:15:10 $"
+// "$Id: Hosts.cxx 27199 2019-09-28 22:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -51,15 +51,16 @@ void HOST::print( const char *fmt, ... )
 	do_callback("\033[37m",5);
 }
 /**********************************comHost******************************/
+const char SOH = 0x01;
 comHost::comHost(const char *address)
 {
-	bConnected = false;
 	*portname = 0;
 #ifdef WIN32
 	strcpy(portname, "\\\\.\\");
 #endif //WIN32
 	strncat(portname, address, 63);
 	portname[63] = 0;
+	bXmodem = FALSE;
 
 	char *p = strchr(portname, ':' );
 	if ( p!=NULL ) { *p++ = 0; strcpy(settings, p); }
@@ -67,19 +68,112 @@ comHost::comHost(const char *address)
 }
 void comHost::disconn()
 {
-	if ( bConnected ) {
-		bConnected = false;
-		if ( reader.joinable() ) reader.join();
+	if ( status()==HOST_CONNECTED ) {
+		status( HOST_IDLE );
+//		if ( reader.joinable() ) reader.join();
 	}
+}
+const char STX = 0x02;
+const char EOT = 0x04;
+const char ACK = 0x06;
+const char NAK = 0x15;
+void comHost::block_crc()
+{
+	unsigned short crc = 0;
+	for ( int i=3; i<131; i++ ) {
+		crc = crc ^ xmodem_buf[i] << 8;
+		for ( int j=0; j<8; j++ ) {
+			if (crc & 0x8000)
+				crc = crc << 1 ^ 0x1021;
+			else
+				crc = crc << 1;
+		}
+	}
+	xmodem_buf[131] = (crc>>8) & 0xff;
+	xmodem_buf[132] = crc & 0xff;
+ }
+void comHost::xmodem_block()
+{
+	xmodem_buf[0] = SOH;
+	xmodem_buf[1] = ++xmodem_blk;
+	xmodem_buf[2] = 255-xmodem_blk;
+	int cnt = fread( xmodem_buf+3, 1, 128, xmodem_fp );
+	if ( cnt <= 0 ) {
+		xmodem_buf[0] = EOT;
+		fclose(xmodem_fp);
+	}
+	if ( cnt>0 && cnt<128 ) 
+		for ( int i=cnt+3; i<131; i++ ) xmodem_buf[i] = 0;
+	if ( xmodem_crc ) {
+		block_crc();
+	}
+	else {
+		unsigned char chksum = 0;
+		for ( int i=3; i<131; i++ ) chksum += xmodem_buf[i];
+		xmodem_buf[131] = chksum;
+	}
+}
+void comHost::xmodem_send()
+{
+	xmodem_started = TRUE;
+	if ( xmodem_buf[0]==EOT )
+		write(xmodem_buf, 1);
+	else
+		write(xmodem_buf, xmodem_crc?133:132);
+}
+void comHost::xmodem_recv(char op)
+{
+	switch( op ) {
+	case 0:		//nothing received,resend every 10 seconds
+				if ( ++xmodem_timeout%10000==0 && xmodem_started ) {
+					xmodem_send();
+					do_callback("R",1);
+				}
+				if ( xmodem_timeout>60000 ) {//timeout after 60 seconds
+					bXmodem = FALSE;
+					fclose(xmodem_fp);
+					do_callback("Aborted\n", 9);
+				}
+				break;
+	case 0x06:	xmodem_timeout = 0;			//ACK
+				if ( xmodem_buf[0] == EOT ) {
+					do_callback("Completed\n",10);
+					bXmodem = FALSE;
+					return;
+				}
+				xmodem_block();
+				xmodem_send(); 
+				if ( xmodem_blk==0 ) do_callback(".",1);
+				break;
+	case 0x15:	do_callback("N",1);			//NAK
+				xmodem_send();
+				break;
+	case 'C':	do_callback("CRC",3);		//start CRC
+				xmodem_crc = TRUE; 
+				block_crc();
+				xmodem_send();
+				break;
+	}
+}
+void comHost::xmodem(FILE *fp)
+{
+	xmodem_fp = fp;
+	bXmodem = TRUE;
+	xmodem_crc = FALSE;
+	xmodem_started = FALSE;
+	xmodem_timeout = 0;
+	xmodem_blk = 0;
+	xmodem_block();
+	do_callback("xmodem",6);
 }
 #ifdef WIN32
 int comHost::read()
 {
-	COMMTIMEOUTS timeouts={10,0,1,0,0};	//timeout and buffer settings
+	COMMTIMEOUTS timeouts={1,0,1,0,0};	//timeout and buffer settings
 										//WriteTotalTimeoutMultiplier = 0;
 										//WriteTotalTimeoutConstant = 0;
 										//ReadTotalTimeoutConstant = 1;
-										//ReadIntervalTimeout = 10;
+										//ReadIntervalTimeout = 1;
 
 	hCommPort = CreateFileA( portname, GENERIC_READ|GENERIC_WRITE, 0, NULL,
 													OPEN_EXISTING, 0, NULL);
@@ -89,7 +183,7 @@ int comHost::read()
 	}
 
 	if ( SetCommTimeouts(hCommPort,&timeouts)==0) {
-		do_callback("Set timeout", -2);
+		do_callback("Set timeout failure", -2);
 		CloseHandle(hCommPort);
 		goto shutdown;
 	}
@@ -100,27 +194,34 @@ int comHost::read()
 	dcb.DCBlength = sizeof(dcb);
 	BuildCommDCBA(settings, &dcb);
 	if ( SetCommState(hCommPort, &dcb)==0 ) {
-		do_callback("Settings", -3);
+		do_callback("Settings failure", -3);
 		CloseHandle(hCommPort);
 		goto shutdown;
 	}
 
-	bConnected = true;
 	do_callback("Connected", 0);
-	while ( bConnected ) {
+	status( HOST_CONNECTED );
+	while ( status()==HOST_CONNECTED ) {
 		DWORD cch;
-		char buf[4096];
-		if ( ReadFile(hCommPort, buf, 4096, &cch, NULL) )
+		char buf[255];
+		if ( ReadFile(hCommPort, buf, 255, &cch, NULL) ) {
+			if ( bXmodem ) { 
+				char op = 0;
+				if ( cch>0 ) op = buf[cch-1];
+				xmodem_recv(op);
+				continue;
+			}
 			if ( cch > 0 )
 				do_callback(buf, cch);
 			else
 				Sleep(1);
+		}
 		else
 			if ( !ClearCommError(hCommPort, NULL, NULL ) ) break;
 	}
 	CloseHandle(hCommPort);
-	bConnected = false;
-	do_callback("Disconnected", 0);
+	status( HOST_IDLE );
+	do_callback("Disconnected", -1);
 	
 shutdown:
 	reader.detach();
@@ -129,7 +230,7 @@ shutdown:
 int comHost::write(const char *buf, int len)
 {
 	DWORD dwWrite=0;
-	if ( bConnected ) {
+	if ( status()==HOST_CONNECTED ) {
 		if ( !WriteFile(hCommPort, buf, len, &dwWrite, NULL) )
 			disconn();
 	}
@@ -171,32 +272,38 @@ int comHost::read()
 	SerialPortSettings.c_cc[VTIME] = 1; 		//timeout at 100ms
 	tcsetattr(ttySfd,TCSANOW,&SerialPortSettings);
 
-	bConnected = true;
+	status( HOST_CONNECTED );
 	do_callback("Connected", 0);
-	while ( bConnected ) {
+	while ( status()==HOST_CONNECTED ) {
 		char buf[4096];
 		int len = ::read(ttySfd, buf, 4096);
+		if ( bXmodem ) { 
+			char op = 0;
+			if ( cch>0 ) op = buf[cch-1];
+			xmodem_recv(op);
+			continue;
+		}
 		if ( len>0 )
 			do_callback(buf, len);
 		else
 			if ( len<0 && errno!=EAGAIN ) break;
 	}
 	close(ttySfd);
-	bConnected = false;
+	status( HOST_IDLE );
 	do_callback("Disconnected\n", -1);
-	
+
 shutdown:
 	reader.detach();
 	return 0;
 }
 int comHost::write(const char *buf, int len)
 {
-	if ( bConnected ) {
+	if ( status()==HOST_CONNECTED ) {
 		if ( ::write(ttySfd, buf, len) < 0 )
 			disconn();
 	}
 	else {
-		if ( reader.joinable()==false && *buf=='\r' )
+		if ( live()==false && *buf=='\r' )
 			connect();
 	}
 	return 0;
@@ -223,7 +330,7 @@ int tcpHost::tcp()
 {
 	struct addrinfo *ainfo;	   
 	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) {
-		print("invalid hostname or ip address\n");
+		do_callback("invalid hostname or ip address", -1);
 		return -1;
 	}
 	((struct sockaddr_in *)(ainfo->ai_addr))->sin_port = htons(port);
@@ -261,16 +368,19 @@ int tcpHost::tcp()
 }
 int tcpHost::read()
 {
+	status( HOST_CONNECTING );
 	if ( tcp()==0 ) {
+		status( HOST_CONNECTED );
 		do_callback("Connected", 0);
 		int cch;
 		char buf[1536];
 		while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
 			do_callback(buf, cch);
 		}
+		status( HOST_IDLE );
 		do_callback("Disconnected\n", -1);
 	}
-		
+
 	if ( sock!=-1 ) {
 		closesocket(sock);
 		sock = -1;
@@ -325,10 +435,12 @@ int pipeHost::write( const char *buf, int len )
 int pipeHost::read()
 {
 	if ( (pPipe=popen(cmdline, "r"))!=NULL ) {
+		status( HOST_CONNECTED );
 		char buf[1536];
 		while ( fgets(buf, 1536, pPipe) ) {
 			do_callback(buf, strlen(buf));
 		}
+		status( HOST_IDLE );
 		do_callback("", 0);
 	}
 	else
@@ -400,6 +512,7 @@ int pipeHost::read()
 		CloseHandle( Stdout_Wr );
 		CloseHandle( Stderr_Wr );
 
+		status( HOST_CONNECTED );
 		while ( TRUE ) {
 			DWORD dwCCH;
 			char buf[1536];
@@ -414,7 +527,8 @@ int pipeHost::read()
 			else
 				break;
 		}
-		do_callback( "", 0 );
+		status( HOST_IDLE );
+		do_callback( "", -1 );
 	}
 	else
 		do_callback( "command execution error\n", -1 );

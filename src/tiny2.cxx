@@ -1,5 +1,5 @@
 //
-// "$Id: tinyTerm2.cxx 24093 2019-05-07 21:05:10 $"
+// "$Id: tinyTerm2.cxx 24074 2019-09-28 21:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -21,14 +21,14 @@ const char ABOUT_TERM[]="\n\
 \ttinyTerm2 is a simple, small and scriptable terminal emulator,\n\n\
 \ta serial/telnet/ssh/sftp/netconf client with unique features:\n\n\n\
 \t    * cross platform, Windows, macOS and Linux\n\n\
-\t    * win64 portable exe smaller than 640KB\n\n\
+\t    * download as small portable signle exe\n\n\
 \t    * command history and autocompletion\n\n\
 \t    * text based batch command automation\n\n\
 \t    * drag and drop to transfer files via scp\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%s\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\n\n\
 \tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\n\n\
-\tVerision 1.0, ©2018-2019 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.1, ©2018-2019 Yongchao Fan, All rights reserved\r\n";
 
 #ifdef WIN32
 const char SCP_TO_FOLDER[]="\
@@ -306,7 +306,7 @@ void connect_cb(Fl_Widget *w)
 	}
 	pDialog->hide();
 	if ( pCmd->add(buf)!=0 )
-		pMenuBar->insert(7, buf+1, 0, term_menu_cb);
+		pMenuBar->insert(6, buf+1, 0, term_menu_cb);
 	term_connect(buf+1);
 	pMenuDisconn->activate();
 }
@@ -597,26 +597,16 @@ void load_dict()
 			line[strcspn(line, "\n")] = 0; 
 			pCmd->add(line);
 			if ( *line=='!' ) {
-				if ( strncmp(line+1, "ssh", 3)==0 ||
-					strncmp(line+1, "telnet",6)==0 ||
-					strncmp(line+1, "serial",6)==0 ||
-					strncmp(line+1, "sftp",4)==0 || 
-					strncmp(line+1, "netconf",7)==0 ) {
-					char *p = strchr(line+1, '\t');
-					if ( p==NULL ) 
-						pMenuBar->insert(pMenuBar->find_index("Script")-1, 
-											line+1, 0, term_menu_cb);
-					else {
-						*p++ = 0;
-						while ( *p=='\t' || *p=='#' ) p++;
-						pMenuBar->insert(pMenuBar->find_index("Script")-1, 
-											p, 0, term_menu_cb, strdup(line+1));
-					}
-					p = strchr(line+1, ' ');
-					if ( p!=NULL ) pHostname->add( p );
-
+				if (strncmp(line+1, "ssh ",   4)==0 ||
+					strncmp(line+1, "sftp ",  5)==0 || 
+					strncmp(line+1, "telnet ",7)==0 ||
+					strncmp(line+1, "serial ",7)==0 ||
+					strncmp(line+1, "netconf ",8)==0 ) {
+					pMenuBar->insert(pMenuBar->find_index("Script")-1, 
+													line+1, 0, term_menu_cb);
+					pHostname->add( strchr(line+1, ' ')+1 );
 				}
-				if ( strncmp(line+1, "script", 6)==0 ) {
+				if (strncmp(line+1, "script ", 7)==0 ) {
 					char *userdata = strdup(line+8);
 					for ( char *p = line+8; *p; p++ ) 
 						if ( *p=='/' || *p=='\\' ) *p = '|';

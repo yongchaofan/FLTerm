@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 4149 2019-05-21 21:12:15 $"
+// "$Id: Hosts.h 4573 2019-09-28 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd 
 //
@@ -39,14 +39,14 @@
 #ifndef _HOST_H_
 #define _HOST_H_
 
-enum {  HOST_COM=1, HOST_PIPE, HOST_TCP,
-		HOST_FTPD, HOST_TFTPD,
+enum {  HOST_PIPE=0, HOST_COM, HOST_TCP, //HOST_FTPD, HOST_TFTPD,
 		HOST_SSH, HOST_SFTP, HOST_CONF };
-
+enum {  HOST_IDLE=0, HOST_CONNECTING, HOST_AUTHENTICATING, HOST_CONNECTED };
 typedef void ( host_callback )(void *, const char *, int);
 
 class HOST {
 protected:
+	int state;
 	void *host_data_;
 	host_callback* host_cb;
 	std::thread reader;
@@ -55,6 +55,7 @@ public:
 	HOST()
 	{
 		host_cb = NULL;
+		state = HOST_IDLE;
 	}
 	virtual ~HOST(){}
 	virtual const char *name()					=0;
@@ -76,12 +77,13 @@ public:
 		host_cb(host_data_, buf, len);
 	}
 	int live() { return reader.joinable(); }
+	int status() { return state; }
+	void status( int s) { state = s; }
 	void print(const char *fmt, ...);
 };
 
 class comHost : public HOST {
 private:
-	int bConnected;
 	char portname[64];
 	char settings[64];
 #ifdef WIN32
@@ -91,15 +93,27 @@ private:
 	int ttySfd;
 #endif //WIN32
 
+	char xmodem_buf[133];
+	unsigned char xmodem_blk;
+	int xmodem_timeout;
+	bool bXmodem, xmodem_crc, xmodem_started;
+	FILE *xmodem_fp;
+	void block_crc();
+	void xmodem_block();
+	void xmodem_send();
+	void xmodem_recv(char op);
+
 public:
 	comHost(const char *address);
 
-	virtual const char *name() { return portname; }
+	virtual const char *name() { return portname+4; }
 	virtual int type() { return HOST_COM; }
 	virtual int read();
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
 //	virtual void connect();
+
+	void xmodem(FILE *fp);
 };
 class pipeHost : public HOST {
 private:
@@ -141,7 +155,7 @@ public:
 	virtual void disconn();
 //	virtual void connect();
 };
-
+/*
 #ifdef WIN32
 class ftpdHost : public HOST {
 private:
@@ -163,7 +177,7 @@ public:
 	virtual void disconn();	
 //	virtual void connect();
 };
-/*
+
 class tftpdHost : public HOST {
 private:
 	int tftp_s0;
@@ -186,6 +200,6 @@ public:
 	virtual void disconn();	
 //	virtual void connect();
 };
-*/
 #endif //WIN32
+*/
 #endif //_HOST_H_

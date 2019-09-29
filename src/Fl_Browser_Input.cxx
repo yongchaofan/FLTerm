@@ -48,10 +48,14 @@ int Fl_Browser_Input::add( const char *cmd )
 	if ( browser->size()==0 ) browser->add(cmd);
 	int i;
 	for ( i=1; i<=browser->size(); i++ ) {
-		if ( strcmp(cmd, browser->text(i))==0 ) return 0;
+		if ( strcmp(cmd, browser->text(i))==0 ) {
+			id = i;
+			return 0;
+		}
 		if ( strcmp(cmd, browser->text(i))<0 ) break;
 	}
 	browser->insert(i, cmd);
+	id = i;
 	return i;
 }
 const char * Fl_Browser_Input::first( ) 
@@ -106,27 +110,23 @@ int Fl_Browser_Input::handle( int e )
 		if ( *cmd ) do_callback(this, (void *)cmd);
 		return rc;
 	}
-	switch ( Fl::event_key() ) {
+	switch ( key ) {
 	case FL_BackSpace: if ( size()==0 ) do_callback(this, (void *)"\b");
 	case FL_Delete:
 	case FL_Enter: browserWin->hide(); break;
 	case FL_Up:
-		if ( id>1 ) id--;
-		browser->value(id);
-		value(browser->text(id));
-		if ( !browserWin->shown() ) {
-			browserWin->show();
-			take_focus();
-		}
-		break;
 	case FL_Down: 
-		if ( id<browser->size() ) id++;
+		if ( browserWin->shown() ) {
+			if ( key==FL_Up && id>1 ) id--;
+			if ( key==FL_Down && id<browser->size() ) id++;
+		}
+		else {
+			browserWin->show();
+		}
 		browser->value(id);
 		value(browser->text(id));
-		if ( !browserWin->shown() ) {
-			browserWin->show();
-			take_focus();
-		}
+		take_focus();
+		position(size());
 		break;
 	default: 
 		if ( Fl::event_state(FL_ALT|FL_CTRL|FL_META)==0 
