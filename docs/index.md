@@ -1,6 +1,6 @@
 ## Introduction
 
-tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions same as tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.0, the win32 exectuable is 520KB, win64 executable 640KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
+tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions same as tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.1, the win32 exectuable is 655KB, win64 executable 831KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
 	
 <table>
 	<tr>
@@ -11,11 +11,12 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 		</video>
 	    </td>
 	    <td>
-		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm2">1.0</a></h4>
+		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm2">1.1</a></h4>
 		<h4>Appx package:<br/><a href="https://www.microsoft.com/store/apps/9NXGN9LJTL05">Microsoft Store</a></h4>
 		<h4>Portable version:<br/>
-	32-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.0/tinyTerm2.exe">tinyTerm.exe</a><br/>
-	64-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.0/tinyTerm2_x64.exe">tinyTerm64.exe</a></h4>
+	32-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.1/tinyTerm2.exe">tinyTerm.exe</a><br/>
+	64-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.1/tinyTerm2_x64.exe">tinyTerm64.exe</a><br/>
+	WinXP: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.1/tinyTerm2_XP.exe">tinyTerm64.exe</a></h4>
 		<h4>License: <a href="https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE">GPL 3.0</a></h4>
 	    </td>
 	</tr>
@@ -53,9 +54,12 @@ Apple computer use should install from apple app store, currently in the process
 > Most command line interface system uses a prompt string to tell user it’s ready for the next command, for example "> " or "$ " used by Cisco routers. tinyTerm will auto detect the prompt string used by remote host when user is typing commands interactively, and use the detected prompt string during scripting. Additionally, prompt string can be set in the script using special command "!Prompt {str}", refer to appendix A for details and other special commands supported for scripting. 
 > 
 > ### SCP integration
-> When a SSH or SFTP session is established in tinyTerm, simply drag and drop files to the terminal window will cause those files to be transfered to remote host using SCP or SFTP put, remote files will be created in the current directory. 
+> When a SSH or SFTP session is established, simply drag and drop files to the terminal window will cause those files to be transfered to remote host using SCP or SFTP put, remote files will be created in the current directory. 
 > 
 > To copy file from server to a local folder, select the filename in the terminal window, then chose "scp_to_folder.js" from script menu.
+> 
+> ### xmodem support
+> When a SERIAL sission is established, simply drag and drop a file to the terminal window will cause the file been sent using xmodem protocol, only send function of the original xmodem protocol is supported, CRC optional, xmodem-1K is not supported. This is added to 1.1 release for to support bootstraping of MCUs on embeded system like Ardiuno
 > 
 > ### FTPd/TFTPd/HTTPd
 > FTPd/TFTPd has been removed to reduce amount of platform specific code, user require FTPd/TFTPd can continue to use tinyTerm
