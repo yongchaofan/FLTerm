@@ -123,7 +123,7 @@ public:
 	void disp(const char *buf);
 	void send(const char *buf);
 	int recv(char **preply);
-	int cmd(const char *cmd, char **preply);
+	int command(const char *cmd, char **preply);
 
 	void scripter(char *cmds);
 	void run_script(char *script);

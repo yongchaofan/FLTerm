@@ -333,16 +333,15 @@ int Fl_Term::handle( int e ) {
 		case FL_DND_DRAG:
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:
-			if ( !connected() ) {		//just display the text if not connected
-				append(Fl::event_text(), Fl::event_length ());
+			if ( host!=NULL ) 
+				if ( host->type()==HOST_CONF ) bDND = false;
+			if ( bDND ) {		//drop text to run as script
+				run_script(strdup(Fl::event_text()));
 			}
-			else if ( !bDND || host->type()==HOST_CONF ) {	//paste or netconf
+			else {				//paste or netconf
 				if ( bBracket ) write( "\033[200~", 6 );	//bracketed paste
 				write(Fl::event_text(),Fl::event_length());
 				if ( bBracket ) write( "\033[201~", 6 );
-			}
-			else {						//drop text to run as script
-				run_script(strdup(Fl::event_text()));
 			}
 			bDND = false;
 			return 1;
@@ -1031,7 +1030,7 @@ char *Fl_Term::gets(const char *prompt, int echo)
 	return ((sshHost *)host)->ssh_gets(prompt, echo);
 }
 
-int Fl_Term::cmd(const char *cmd, char **preply)
+int Fl_Term::command(const char *cmd, char **preply)
 {
 	int rc = 0;
 	if ( *cmd!='!' ) {
@@ -1085,10 +1084,7 @@ int Fl_Term::cmd(const char *cmd, char **preply)
 			iPrompt = strlen(sPrompt);
 		}
 		else if ( strncmp(cmd,"Wait ",5)==0 ) {
-			int len = strlen(cmd);
-			disp(cmd);
 			sleep_ms(atoi(cmd+5)*1000);
-			for ( int i=0; i<len; i++ ) disp("\b \b");
 		}
 		else if ( strncmp(cmd,"Waitfor ",8)==0 ) { 
 			char *p = buff+recv0;
@@ -1103,8 +1099,9 @@ int Fl_Term::cmd(const char *cmd, char **preply)
 				sleep_ms(100);
 			}
 		}
-		else 
+		else {
 			connect(cmd);
+		}
 	}
 	return rc;
 }
@@ -1169,11 +1166,10 @@ void Fl_Term::scripter(char *cmds)
 	while ( bScriptRun && p1!=NULL ) 
 	{
 		if ( bScriptPause ) { sleep_ms(100); continue; }
-
 		p0 = p1;
 		p1 = strchr(p0, 0x0a);
 		if ( p1!=NULL ) *p1++ = 0;
-		cmd(p0, NULL);
+		command(p0, NULL);
 	}
 	free(cmds);
 	bScriptRun = bScriptPause = false;
@@ -1198,7 +1194,7 @@ void Fl_Term::quit_script( )
 void Fl_Term::term_pwd(char *dst)
 {
 	char *p1, *p2;
-	cmd("pwd", &p2);
+	command("pwd", &p2);
 	p1 = strchr(p2, 0x0a);
 	if ( p1!=NULL ) {
 		p2 = p1+1;
@@ -1263,7 +1259,7 @@ int Fl_Term::scp(char *cmd, char **preply)
 				strcat(rlist, remote);
 			}
 		}
-		if ( Fl_Term::cmd(rlist, &rpath)>0 ) {
+		if ( command(rlist, &rpath)>0 ) {
 			reply = mark_prompt();
 			char *p = strchr(rpath, 0x0a);
 			if ( p!=NULL ) {

@@ -363,7 +363,7 @@ void cmd_cb(Fl_Widget *o, void *p)
 		else if ( strncmp(cmd, "!script ",8)==0 ) 
 			script_open(cmd+8);
 		else
-			pTerm->cmd(cmd, NULL);
+			pTerm->command(cmd, NULL);
 	}
 	else {
 		if ( pTerm->connected() ) {
@@ -837,10 +837,13 @@ void httpd( int s0 )
 				if ( *cmd=='?' ) {
 					if ( strncmp(++cmd, "!Tab ",5)==0 ) {
 						replen = term_act(cmd+5);
-						if  ( replen ) reply = cmd;
+						if ( replen ) 
+							reply = cmd;
+						else
+							tab_new();
 					}
 					else 
-						replen = pTerm->cmd( cmd, &reply );
+						replen = pTerm->command( cmd, &reply );
 					int len = sprintf( buf, HEADER, replen );
 					send( http_s1, buf, len, 0 );
 					if ( replen>0 ) send( http_s1, reply, replen, 0 );
