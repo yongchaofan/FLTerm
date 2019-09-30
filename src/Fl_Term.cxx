@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37286 2019-09-29 10:08:20 $"
+// "$Id: Fl_Term.cxx 37447 2019-09-28 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -973,10 +973,7 @@ int Fl_Term::recv(char **preply)
 void Fl_Term::connect( const char *hostname )
 {
 	if ( host!=NULL ) {
-		if ( host->live() ) {
-			host->disconn();
-			while( host->live() ) sleep_ms(100);
-		}
+		if ( host->live() ) return;
 		delete host;
 		host = NULL;
 	}

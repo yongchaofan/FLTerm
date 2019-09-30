@@ -1,5 +1,5 @@
 //
-// "$Id: tinyTerm2.cxx 24074 2019-09-28 21:05:10 $"
+// "$Id: tinyTerm2.cxx 24149 2019-09-30 21:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -156,6 +156,7 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 		else
 			term->disp("\n\033[33mPress Enter to restart\033[37m\n\n");
 	}
+	if ( pTabs!=NULL ) pTabs->redraw();
 }
 void tab_init()
 {
@@ -248,6 +249,7 @@ void term_connect(const char *hostname)
 int term_act(const char *host)
 {
 	int rc = 0;
+	if ( pTabs==NULL ) return rc;
 	for ( int i=0; i<pTabs->children(); i++ )
 		if ( strncmp(host, pTabs->child(i)->label(), strlen(host))==0 ) {
 			tab_act((Fl_Term *)pTabs->child(i));
