@@ -45,8 +45,10 @@ Apple computer use should install from apple app store, currently in the process
 >
 > ### Command Autocompletion
 > When local edit mode is enabled, key presses are not sent to remote host until "Enter" or "Tab" key is pressed, and the input is auto completed using command history, every command typed in local edit mode is added to command history to complete future inputs. Command history is saved to tinyTerm.hist at exit, then loaded into memory at the next start of tinyTerm. 
-> 
+>  
 > Command history file is saved as %USERPROFILE%\documents\tinyTerm\tinyTerm.hist on Windows, ~/tinyTerm/tinyTerm.hist on macOS/Unix/Linux by default, copy tinyTerm.hist to the same folder as tinyTerm.exe for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary.
+> 
+> Release 1.1 added one more option "Send to all", when enabled locally edited command will be sent to all open tabs on "Enter"
 > 
 > ### Batch Automation
 > To automate the execution of commands, simply drag and drop a list of commands from text editor, or select "Run..." from Script menu and select a text file with all the commands to be executed, tinyTerm send one command at a time, wait for prompt string before sending the next command, to avoid overflowing the receive buffer of the remote host or network device. 
