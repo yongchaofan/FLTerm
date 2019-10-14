@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 4573 2019-09-28 21:12:15 $"
+// "$Id: Hosts.h 4583 2019-09-28 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd 
 //
@@ -11,11 +11,11 @@
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
-//     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
+//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-//     https://github.com/zoudaokou/flTerm/issues/new
+//     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 
 #ifdef WIN32

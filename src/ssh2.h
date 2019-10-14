@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 3348 2019-05-21 23:48:10 $"
+// "$Id: ssh2.h 3356 2019-05-21 23:48:10 $"
 //
 //  sshHost sftpHost
 //
@@ -11,13 +11,12 @@
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
-//     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
+//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-//     https://github.com/zoudaokou/flTerm/issues/new
+//     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
-
 #include "host.h"
 #include <libssh2.h>
 #include <libssh2_sftp.h>

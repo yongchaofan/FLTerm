@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 27199 2019-09-28 22:15:10 $"
+// "$Id: Hosts.cxx 27119 2019-09-28 22:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -8,14 +8,11 @@
 //
 // Copyright 2017-2018 by Yongchao Fan.
 //
-// This library is free software distributed under GNU GPL 3.0,
-// see the license at:
-//
-//     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
+//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-//     https://github.com/zoudaokou/flTerm/issues/new
+//     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 
 #include <stdio.h>

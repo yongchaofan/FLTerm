@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37228 2019-09-28 10:08:20 $"
+// "$Id: Fl_Term.cxx 37238 2019-10-08 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -8,11 +8,11 @@
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
-//     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
+//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-//     https://github.com/zoudaokou/flTerm/issues/new
+//     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 #include "ssh2.h"
 #include "Fl_Term.h"
@@ -254,6 +254,7 @@ int Fl_Term::handle( int e ) {
 				}
 				if ( x>=size_x-2 && bScrollbar) {//push in scrollbar area
 					if ( y>0 && y<h() ) screen_y = y*cursor_y/h();
+					bDragSelect = false;
 					redraw();
 				}
 				else {								//push to start draging
@@ -262,6 +263,7 @@ int Fl_Term::handle( int e ) {
 					if ( sel_left>line[y+1] ) sel_left=line[y+1] ;
 					while ( (buff[sel_left]&0xc0)==0x80 ) sel_left--;
 					sel_right = sel_left;
+					bDragSelect = true;
 				}
 			}
 			return 1;
@@ -269,7 +271,7 @@ int Fl_Term::handle( int e ) {
 			if ( Fl::event_button()==FL_LEFT_MOUSE ) {
 				int x = Fl::event_x()/font_width;
 				int y = Fl::event_y()-Fl_Widget::y();
-				if ( bScrollbar && y>0 && y<h()) {
+				if ( !bDragSelect && y>0 && y<h()) {
 					screen_y = y*cursor_y/h();
 				}
 				else {

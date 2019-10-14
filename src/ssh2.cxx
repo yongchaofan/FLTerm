@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38487 2019-05-21 21:55:10 $"
+// "$Id: ssh2.cxx 38497 2019-05-21 21:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -10,11 +10,11 @@
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
-// https://github.com/zoudaokou/tinyTerm2/blob/master/LICENSE
+//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-// https://github.com/zoudaokou/tinyTerm2/issues/new
+//     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 
 #include <stdio.h>
@@ -252,7 +252,7 @@ int sshHost::ssh_knownhost( int interactive )
 			if ( !interactive )
 				p = "Yes";			//	rc = -4; break; 
 			else
-				p = ssh_gets("Update hostkey and continue?(Yes/No", true);
+				p = ssh_gets("Update hostkey and continue?(Yes/No) ", true);
 			if ( p!=NULL ) {
 				if ( *p=='y' || *p=='Y' ) 
 					libssh2_knownhost_del(nh, host);
@@ -426,6 +426,7 @@ const char *IETF_HELLO="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 </capabilities></hello>]]>]]>";
 int sshHost::read()
 {
+	status( HOST_CONNECTING );
 	if ( tcp()==-1 ) goto TCP_Close;
 
 	channel = NULL;
@@ -438,6 +439,7 @@ int sshHost::read()
 	banner=libssh2_session_banner_get(session);
 	if ( banner!=NULL ) do_callback(banner, strlen(banner));
 
+	status( HOST_AUTHENTICATING );
 	if ( ssh_knownhost()!=0 ) { 
 		do_callback(errmsgs[3], -3);
 		goto Session_Close; 
@@ -469,6 +471,7 @@ int sshHost::read()
 	}
 	libssh2_session_set_blocking(session, 0); 
 
+	status( HOST_CONNECTED );
 	do_callback("Connected", 0);
 	while ( true ) {
 		int len;
@@ -488,7 +491,8 @@ int sshHost::read()
 			break;
 		}
 	}
-	do_callback("Disonnected\n", -1);
+	status( HOST_IDLE );
+	do_callback("Disonnected", -1);
 	tun_closeall();
 	*username = 0;
 	*password = 0;
@@ -1426,6 +1430,7 @@ int sftpHost::sftp(char *cmd)
 }
 int sftpHost::read()
 {
+	status( HOST_CONNECTING );
 	if ( tcp()==-1 ) goto TCP_Close;
 
 	channel = NULL;
@@ -1438,6 +1443,7 @@ int sftpHost::read()
 	banner=libssh2_session_banner_get(session);
 	if ( banner!=NULL ) do_callback(banner, strlen(banner));
 
+	status( HOST_AUTHENTICATING );
 	if ( ssh_knownhost()!=0 ) {
 		do_callback(errmsgs[3], -3);
 		goto Sftp_Close; 
@@ -1454,6 +1460,7 @@ int sftpHost::read()
 		*realpath=0;
 	strcpy( homepath, realpath );
 
+	status( HOST_CONNECTED );
 	do_callback("Connected", 0);
 	const char *p;
 	do {
@@ -1461,7 +1468,9 @@ int sftpHost::read()
 		if ( (p=ssh_gets("> ", true))==NULL ) break;
 	} while ( sftp((char *)p)!=-1 );
 	libssh2_sftp_shutdown(sftp_session);
-	do_callback("Disonnected\n", -1);
+	status( HOST_IDLE );
+	do_callback("Disonnected", -1);
+
 	*username = 0;
 	*password = 0;
 

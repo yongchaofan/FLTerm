@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4448 2019-09-28 13:08:10 $"
+// "$Id: Fl_Term.h 4458 2019-10-08 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -8,11 +8,11 @@
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
-//     https://github.com/zoudaokou/flTerm/blob/master/LICENSE
+//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-//     https://github.com/zoudaokou/flTerm/issues/new
+//     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 #include <FL/Fl.H>
 #include <FL/fl_draw.H>
@@ -54,6 +54,7 @@ class Fl_Term : public Fl_Widget {
 	bool bAppCursor;	//app cursor mode for vi
 	bool bAlterScreen;	//alternative screen for vi
 	bool bScrollbar;	//show scrollbar when true
+	bool bDragSelect;	//mouse dragged to select text, instead of scroll text
 	bool bBracket;		//bracketed paste mode
 
 	int bTitle;			//title mode, changed through escape sequence
