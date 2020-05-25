@@ -39,9 +39,10 @@ class Fl_Term : public Fl_Widget {
 	int roll_bot;		//the range of lines that will scroll in vi
 	int sel_left;
 	int sel_right;		//begin and end of selection on screen
-	int font_width;		//current font width in pixels
+	double font_width;	//current font width in pixels
 	int font_height;	//current font height in pixels
 	int font_size;		//current font weight
+	int font_face;		//current font face
 	std::atomic<bool> redraw_complete;
 
 	bool bEscape;		//escape sequence processing mode
@@ -93,7 +94,8 @@ public:
 	void clear();
 	int  handle( int e );
 	void resize( int X, int Y, int W, int H );
-	void textsize( int pt=0 );
+	void textfont( Fl_Font fontface );
+	void textsize( int fontsize );
 	void buffsize( int lines );
 	const char *title() { return sTitle; }
 

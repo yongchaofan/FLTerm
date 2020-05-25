@@ -1,11 +1,11 @@
 //
-// "$Id: tiny2.cxx 23697 2019-09-30 21:05:10 $"
+// "$Id: tiny2.cxx 23697 2020-05-23 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
 //    example application using the Fl_Term widget.
 //
-// Copyright 2017-2019 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -28,7 +28,7 @@ const char ABOUT_TERM[]="\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\n\n\
 \tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\n\n\
-\tVerision 1.1.1, ©2018-2019 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.1.2, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 
 #ifdef WIN32
 const char SCP_TO_FOLDER[]="\
@@ -82,7 +82,7 @@ void httpd_init();
 void httpd_exit();
 
 void tab_cb(Fl_Widget *w);
-void editor_cb(Fl_Widget *w, void *data);
+void localedit_cb(Fl_Widget *w, void *data);
 void menu_cb(Fl_Widget *w, void *data);
 void term_menu_cb(Fl_Widget *w, void *data);
 
@@ -92,7 +92,7 @@ Fl_Tabs *pTabs = NULL;
 Fl_Browser_Input *pCmd;
 Fl_Sys_Menu_Bar *pMenuBar;
 Fl_Menu_Item *pMenuDisconn, *pMenuEcho, *pMenuLogg;
-char fontface[256]="Courier New";
+Fl_Font fontface = FL_FREE_FONT;
 int fontsize = 16;
 int termcols = 80;
 int termrows = 25;
@@ -183,6 +183,8 @@ void tab_act(Fl_Term *pt)
 	pTabs->value(pt);
 	pTerm = pt;
 	pTerm->take_focus();		//add "  x" to current active tab
+	pTerm->textfont(fontface);
+	pTerm->textsize(fontsize);
 	strncpy(label, pTerm->label(), 24);
 	strcat(label, "  x");
 	pTerm->copy_label(label);
@@ -382,7 +384,7 @@ void cmd_cb(Fl_Widget *o, void *p)
 	}
 	pCmd->value("");
 }
-void editor_cb(Fl_Widget *w, void *data)
+void localedit_cb(Fl_Widget *w, void *data)
 {
 	localedit = !localedit;
 	if ( !localedit ) {
@@ -458,14 +460,22 @@ void menu_cb(Fl_Widget *w, void *data)
 	else if ( strcmp(menutext, "&Quit")==0 ) {
 		pTerm->quit_script();
 	}
-	else if ( strcmp(menutext, "Courier New")==0 ||
-			  strcmp(menutext, "Monaco")==0 ||
-			  strcmp(menutext, "Menlo")==0 ||
-			  strcmp(menutext, "Consolas")==0 ||
+	else if ( strcmp(menutext, "Monaco")==0 ||
+			  strcmp(menutext, "Consolas")==0  ) {
+		fontface = FL_FREE_FONT;
+		pTerm->textfont(fontface);
+		pCmd->textfont(fontface);
+	}
+	else if ( strcmp(menutext, "Courier New")==0 ) {
+		fontface = FL_FREE_FONT+1;
+		pTerm->textfont(fontface);
+		pCmd->textfont(fontface);
+	}
+	else if ( strcmp(menutext, "Menlo")==0 ||
 			  strcmp(menutext, "Lucida Console")==0 ) {
-		strcpy(fontface, menutext);
-		Fl::set_font(FL_COURIER, menutext);
-		pTerm->textsize();
+		fontface = FL_FREE_FONT+2;
+		pTerm->textfont(fontface);
+		pCmd->textfont(fontface);
 	}
 	else if ( strcmp(menutext, "12")==0 ||
 			  strcmp(menutext, "14")==0 ||
@@ -528,16 +538,16 @@ Fl_Menu_Item menubar[] = {
 {"&Quit",		0,	menu_cb,0,	FL_MENU_DIVIDER},
 {0},
 {"Options", 	FL_CMD+'o',0,		0,	FL_SUBMENU},
-{"Local &Edit",	FL_CMD+'e',	editor_cb,0,	FL_MENU_TOGGLE},
+{"Local &Edit",	FL_CMD+'e',	localedit_cb,0,	FL_MENU_TOGGLE},
 {"Send to all",	0,			sendall_cb,0,	FL_MENU_TOGGLE},
 {"Font &Face",	0,	0,		0,	FL_SUBMENU},
 #ifdef __APPLE__
-{"Menlo",		0,	menu_cb,0,	FL_MENU_RADIO},
+{"Menlo",		0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
+{"Courier New", 0,	menu_cb,0,	FL_MENU_RADIO},
 {"Monaco",		0,	menu_cb,0,	FL_MENU_RADIO},
-{"Courier New", 0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
 #else
-{"Consolas",	0,	menu_cb,0,	FL_MENU_RADIO},
-{"Courier New",	0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
+{"Consolas",	0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
+{"Courier New",	0,	menu_cb,0,	FL_MENU_RADIO},
 {"Lucida Console",0,menu_cb,0,	FL_MENU_RADIO},
 #endif
 {0},
@@ -607,7 +617,7 @@ void load_dict(const char *fn)			// set working directory and load scripts to me
 			if ( *line=='~' ) {
 				char name[256] = "Options/";
 				if ( strncmp(line+1, "FontFace", 8)==0 ) {
-					strcpy(fontface, line+10);;
+					Fl::set_font(FL_FREE_FONT, line+10);
 					strcpy(name+8, "Font Face/");
 					strcat(name, line+10);
 				}
@@ -627,7 +637,7 @@ void load_dict(const char *fn)			// set working directory and load scripts to me
 					strcat(name, line+10);
 				}
 				else if ( strcmp(line+1, "LocalEdit")==0 ) {
-					editor_cb(NULL, NULL);
+					localedit_cb(NULL, NULL);
 					strcpy(name+8, "Local Edit");
 					Fl_Menu_Item *menu=(Fl_Menu_Item *)pMenuBar->find_item(name);
 					if ( menu!=NULL ) menu->set();
@@ -649,8 +659,6 @@ void save_dict(const char *fn)
 	if ( fp!=NULL ) {
 		if ( localedit )
 			fprintf(fp, "~LocalEdit\n");
-		if ( strcmp(fontface, "Courier New")!=0 ) 
-			fprintf(fp, "~FontFace %s\n", fontface);
 		if ( fontsize!=16 ) 
 			fprintf(fp, "~FontSize %d\n", fontsize);
 		if ( buffsize!=4096 ) 
@@ -670,6 +678,16 @@ int main(int argc, char **argv)
 	httpd_init();
 	libssh2_init(0);
 	Fl::scheme("gtk+");
+#ifdef __APPLE__
+	Fl::set_font(FL_FREE_FONT, "Menlo");
+	Fl::set_font(FL_FREE_FONT+1, "Courier New");
+	Fl::set_font(FL_FREE_FONT+2, "Monaco");
+#else
+	Fl::set_font(FL_FREE_FONT, "Consolas");
+	Fl::set_font(FL_FREE_FONT+1, "Courier New");
+	Fl::set_font(FL_FREE_FONT+2, "Lucida Console");
+#endif
+
 
 	pWindow = new Fl_Double_Window(800, 640, "tinyTerm2");
 	{
@@ -722,14 +740,14 @@ int main(int argc, char **argv)
 	pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
 	load_dict("tinyTerm.hist");
-	Fl::set_font(FL_COURIER, fontface);
-	pTerm->textsize(fontsize);
 	pTerm->buffsize(buffsize);
-	pCmd->textfont(FL_COURIER);
+	pTerm->textfont(fontface);
+	pTerm->textsize(fontsize);
+	pCmd->textfont(fontface);
 	pCmd->textsize(fontsize);
 	pWindow->show();
 
-		if ( localedit ) 
+	if ( localedit ) 
 		pTerm->disp("\n\033[32mtinyTerm2 > \033[37m");
 	else
 		conn_dialog();

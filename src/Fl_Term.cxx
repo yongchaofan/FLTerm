@@ -128,11 +128,19 @@ void Fl_Term::resize( int X, int Y, int W, int H )
 	if ( host!=NULL ) host->send_size(size_x, size_y);
 	redraw();
 }
-void Fl_Term::textsize( int pt )
+void Fl_Term::textfont( Fl_Font fontface )
 {
-	if ( pt!=0 ) font_size = pt;
-	fl_font(FL_COURIER, font_size);
-	font_width = fl_width('a');
+	font_face = fontface;
+	fl_font(font_face, font_size);
+	font_width = fl_width('a')+0.8;
+	font_height = fl_height();
+	resize(x(), y(), w(), h());
+}
+void Fl_Term::textsize( int fontsize )
+{
+	font_size = fontsize;
+	fl_font(font_face, font_size);
+	font_width = fl_width('a')+0.8;
 	font_height = fl_height();
 	resize(x(), y(), w(), h());
 }

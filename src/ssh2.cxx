@@ -125,7 +125,7 @@ int closedir(DIR *dir)
 #endif //WIN32
 
 static const char *errmsgs[] = { 
-"Disconnected", "Connection failure", "Session failure",
+"Disconnected", "Connection", "Session failure",
 "Verification failure", "Authentication failure",
 "Channel failure", "pty failure", "Shell failure", "Subsystem failure"
 };
@@ -204,7 +204,7 @@ sshHost::sshHost(const char *name) : tcpHost(name)
 const char *keytypes[] = {
 	"unknown", "rsa", "dss", "ecdsa256", "ecdsa384", "ecdsa521", "ed25519"
 };
-int sshHost::ssh_knownhost( int interactive )
+int sshHost::ssh_knownhost()
 {
 	int type, check, buff_len;
 	size_t len;
@@ -249,10 +249,7 @@ int sshHost::ssh_knownhost( int interactive )
 		if ( type==((host->typemask&LIBSSH2_KNOWNHOST_KEY_MASK)
 								  >>LIBSSH2_KNOWNHOST_KEY_SHIFT) ) {
 			print("%s\n\033[31m!!!Danger, host key changed!!!\n", keybuf);
-			if ( !interactive )
-				p = "Yes";			//	rc = -4; break; 
-			else
-				p = ssh_gets("Update hostkey and continue?(Yes/No) ", true);
+			p = ssh_gets("Update hostkey and continue?(Yes/No) ", true);
 			if ( p!=NULL ) {
 				if ( *p=='y' || *p=='Y' ) 
 					libssh2_knownhost_del(nh, host);
@@ -272,10 +269,7 @@ int sshHost::ssh_knownhost( int interactive )
 	case LIBSSH2_KNOWNHOST_CHECK_NOTFOUND:
 		if ( p==NULL ) {
 			print("%s\n\033[33munknown host!\n", keybuf);
-			if ( !interactive )
-				p = "Yes";			//	rc = -4; break; 
-			else
-				p = ssh_gets("Add hostkey to .ssh/known_hosts?(Yes/No)", true);
+			p = ssh_gets("Add hostkey to .ssh/known_hosts?(Yes/No)", true);
 		}
 		if ( p!=NULL ) {
 			if ( *p=='y' || *p=='Y' ) {
@@ -293,8 +287,11 @@ int sshHost::ssh_knownhost( int interactive )
 			else
 				print("\033[33mhostkey ignored\n");
 		}
-		else
-			print("\033[33mhostkey ignored\n");
+		else {
+			rc = -4;
+			print("\033[32mDisconnected, stay safe\n");
+			break;
+		}
 	}
 
 	libssh2_knownhost_free(nh);
@@ -431,8 +428,11 @@ int sshHost::read()
 
 	channel = NULL;
 	session = libssh2_session_init();
-	if ( libssh2_session_handshake(session, sock)!=0 ) { 
-		do_callback(errmsgs[2], -2);
+	int err = libssh2_session_handshake(session, sock);
+	if ( err!=0 ) { 
+		char session_err[256];
+		sprintf(session_err, "session failure %d", err);
+		do_callback(session_err/*errmsgs[2]*/, -2);
 		goto Session_Close; 
 	}
 	const char *banner;
