@@ -38,11 +38,11 @@ void Fl_Term::host_cb( const char *buf, int len )
 		do_callback( this, (void *)sTitle );
 	}
 	else
-		if ( len>0 ) {				//data from host, display 
+		if ( len>0 ) {				//data from host, display
 			if ( host->type()==HOST_CONF )
 				put_xml(buf, len);
 			else
-				append(buf, len); 
+				append(buf, len);
 		}
 		else {//len<0				//Disconnected, or failure
 			disp("\033[31m"); disp(buf);
@@ -72,6 +72,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bScrollbar = false;
 	ESC_idx = 0;
 	host = NULL;
+	font_face = 0;
 
 	color(FL_BLACK);
 	textsize(16);
@@ -111,7 +112,7 @@ void Fl_Term::clear()
 	sel_left = sel_right= 0;
 	c_attr = 7;				//default black background, white foreground
 	recv0 = 0;
-	
+
 	xmlIndent=0;
 	xmlTagIsOpen=true;
 
@@ -320,8 +321,8 @@ int Fl_Term::handle( int e ) {
 						const char *sel = m->label();
 						switch ( *sel ) {
 						case '&': //Copy or Paste
-							if ( sel[1]=='P' ) 
-								Fl::paste( *this, 1 ); 
+							if ( sel[1]=='P' )
+								Fl::paste( *this, 1 );
 							else if ( sel_left<sel_right )
 								Fl::copy( buff+sel_left, sel_right-sel_left, 1);
 							break;
@@ -343,7 +344,7 @@ int Fl_Term::handle( int e ) {
 		case FL_DND_DRAG:
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:
-			if ( host!=NULL ) 
+			if ( host!=NULL )
 				if ( host->type()==HOST_CONF ) bDND = false;
 			if ( bDND ) {		//drop text to run as script
 				run_script(strdup(Fl::event_text()));
@@ -366,7 +367,7 @@ int Fl_Term::handle( int e ) {
 							Fl::copy( buff+sel_left, sel_right-sel_left, 1);
 						  return 1;
 				case 'b': if ( sel_left<sel_right )
-							write(buff+sel_left, sel_right-sel_left); 
+							write(buff+sel_left, sel_right-sel_left);
 						  return 1;
 				case 'v': Fl::paste( *this, 1 ); return 1;
 				}
@@ -408,7 +409,7 @@ int Fl_Term::handle( int e ) {
 				case FL_Enter:
 				default:
 					write(Fl::event_text(), Fl::event_length());
-					if ( screen_y < cursor_y-size_y+1 ) 
+					if ( screen_y < cursor_y-size_y+1 )
 						screen_y = cursor_y-size_y+1;
 				}
 				return 1;
@@ -425,7 +426,7 @@ void Fl_Term::buffsize(int new_line_size)
 	char *old_buff = buff;
 	char *old_attr = attr;
 	int *old_line = line;
-	
+
 	Fl::lock();
 	buff = (char *)realloc(buff, new_buff_size);
 	attr = (char *)realloc(attr, new_buff_size);
@@ -456,7 +457,7 @@ void Fl_Term::next_line()
 	line[++cursor_y]=cursor_x;
 	if ( screen_y==cursor_y-size_y ) screen_y++;
 	if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
-	
+
 	if ( cursor_x>=buff_size-1024 || cursor_y==line_size-2 ) {
 		Fl::lock();
 		int i, len = line[1024];
@@ -499,9 +500,9 @@ void Fl_Term::append( const char *newtext, int len ){
 		case 0x08:	if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte
 						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x--;
 					break;
-		case 0x09: 	do { 
+		case 0x09: 	do {
 						attr[cursor_x]=c_attr;
-						buff[cursor_x++]=' '; 
+						buff[cursor_x++]=' ';
 					} while ( (cursor_x-line[cursor_y])%8!=0 );
 					break;
 		case 0x0a:	if ( bAlterScreen ) { 	//LF on alter screen is not stored
@@ -521,10 +522,10 @@ void Fl_Term::append( const char *newtext, int len ){
 						next_line();		//hard line feed
 					}
 					break;
-		case 0x0d: 	if ( cursor_x-line[cursor_y]==size_x+1 && *p!=0x0a ) 
+		case 0x0d: 	if ( cursor_x-line[cursor_y]==size_x+1 && *p!=0x0a )
 						next_line();		//soft line feed
 					else
-						cursor_x = line[cursor_y]; 
+						cursor_x = line[cursor_y];
 					break;
 		case 0x1b: 	p = vt100_Escape( p, zz-p );
 					break;
@@ -559,25 +560,25 @@ void Fl_Term::append( const char *newtext, int len ){
 						default: c = '?';
 					}
 					if ( bInsert ) 			//insert one space
-						vt100_Escape((unsigned char *)"[1@",3);	
+						vt100_Escape((unsigned char *)"[1@",3);
 					if ( cursor_x-line[cursor_y]>=size_x ) {
 						int char_cnt = 0;
 						for ( int i=line[cursor_y]; i<cursor_x; i++ )
 							if ( (buff[i]&0xc0)!=0x80 ) char_cnt++;
 						if ( char_cnt==size_x ) {
-							if ( bAlterScreen ) 
+							if ( bAlterScreen )
 								cursor_x--;	//don't overflow in vi
 							else
 								next_line();
 						}
-					} 
+					}
 					attr[cursor_x] = c_attr;
 					buff[cursor_x++] = c;
 					if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
 		}
 	}
 	if ( !bPrompt && cursor_x>iPrompt )
-		if (strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0) 
+		if (strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0)
 			bPrompt = true;
 	if ( visible() && redraw_complete ) {
 		redraw_complete = false;
@@ -616,7 +617,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					else
 						if ( isdigit(ESC_code[1]) ) {
 							n0 = atoi(ESC_code+1);
-							n1 = 0; 
+							n1 = 0;
 							n2 = 0;
 						}
 				}
@@ -640,7 +641,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					cursor_x = line[cursor_y]+x;
 					break;
 				case 'I': //cursor forward n0 tab stops
-					n0 *= 8;	
+					n0 *= 8;
 					//fall through
 				case 'a': //character position relative
 				case 'C': //cursor forward n0 times
@@ -687,19 +688,19 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					if ( ESC_code[ESC_idx-2]=='[' ) {
 					//[J, tinycore use this for CLI editing
 						if ( !bAlterScreen ) {
-							int i=cursor_y+1; line[i]=cursor_x; 
+							int i=cursor_y+1; line[i]=cursor_x;
 							while (++i<=screen_y+size_y) line[i]=0;
 							break;
 						}
-						else //tinycore use this to clear alterScreen 
+						else //tinycore use this to clear alterScreen
 							screen_y = cursor_y;
 					}
 					/*[2J, mostly used after [?1049h to clear screen
 					  and when screen size changed during vi or raspi-config
-					  flashwave TL1 use it without [?1049h for splash screen 
+					  flashwave TL1 use it without [?1049h for splash screen
 					  freeBSD use it without [?1049h* for top and vi*/
 					cursor_y = screen_y; cursor_x = line[cursor_y];
-					for ( int i=0; i<size_y; i++ ) { 
+					for ( int i=0; i<size_y; i++ ) {
 						memset(buff+cursor_x, ' ', size_x);
 						memset(attr+cursor_x,   0, size_x);
 						cursor_x += size_x;
@@ -746,7 +747,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 					break;
 				case '@': //insert n0 spaces
 					for ( int i=line[cursor_y+1]; i>=cursor_x; i-- ){
-						buff[i+n0]=buff[i]; 
+						buff[i+n0]=buff[i];
 						attr[i+n0]=attr[i];
 					}
 					if ( !bAlterScreen ) {
@@ -805,7 +806,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						if ( n0==1049 ) {	//?1049h enter alternate screen
 							bAlterScreen = true;
 							screen_y = cursor_y; cursor_x = line[cursor_y];
-							for ( int i=0; i<size_y; i++ ) { 
+							for ( int i=0; i<size_y; i++ ) {
 								memset(buff+cursor_x, ' ', size_x);
 								memset(attr+cursor_x,   0, size_x);
 								cursor_x += size_x;
@@ -825,14 +826,14 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						if ( n0==1049 ) { 	//?1049l exit alternate screen
 							bAlterScreen = false;
 							cursor_y = screen_y; cursor_x = line[cursor_y];
-							for ( int i=1; i<=size_y+1; i++ ) 
+							for ( int i=1; i<=size_y+1; i++ )
 								line[cursor_y+i] = 0;
 							screen_y = max(0, cursor_y-size_y+1);
 						}
 					}
 					break;
 				case 'm': //text style, color attributes
-					if ( ESC_code[ESC_idx-2]=='[' ) n0 = 0; 
+					if ( ESC_code[ESC_idx-2]=='[' ) n0 = 0;
 					if ( n0==0 && n2!=1 ) n0 = n2;	//ESC[0;0m	ESC[01;34m
 					switch ( int(n0/10) ) {			//ESC[34m
 					case 0: if ( n0==1 ) { c_attr|=0x08; break; }//bright
@@ -926,7 +927,7 @@ void Fl_Term::srch( const char *sstr )
 	if ( sel_left==sel_right ) p = buff+cursor_x;
 	while ( --p>=buff+l ) {
 		int i;
-		for ( i=l-1; i>=0; i-- ) 
+		for ( i=l-1; i>=0; i-- )
 			if ( sstr[i]!=p[i-l] ) break;
 		if ( i==-1 ) {
 			sel_left = p-l-buff;
@@ -1015,7 +1016,7 @@ void Fl_Term::connect( const char *hostname )
 	}
 #endif
 */
-	else 
+	else
 		host = new pipeHost(hostname);
 	if ( host!=NULL ) {
 		char label[32];
@@ -1029,7 +1030,7 @@ void Fl_Term::connect( const char *hostname )
 }
 void Fl_Term::disconn()
 {
-	if ( host!=NULL ) 
+	if ( host!=NULL )
 		if ( host->live() ) host->disconn();
 }
 char *Fl_Term::gets(const char *prompt, int echo)
@@ -1049,7 +1050,7 @@ int Fl_Term::command(const char *cmd, char **preply)
 			if ( preply!=NULL ) *preply = p;
 		}
 		else {
-			disp(cmd); 
+			disp(cmd);
 			disp("\n");
 		}
 	}
@@ -1093,7 +1094,7 @@ int Fl_Term::command(const char *cmd, char **preply)
 		else if ( strncmp(cmd,"Wait ",5)==0 ) {
 			sleep_ms(atoi(cmd+5)*1000);
 		}
-		else if ( strncmp(cmd,"Waitfor ",8)==0 ) { 
+		else if ( strncmp(cmd,"Waitfor ",8)==0 ) {
 			char *p = buff+recv0;
 			bWait = true;
 			for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
@@ -1112,7 +1113,7 @@ int Fl_Term::command(const char *cmd, char **preply)
 	}
 	return rc;
 }
-void Fl_Term::put_xml(const char *buf, int len) { 
+void Fl_Term::put_xml(const char *buf, int len) {
 	const char *p=buf, *q;
 	const char spaces[256]="\r\n                                               \
                                                                               ";
@@ -1170,7 +1171,7 @@ void Fl_Term::scripter(char *cmds)
 {
 	char *p1=cmds, *p0;
 	bScriptRun = true; bScriptPause = false;
-	while ( bScriptRun && p1!=NULL ) 
+	while ( bScriptRun && p1!=NULL )
 	{
 		if ( bScriptPause ) { sleep_ms(100); continue; }
 		p0 = p1;
@@ -1323,7 +1324,7 @@ void Fl_Term::copier(char *files)
 		else if ( host->type()==HOST_SFTP )
 			((sftpHost *)host)->sftp_put(p, rdir);
 	}
-	while ( (p=p1)!=NULL && host!=NULL ); 
+	while ( (p=p1)!=NULL && host!=NULL );
 	if ( host!=NULL ) host->write("\r",1);
 	free(files);
 	bScriptRun = false;
@@ -1397,17 +1398,17 @@ const unsigned char *Fl_Term::telnet_options( const unsigned char *p )
 			}
 			p += 3;
 			break;
-		case TNO_WILL: 
+		case TNO_WILL:
 			if ( *p==TNO_ECHO ) bEcho = false;
 			negoreq[1]=TNO_DO; negoreq[2]=*p;
 			write((const char *)negoreq, 3);
 			break;
-		case TNO_WONT: 
+		case TNO_WONT:
 			negoreq[1]=TNO_DONT; negoreq[2]=*p;
 			write((const char *)negoreq, 3);
 		   break;
 		case TNO_DONT:
 			break;
 	}
-	return p+1; 
+	return p+1;
 }

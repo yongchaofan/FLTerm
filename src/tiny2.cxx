@@ -147,7 +147,7 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	}
 	if ( data==NULL ) {					//disconnected
-		if ( localedit ) 
+		if ( localedit )
 			term->disp("\n\033[32mtinyTerm2 > \033[37m");
 		else
 			term->disp("\n\033[33mPress Enter to restart\033[37m\n\n");
@@ -196,7 +196,7 @@ void tab_act(Fl_Term *pt)
 void tab_new()
 {
 	if ( pTabs==NULL ) tab_init();
-	Fl_Term *pt = new Fl_Term(0, pTabs->y()+TABHEIGHT, 
+	Fl_Term *pt = new Fl_Term(0, pTabs->y()+TABHEIGHT,
 						pTabs->w(), pTabs->h()-TABHEIGHT, "term");
 	pt->labelsize(16);
 	pt->textsize(fontsize);
@@ -210,7 +210,7 @@ void tab_del()
 	if ( pTerm->connected() ) pTerm->disconn();
 	if ( pTabs->children()>1 ) {
 		pTabs->remove(pTerm);
-		//Fl::delete_widget(pTerm); 
+		//Fl::delete_widget(pTerm);
 		pTerm = NULL;
 		tab_act((Fl_Term *)pTabs->child(0));
 	}
@@ -220,13 +220,13 @@ void tab_del()
 	}
 	pTabs->redraw();
 }
-void tab_cb(Fl_Widget *w) 
+void tab_cb(Fl_Widget *w)
 {
 	Fl_Term *pt = (Fl_Term *)pTabs->value();
 
 	if ( pt==pTerm ) {	//clicking on active tab, delete it
 		int confirm = 0;
-		if ( pTerm->connected() ) confirm = 
+		if ( pTerm->connected() ) confirm =
 			fl_choice("Disconnect from %s?", "Yes", "No", 0, pTerm->label());
 		if ( confirm==0 ) tab_del();
 	}
@@ -340,16 +340,16 @@ void cmd_send(Fl_Term *t, const char *cmd)
 {
 	if ( *cmd=='!' ) {
 		if ( strncmp(cmd, "!scp ", 5)==0 ) {
-			std::thread scp_thread(&Fl_Term::scp, t, 
+			std::thread scp_thread(&Fl_Term::scp, t,
 									strdup(cmd+5), (char **)NULL);
 			scp_thread.detach();
 		}
 		else if ( strncmp(cmd, "!tun", 4)==0 ) {
-			std::thread scp_thread(&Fl_Term::tun, t, 
+			std::thread scp_thread(&Fl_Term::tun, t,
 									strdup(cmd+4), (char **)NULL);
 			scp_thread.detach();
 		}
-		else if ( strncmp(cmd, "!script ",8)==0 ) 
+		else if ( strncmp(cmd, "!script ",8)==0 )
 			script_open(cmd+8);
 		else
 			t->command(cmd, NULL);
@@ -366,10 +366,10 @@ void cmd_send(Fl_Term *t, const char *cmd)
 		}
 	}
 }
-void cmd_cb(Fl_Widget *o, void *p) 
+void cmd_cb(Fl_Widget *o, void *p)
 {
 	if ( p!=NULL ) { 						//from do_callback
-		pTerm->send((const char *)p); 
+		pTerm->send((const char *)p);
 		return;
 	}
 
@@ -433,11 +433,11 @@ void menu_cb(Fl_Widget *w, void *data)
 			pTerm->logg( NULL );
 		}
 		else {
-			const char *fname = file_chooser("logfile:", "Log\t*.log", 
+			const char *fname = file_chooser("logfile:", "Log\t*.log",
 														CHOOSE_SAVE_FILE);
 			if ( fname!=NULL ) pTerm->logg(fname);
 		}
-		if ( pTerm->logg() ) 
+		if ( pTerm->logg() )
 			pMenuLogg->set();
 		else
 			pMenuLogg->clear();
@@ -449,7 +449,7 @@ void menu_cb(Fl_Widget *w, void *data)
 		const char *fname = file_chooser("script:", "All\t*.*", CHOOSE_FILE);
 		if ( fname!=NULL ) {
 			char relative_name[FL_PATH_MAX+8]="!script ";
-			fl_filename_relative(relative_name+8, FL_PATH_MAX, fname); 
+			fl_filename_relative(relative_name+8, FL_PATH_MAX, fname);
 			pCmd->add(relative_name);
 			script_open(relative_name+8);
 		}
@@ -481,7 +481,7 @@ void menu_cb(Fl_Widget *w, void *data)
 			  strcmp(menutext, "14")==0 ||
 			  strcmp(menutext, "16")==0 ||
 			  strcmp(menutext, "18")==0 ||
-			  strcmp(menutext, "20")==0 ){ 
+			  strcmp(menutext, "20")==0 ){
 		fontsize = atoi(menutext);
 		pTerm->textsize(fontsize);
 		pCmd->textsize(fontsize);
@@ -572,7 +572,7 @@ Fl_Menu_Item menubar[] = {
 void load_dict(const char *fn)			// set working directory and load scripts to menu
 {
 #ifdef WIN32
- 	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES ) 
+ 	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES )
  	{						// if current directory doesn't have .hist
 		_chdir(getenv("USERPROFILE"));
 		_mkdir("Documents\\tinyTerm");
@@ -581,7 +581,7 @@ void load_dict(const char *fn)			// set working directory and load scripts to me
 	if ( GetFileAttributes("scp_to_folder.js")==INVALID_FILE_ATTRIBUTES ) {
 		FILE *fp = fopen("scp_to_folder.js", "w");
 		if ( fp!=NULL ) {
-			fprintf(fp, "%s", SCP_TO_FOLDER); 
+			fprintf(fp, "%s", SCP_TO_FOLDER);
 			fclose(fp);
 		}
 	}
@@ -597,15 +597,15 @@ void load_dict(const char *fn)			// set working directory and load scripts to me
 	if ( fp!=NULL ) {
 		char line[256];
 		while ( fgets(line, 256, fp)!=NULL ) {
-			line[strcspn(line, "\n")] = 0; 
+			line[strcspn(line, "\n")] = 0;
 			pCmd->add(line);
 			if ( *line=='!' ) {
 				if (strncmp(line+1, "ssh ",   4)==0 ||
-					strncmp(line+1, "sftp ",  5)==0 || 
+					strncmp(line+1, "sftp ",  5)==0 ||
 					strncmp(line+1, "telnet ",7)==0 ||
 					strncmp(line+1, "serial ",7)==0 ||
 					strncmp(line+1, "netconf ",8)==0 ) {
-					pMenuBar->insert(pMenuBar->find_index("Script")-1, 
+					pMenuBar->insert(pMenuBar->find_index("Script")-1,
 													line+1, 0, term_menu_cb);
 					pHostname->add( strchr(line+1, ' ')+1 );
 				}
@@ -659,14 +659,14 @@ void save_dict(const char *fn)
 	if ( fp!=NULL ) {
 		if ( localedit )
 			fprintf(fp, "~LocalEdit\n");
-		if ( fontsize!=16 ) 
+		if ( fontsize!=16 )
 			fprintf(fp, "~FontSize %d\n", fontsize);
-		if ( buffsize!=4096 ) 
+		if ( buffsize!=4096 )
 			fprintf(fp, "~BuffSize %d\n", buffsize);
 		fprintf(fp, "~WndSize %dx%d\n", pWindow->w(), pWindow->h());
-			
+
 		const char *p = pCmd->first();
-		while ( p!=NULL ) { 
+		while ( p!=NULL ) {
 			if ( *p!='~' ) fprintf(fp, "%s\n", p);
 			p = pCmd->next();
 		}
@@ -694,7 +694,7 @@ int main(int argc, char **argv)
 		pMenuBar=new Fl_Sys_Menu_Bar(0, 0, pWindow->w(), MENUHEIGHT);
 		pMenuBar->menu(menubar);
 		pMenuBar->textsize(18);
-		pTerm = new Fl_Term(0, MENUHEIGHT, pWindow->w(), 
+		pTerm = new Fl_Term(0, MENUHEIGHT, pWindow->w(),
 								pWindow->h()-MENUHEIGHT, "term");
 		pTerm->callback( term_cb );
 		pCmd = new Fl_Browser_Input( 0, pWindow->h()-1, 1, 1, "");
@@ -747,7 +747,7 @@ int main(int argc, char **argv)
 	pCmd->textsize(fontsize);
 	pWindow->show();
 
-	if ( localedit ) 
+	if ( localedit )
 		pTerm->disp("\n\033[32mtinyTerm2 > \033[37m");
 	else
 		conn_dialog();
@@ -800,14 +800,14 @@ void httpFile( int s1, char *file)
 		return;
 	}
 
-	FILE *fp = fopen( file, "rb" );	
+	FILE *fp = fopen( file, "rb" );
 	if ( fp!=NULL ) {
 		len=sprintf(reply, "HTTP/1.1 200 Ok\nDate: %s\n", timebuf);
 		len+=sprintf(reply+len, "Server: tinyTerm2\nConnection: close");
 
 		const char *filext=strrchr(file, '.');
 		if ( filext!=NULL ) {
-			for ( i=0, j=0; j<8; j++ ) 
+			for ( i=0, j=0; j<8; j++ )
 				if ( strcmp(filext, exts[j])==0 ) i=j;
 		}
 		len+=sprintf(reply+len,"Content-Type: %s\n",mime[i]);
@@ -844,18 +844,18 @@ void httpd( int s0 )
 				if ( *cmd=='?' ) {
 					if ( strncmp(++cmd, "!Tab ",5)==0 ) {
 						replen = term_act(cmd+5);
-						if ( replen ) 
+						if ( replen )
 							reply = cmd;
 						else
 							tab_new();
 					}
-					else 
+					else
 						replen = pTerm->command( cmd, &reply );
 					int len = sprintf( buf, HEADER, replen );
 					send( http_s1, buf, len, 0 );
 					if ( replen>0 ) send( http_s1, reply, replen, 0 );
 				}
-				else 
+				else
 					httpFile(http_s1, cmd);
 			}
 		}
@@ -880,7 +880,7 @@ void httpd_init()
 	short port = 8079;
 	while ( ++port<8100 ) {
 		svraddr.sin_port=htons(port);
-		if ( bind(http_s0, (struct sockaddr*)&svraddr, addrsize)!=-1 ) 
+		if ( bind(http_s0, (struct sockaddr*)&svraddr, addrsize)!=-1 )
 			break;
 	}
 	if ( port<8100) {
