@@ -25,7 +25,7 @@
 
 #ifndef _SSH2_H_
 #define _SSH2_H_
-
+enum { HOST_SSH=5, HOST_SFTP, HOST_CONF };
 struct TUNNEL
 {
 	int socket;
@@ -56,7 +56,7 @@ protected:
 	TUNNEL *tunnel_list;
 
 	int wait_socket();
-	int ssh_knownhost( int interactive=true );
+	int ssh_knownhost();
 	int ssh_authentication();
 	void write_keys(const char *buf, int len);
 
@@ -79,13 +79,13 @@ public:
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy);
+	virtual char *ssh_gets(const char *prompt, int echo);
 	virtual void disconn();
 //	virtual void connect();
 	void keepalive(int interval);
 	int scp_read(char *rpath, char *lpath);
 	int scp_write(char *lpath, char *rpath);
 	void tun(char *cmd);
-	char *ssh_gets(const char *prompt, int echo);
 };
 
 class sftpHost : public sshHost {

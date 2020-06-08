@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 23697 2020-05-23 10:05:10 $"
+// "$Id: tiny2.cxx 24559 2020-06-08 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -17,18 +17,18 @@
 //     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 
-const char ABOUT_TERM[]="\n\
-\ttinyTerm2 is a simple, small and scriptable terminal emulator,\n\n\
-\ta serial/telnet/ssh/sftp/netconf client with unique features:\n\n\n\
-\t    * cross platform, Windows, macOS and Linux\n\n\
-\t    * download as small portable signle exe\n\n\
-\t    * command history and autocompletion\n\n\
-\t    * text based batch command automation\n\n\
-\t    * drag and drop to transfer files via scp\n\n\
-\t    * scripting interface at xmlhttp://127.0.0.1:%d\n\n\n\
-\thomepage: https://yongchaofan.github.io/tinyTerm2\n\n\
-\tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\n\n\
-\tVerision 1.1.2, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+const char ABOUT_TERM[]="\r\n\
+\ttinyTerm2 is a simple, small and scriptable terminal emulator,\r\n\n\
+\ta serial/telnet/ssh/sftp/netconf client with unique features:\r\n\n\n\
+\t    * cross platform, Windows, macOS and Linux\r\n\n\
+\t    * download as small portable signle exe\r\n\n\
+\t    * command history and autocompletion\r\n\n\
+\t    * text based batch command automation\r\n\n\
+\t    * drag and drop to transfer files via scp\r\n\n\
+\t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
+\thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
+\tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\r\n\n\
+\tVerision 1.2.0, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 
 #ifdef WIN32
 const char SCP_TO_FOLDER[]="\
@@ -136,6 +136,11 @@ const char *kb_gets(const char *prompt, int echo)
 	}
 	return NULL;
 }
+void resize_window(int w, int h)
+{
+	if ( pTabs!=NULL ) h += TABHEIGHT;
+	pWindow->resize(pWindow->x(), pWindow->y(), w, h+MENUHEIGHT);
+}
 
 void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 {
@@ -148,9 +153,9 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 	}
 	if ( data==NULL ) {					//disconnected
 		if ( localedit ) 
-			term->disp("\n\033[32mtinyTerm2 > \033[37m");
+			term->disp("\r\n\033[32mtinyTerm2 > \033[37m");
 		else
-			term->disp("\n\033[33mPress Enter to restart\033[37m\n\n");
+			term->disp("\r\n\033[33mPress Enter to restart\033[37m\r\n");
 	}
 	if ( pTabs!=NULL ) Fl::awake( pTabs );
 }
@@ -185,6 +190,7 @@ void tab_act(Fl_Term *pt)
 	pTerm->take_focus();		//add "  x" to current active tab
 	pTerm->textfont(fontface);
 	pTerm->textsize(fontsize);
+	resize_window(pTerm->sizeX(), pTerm->sizeY());
 	strncpy(label, pTerm->label(), 24);
 	strcat(label, "  x");
 	pTerm->copy_label(label);
@@ -465,17 +471,20 @@ void menu_cb(Fl_Widget *w, void *data)
 		fontface = FL_FREE_FONT;
 		pTerm->textfont(fontface);
 		pCmd->textfont(fontface);
+		resize_window(pTerm->sizeX(), pTerm->sizeY());
 	}
 	else if ( strcmp(menutext, "Courier New")==0 ) {
 		fontface = FL_FREE_FONT+1;
 		pTerm->textfont(fontface);
 		pCmd->textfont(fontface);
+		resize_window(pTerm->sizeX(), pTerm->sizeY());
 	}
 	else if ( strcmp(menutext, "Menlo")==0 ||
 			  strcmp(menutext, "Lucida Console")==0 ) {
 		fontface = FL_FREE_FONT+2;
 		pTerm->textfont(fontface);
 		pCmd->textfont(fontface);
+		resize_window(pTerm->sizeX(), pTerm->sizeY());
 	}
 	else if ( strcmp(menutext, "12")==0 ||
 			  strcmp(menutext, "14")==0 ||
@@ -485,6 +494,7 @@ void menu_cb(Fl_Widget *w, void *data)
 		fontsize = atoi(menutext);
 		pTerm->textsize(fontsize);
 		pCmd->textsize(fontsize);
+		resize_window(pTerm->sizeX(), pTerm->sizeY());
 	}
 	else if ( strcmp(menutext, "2048")==0 ||
 			  strcmp(menutext, "4096")==0 ||

@@ -1,12 +1,12 @@
 //
-// "$Id: Hosts.h 4583 2019-09-28 21:12:15 $"
+// "$Id: Hosts.h 4343 2019-09-28 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd 
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2019 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -39,8 +39,7 @@
 #ifndef _HOST_H_
 #define _HOST_H_
 
-enum {  HOST_PIPE=0, HOST_COM, HOST_TCP, //HOST_FTPD, HOST_TFTPD,
-		HOST_SSH, HOST_SFTP, HOST_CONF };
+enum {  HOST_PIPE=0, HOST_COM, HOST_TCP }; //HOST_FTPD, HOST_TFTPD
 enum {  HOST_IDLE=0, HOST_CONNECTING, HOST_AUTHENTICATING, HOST_CONNECTED };
 typedef void ( host_callback )(void *, const char *, int);
 
