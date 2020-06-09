@@ -68,7 +68,6 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bEcho = false;
 	bScrollbar = false;
 	host = NULL;
-	font_face = 0;
 
 	strcpy(sTitle, "tinyTerm2 ");
 	strcpy(sPrompt, "> ");
