@@ -1,20 +1,23 @@
+#Makefile for macOS/Linux
 HEADERS = src/host.h src/ssh2.h 
-
-TERM_OBJS=tiny2.o Fl_Term.o Fl_Browser_Input.o host.o ssh2.o
 LIBS =  -lssh2 -lmbedcrypto
-#/usr/local/lib/libssh2.a /usr/local/lib/libmbedcrypto.a
-INCLUDE = -I.
-
+OBJ_DIR = obj
+OBJS = $(OBJ_DIR)/tiny2.o $(OBJ_DIR)/ssh2.o $(OBJ_DIR)/host.o\
+		$(OBJ_DIR)/Fl_Term.o $(OBJ_DIR)/Fl_Browser_Input.o
+		
 CFLAGS= -Os -std=c++11 ${shell fltk-config --cxxflags}
-LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++ -ldl -lpthread
+LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++
 
-all: tinyTerm2
+all: OBJ_DIR tinyTerm2 
 
-tinyTerm2: ${TERM_OBJS} 
-	cc -o "$@" ${TERM_OBJS} ${LDFLAGS} ${LIBS}
+tinyTerm2: ${OBJS} 
+	cc -o "$@" ${OBJS} ${LDFLAGS} ${LIBS}
 
-%.o: src/%.cxx ${HEADERS}
-	${CC} ${CFLAGS} ${INCLUDE} -c $< -o $@
+$(OBJ_DIR)/%.o: src/%.cxx ${HEADERS}
+	${CC} ${CFLAGS} -I. -c $< -o $@
+
+OBJ_DIR:
+	test ! -d $(OBJ_DIR) && mkdir $(OBJ_DIR)
 
 clean:
 	rm *.o "tinyTerm2"
