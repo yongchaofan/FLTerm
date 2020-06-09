@@ -190,7 +190,6 @@ void tab_act(Fl_Term *pt)
 	pTerm->take_focus();		//add "  x" to current active tab
 	pTerm->textfont(fontface);
 	pTerm->textsize(fontsize);
-	resize_window(pTerm->sizeX(), pTerm->sizeY());
 	strncpy(label, pTerm->label(), 24);
 	strcat(label, "  x");
 	pTerm->copy_label(label);
