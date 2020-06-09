@@ -204,7 +204,7 @@ sshHost::sshHost(const char *name) : tcpHost(name)
 const char *keytypes[] = {
 	"unknown", "rsa", "dss", "ecdsa256", "ecdsa384", "ecdsa521", "ed25519"
 };
-int sshHost::ssh_knownhost(int interactive)
+int sshHost::ssh_knownhost()
 {
 	int type, check, buff_len;
 	size_t len;
@@ -423,7 +423,6 @@ const char *IETF_HELLO="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 </capabilities></hello>]]>]]>";
 int sshHost::read()
 {
-	int err;
 	status( HOST_CONNECTING );
 	if ( tcp()==-1 ) goto TCP_Close;
 
