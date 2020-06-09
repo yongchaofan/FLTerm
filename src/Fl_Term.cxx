@@ -69,8 +69,6 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bScrollbar = false;
 	host = NULL;
 
-	color(FL_BLACK);
-	textsize(16);
 	strcpy(sTitle, "tinyTerm2 ");
 	strcpy(sPrompt, "> ");
 	iPrompt = 2;
@@ -85,6 +83,11 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	buff_size = 0;
 	redraw_complete = false;
 	buffsize(8192);
+	textfont(16);
+	textsize(16);
+	size_x = w()/font_width;
+	size_y = h()/font_height;
+	color(FL_BLACK);
 	clear();
 	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
 }
