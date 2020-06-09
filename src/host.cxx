@@ -1,12 +1,12 @@
 //
-// "$Id: Hosts.cxx 27119 2019-09-28 22:15:10 $"
+// "$Id: Hosts.cxx 26984 2020-06-08 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
 //	host implementation for terminal simulator
 //	used with the Fl_Term widget in flTerm
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 //     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
 //
@@ -57,7 +57,7 @@ comHost::comHost(const char *address)
 #endif //WIN32
 	strncat(portname, address, 63);
 	portname[63] = 0;
-	bXmodem = FALSE;
+	bXmodem = false;
 
 	char *p = strchr(portname, ':' );
 	if ( p!=NULL ) { *p++ = 0; strcpy(settings, p); }
@@ -112,7 +112,7 @@ void comHost::xmodem_block()
 }
 void comHost::xmodem_send()
 {
-	xmodem_started = TRUE;
+	xmodem_started = true;
 	if ( xmodem_buf[0]==EOT )
 		write(xmodem_buf, 1);
 	else
@@ -127,7 +127,7 @@ void comHost::xmodem_recv(char op)
 					do_callback("R",1);
 				}
 				if ( xmodem_timeout>60000 ) {//timeout after 60 seconds
-					bXmodem = FALSE;
+					bXmodem = false;
 					fclose(xmodem_fp);
 					do_callback("Aborted\n", 9);
 				}
@@ -135,7 +135,7 @@ void comHost::xmodem_recv(char op)
 	case 0x06:	xmodem_timeout = 0;			//ACK
 				if ( xmodem_buf[0] == EOT ) {
 					do_callback("Completed\n",10);
-					bXmodem = FALSE;
+					bXmodem = false;
 					return;
 				}
 				xmodem_block();
@@ -146,7 +146,7 @@ void comHost::xmodem_recv(char op)
 				xmodem_send();
 				break;
 	case 'C':	do_callback("CRC",3);		//start CRC
-				xmodem_crc = TRUE;
+				xmodem_crc = true;
 				block_crc();
 				xmodem_send();
 				break;
@@ -155,9 +155,9 @@ void comHost::xmodem_recv(char op)
 void comHost::xmodem(FILE *fp)
 {
 	xmodem_fp = fp;
-	bXmodem = TRUE;
-	xmodem_crc = FALSE;
-	xmodem_started = FALSE;
+	bXmodem = true;
+	xmodem_crc = false;
+	xmodem_started = false;
 	xmodem_timeout = 0;
 	xmodem_blk = 0;
 	xmodem_block();
@@ -287,7 +287,7 @@ int comHost::read()
 	}
 	close(ttySfd);
 	status( HOST_IDLE );
-	do_callback("Disconnected\n", -1);
+	do_callback("Disconnected\r\n", -1);
 
 shutdown:
 	reader.detach();
@@ -338,24 +338,24 @@ int tcpHost::tcp()
 	int rc = ::connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
 	freeaddrinfo(ainfo);
 	if ( rc!=-1 )
-		print("connected\n");
+		print("connected\r\n");
 	else {
-		const char *errmsg = "connection failure\n";
+		const char *errmsg = "";
 #ifdef WIN32
 		switch( WSAGetLastError() ) {
 		case WSAEHOSTUNREACH:
-		case WSAENETUNREACH: errmsg ="host unreachable\n"; break;
-		case WSAECONNRESET:  errmsg ="connection reset\n"; break;
-		case WSAETIMEDOUT:   errmsg ="connection timeout\n"; break;
-		case WSAECONNREFUSED:errmsg ="connection refused\n"; break;
+		case WSAENETUNREACH: errmsg ="unreachable"; break;
+		case WSAECONNRESET:  errmsg ="reset"; break;
+		case WSAETIMEDOUT:   errmsg ="timeout"; break;
+		case WSAECONNREFUSED:errmsg ="refused"; break;
 		}
 #else
 		switch( errno ) {
 		case EHOSTUNREACH:
-		case ENETUNREACH: errmsg ="host unreachable\n"; break;
-		case ECONNRESET:  errmsg ="connection reset\n"; break;
-		case ETIMEDOUT:   errmsg ="connection timeout\n"; break;
-		case ECONNREFUSED:errmsg ="connection refused\n"; break;
+		case ENETUNREACH: errmsg ="unreachable"; break;
+		case ECONNRESET:  errmsg ="reset"; break;
+		case ETIMEDOUT:   errmsg ="timeout"; break;
+		case ECONNREFUSED:errmsg ="refused"; break;
 		}
 #endif
 		do_callback( errmsg, -1 );
@@ -375,7 +375,7 @@ int tcpHost::read()
 			do_callback(buf, cch);
 		}
 		status( HOST_IDLE );
-		do_callback("Disconnected\n", -1);
+		do_callback("Disconnected\r\n", -1);
 	}
 
 	if ( sock!=-1 ) {
@@ -466,7 +466,7 @@ int pipeHost::read()
 
 	SECURITY_ATTRIBUTES saAttr;
 	saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-	saAttr.bInheritHandle = TRUE;			//Set the bInheritHandle flag
+	saAttr.bInheritHandle = true;			//Set the bInheritHandle flag
 	saAttr.lpSecurityDescriptor = NULL;		//so pipe handles are inherited
 
 	CreatePipe(&Stdout_Rd, &Stdout_Wr, &saAttr, 0);//pipe for child's STDOUT
@@ -477,13 +477,13 @@ int pipeHost::read()
 	// Ensure the write handle to the pipe for STDIN is not inherited
 	DuplicateHandle(GetCurrentProcess(),Stdout_Wr,
 					GetCurrentProcess(),&Stderr_Wr,0,
-					TRUE,DUPLICATE_SAME_ACCESS);
+					true,DUPLICATE_SAME_ACCESS);
 	DuplicateHandle(GetCurrentProcess(),Stdout_Rd,
 					GetCurrentProcess(),&hStdioRead,0,
-					TRUE,DUPLICATE_SAME_ACCESS);
+					true,DUPLICATE_SAME_ACCESS);
 	DuplicateHandle(GetCurrentProcess(),Stdin_Wr,
 					GetCurrentProcess(),&hStdioWrite,0,
-					TRUE,DUPLICATE_SAME_ACCESS);
+					true,DUPLICATE_SAME_ACCESS);
 	CloseHandle( Stdin_Wr );
 	CloseHandle( Stdout_Rd );
 
@@ -496,10 +496,10 @@ int pipeHost::read()
 	siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
 
 	if ( CreateProcessA( NULL,			// Create the child process.
-						cmdline,	// command line
+						cmdline,		// command line
 						NULL,			// process security attributes
 						NULL,			// primary thread security attributes
-						TRUE,			// handles are inherited
+						true,			// handles are inherited
 						CREATE_NO_WINDOW,// creation flags
 						NULL,			// use parent's environment
 						NULL,			// use parent's current directory
@@ -510,7 +510,7 @@ int pipeHost::read()
 		CloseHandle( Stderr_Wr );
 
 		status( HOST_CONNECTED );
-		while ( TRUE ) {
+		while ( true ) {
 			DWORD dwCCH;
 			char buf[1536];
 			if ( ReadFile( hStdioRead, buf, 1500, &dwCCH, NULL) > 0 ) {
@@ -579,7 +579,7 @@ int ftpdHost::read()
 	unsigned int c[6], ii[2];
 	char *param=0, szBuf[32768];
 	char fn[MAX_PATH], workDir[MAX_PATH];
-	BOOL bPassive;
+	bool bPassive;
 
 	SOCKET s2=-1, s3=-1; 		// s2 data connection, s3 data listen
 	struct sockaddr_in svraddr, clientaddr;		// for data connection
@@ -620,7 +620,7 @@ int ftpdHost::read()
 
 		FILE *fp;
 		bPassive = false;
-		BOOL bUser=false, bPass=false;
+		bool bUser=false, bPass=false;
 		while ( (ret1=sock_select(ftp_s1, 300)) == 1 ) {
 			int cnt=recv( ftp_s1, szBuf, 1024, 0 );
 			if ( cnt<=0 ) {
@@ -744,7 +744,7 @@ int ftpdHost::read()
 					::connect(s2, (struct sockaddr *)&clientaddr,
 															sizeof(clientaddr));
 				}
-				BOOL bNlst = szBuf[0]=='n' || szBuf[0]=='N';
+				bool bNlst = szBuf[0]=='n' || szBuf[0]=='N';
 				do {
 					if ( ffblk.name[0]=='.' ) continue;
 					if ( bNlst ) {
@@ -998,7 +998,7 @@ int tftpdHost::read()
 
 		::connect(tftp_s1, (struct sockaddr *)&clientaddr, addrsize);
 		if ( dataBuf[1]==1  || dataBuf[1]==2 ) {
-			BOOL bRead = dataBuf[1]==1;
+			bool bRead = dataBuf[1]==1;
 			print( "TFTPd: %cRQ %s from %s\n", bRead?'R':'W', dataBuf+2,
 									inet_ntoa(clientaddr.sin_addr) );
 			strcpy(fn, rootDir);

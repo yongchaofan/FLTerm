@@ -1,11 +1,11 @@
 //
-// "$Id: ssh2.cxx 38497 2019-05-21 21:55:10 $"
+// "$Id: ssh2.cxx 38469 2020-06-08 11:55:10 $"
 //
 // sshHost sftpHost
 //
 // ssh2 host implementation for terminal simulator tinyTerm2
 //
-// Copyright 2018-2019 by Yongchao Fan.
+// Copyright 2018-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -248,27 +248,27 @@ int sshHost::ssh_knownhost(int interactive)
 	case LIBSSH2_KNOWNHOST_CHECK_MISMATCH:
 		if ( type==((host->typemask&LIBSSH2_KNOWNHOST_KEY_MASK)
 								  >>LIBSSH2_KNOWNHOST_KEY_SHIFT) ) {
-			print("%s\n\033[31m!!!Danger, host key changed!!!\n", keybuf);
+			print("%s\r\n\033[31m!!!Danger, host key changed!!!\r\n", keybuf);
 			p = ssh_gets("Update hostkey and continue?(Yes/No) ", true);
 			if ( p!=NULL ) {
 				if ( *p=='y' || *p=='Y' )
 					libssh2_knownhost_del(nh, host);
 				else {
 					rc = -4;
-					print("\033[32mDisconnected, stay safe\n");
+					print("\033[32mDisconnected, stay safe\r\n");
 					break;
 				}
 			}
 			else {
 				rc = -4;
-				print("\033[32mDisconnected, stay safe\n");
+				print("\033[32mDisconnected, stay safe\r\n");
 				break;
 			}
 		}
 		//fall through if hostkey type mismatch or hostkey deleted for update
 	case LIBSSH2_KNOWNHOST_CHECK_NOTFOUND:
 		if ( p==NULL ) {
-			print("%s\n\033[33munknown host!\n", keybuf);
+			print("%s\r\n\033[33munknown host!\n", keybuf);
 			p = ssh_gets("Add hostkey to .ssh/known_hosts?(Yes/No)", true);
 		}
 		if ( p!=NULL ) {
@@ -280,16 +280,16 @@ int sshHost::ssh_knownhost(int interactive)
 								(type<<LIBSSH2_KNOWNHOST_KEY_SHIFT), &host);
 				if ( libssh2_knownhost_writefile(nh, knownhostfile,
 								LIBSSH2_KNOWNHOST_FILE_OPENSSH)==0 )
-					print("\033[32mhostkey added to known_hosts\n");
+					print("\033[32mhostkey added to known_hosts\r\n");
 				else
-					print("\033[33mcouldn't write to known_hosts\n");
+					print("\033[33mcouldn't write to known_hosts\r\n");
 			}
 			else
-				print("\033[33mhostkey ignored\n");
+				print("\033[33mhostkey ignored\r\n");
 		}
 		else {
 			rc = -4;
-			print("\033[32mDisconnected, stay safe\n");
+			print("\033[32mDisconnected, stay safe\r\n");
 			break;
 		}
 	}
@@ -321,7 +321,7 @@ void sshHost::write_keys(const char *buf, int len)
 		if ( buf[i]=='\015' ) {
 			keys[cursor++]=0;
 			bReturn=true;
-			do_callback("\n", 2);
+			do_callback("\r\n", 2);
 		}
 		else if ( buf[i]=='\177' || buf[i]=='\b' ) {
 			if ( cursor>0 ) {
@@ -357,7 +357,7 @@ int sshHost::ssh_authentication()
 {
 	int rc = -5;
 	if ( *username==0 ) {
-		const char *p = ssh_gets("\nusername:", true);
+		const char *p = ssh_gets("\r\nusername:", true);
 		if ( p==NULL ) return rc;
 		strncpy(username, p, 31);
 	}
@@ -429,11 +429,8 @@ int sshHost::read()
 
 	channel = NULL;
 	session = libssh2_session_init();
-	err = libssh2_session_handshake(session, sock);
-	if ( err!=0 ) {
-		char session_err[256];
-		sprintf(session_err, "session failure %d", err);
-		do_callback(session_err/*errmsgs[2]*/, -2);
+	if ( libssh2_session_handshake(session, sock)!=0 ) {
+		do_callback(errmsgs[2], -2);
 		goto Session_Close;
 	}
 	const char *banner;

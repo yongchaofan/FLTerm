@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Term.cxx 37238 2019-10-08 10:08:20 $"
+// "$Id: Fl_Term.cxx 38881 2020-06-08 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
-// Copyright 2017-2019 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -18,7 +18,7 @@
 #include "Fl_Term.h"
 #include <FL/fl_ask.H>
 #include <FL/Fl_Menu.H>
-#include <FL/filename.H>               // needed for fl_decode_uri
+#include <FL/filename.H>// needed for fl_decode_uri
 #include <thread>
 using namespace std;
 
@@ -32,19 +32,19 @@ void host_cb0(void *data, const char *buf, int len)
 }
 void Fl_Term::host_cb( const char *buf, int len )
 {
-	if ( len==0 ) {					//Connected, send term size
+	if ( len==0 ) {//Connected, send term size
 		host->send_size(size_x, size_y);
 		if ( host->type()==HOST_CONF ) bEcho = true;
 		do_callback( this, (void *)sTitle );
 	}
 	else
-		if ( len>0 ) {				//data from host, display
+		if ( len>0 ) {//data from host, display
 			if ( host->type()==HOST_CONF )
 				put_xml(buf, len);
 			else
 				append(buf, len);
 		}
-		else {//len<0				//Disconnected, or failure
+		else {//len<0 Disconnected, or failure
 			disp("\033[31m"); disp(buf);
 			if ( host->type()==HOST_CONF ) bEcho = false;
 			sTitle[10] = 0;
@@ -65,22 +65,15 @@ Fl_Menu_Item rclick_menu[]={
 };
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
-	bInsert = bAlterScreen = bAppCursor = false;
-	bEscape = bGraphic = bTitle = bBracket = false;
-	bCursor = true;
 	bEcho = false;
 	bScrollbar = false;
-	ESC_idx = 0;
 	host = NULL;
 	font_face = 0;
 
-	color(FL_BLACK);
-	textsize(16);
 	strcpy(sTitle, "tinyTerm2 ");
 	strcpy(sPrompt, "> ");
 	iPrompt = 2;
 	iTimeOut = 30;
-	bPrompt = true;
 	bDND = false;
 	bScriptRun = bScriptPause = false;
 	fpLogFile = NULL;
@@ -91,6 +84,11 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	buff_size = 0;
 	redraw_complete = false;
 	buffsize(8192);
+	textfont(16);
+	textsize(16);
+	size_x = w()/font_width;
+	size_y = h()/font_height;
+	color(FL_BLACK);
 	clear();
 	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
 }
@@ -110,8 +108,17 @@ void Fl_Term::clear()
 	cursor_y = cursor_x = 0;
 	screen_y = 0;
 	sel_left = sel_right= 0;
-	c_attr = 7;				//default black background, white foreground
+	c_attr = 7;//default black background, white foreground
 	recv0 = 0;
+
+	ESC_idx = 0;
+	bInsert = bEscape = bGraphic = bTitle = false;
+	bBracket = bAlterScreen = bAppCursor = bOriginMode = false;
+	bWraparound = true;
+	bCursor = true;
+	bPrompt = true;
+	memset(tabstops, 0, 256);
+	for ( int i=0; i<256; i+=8 ) tabstops[i]=1;
 
 	xmlIndent=0;
 	xmlTagIsOpen=true;
@@ -133,17 +140,15 @@ void Fl_Term::textfont( Fl_Font fontface )
 {
 	font_face = fontface;
 	fl_font(font_face, font_size);
-	font_width = fl_width('a')+0.8;
+	font_width = fl_width("abcdefghijklmnopqrstuvwxzy")/26;
 	font_height = fl_height();
-	resize(x(), y(), w(), h());
 }
 void Fl_Term::textsize( int fontsize )
 {
 	font_size = fontsize;
 	fl_font(font_face, font_size);
-	font_width = fl_width('a')+0.8;
+	font_width = fl_width("abcdefghijklmnopqrstuvwxzy")/26;
 	font_height = fl_height();
-	resize(x(), y(), w(), h());
 }
 
 const unsigned int VT_attr[] = {
@@ -157,7 +162,7 @@ void Fl_Term::draw()
 	redraw_complete = true;
 	fl_color(color());
 	fl_rectf(x(),y(),w(),h());
-	fl_font(FL_COURIER, font_size);
+	fl_font(font_face, font_size);
 
 	int sel_l = sel_left;
 	int sel_r = sel_right;
@@ -309,7 +314,7 @@ int Fl_Term::handle( int e ) {
 				if ( sel_left>sel_right ) {
 					int t=sel_left; sel_left=sel_right; sel_right=t;
 				}
-				if ( sel_left==sel_right ) redraw();	//clear selection
+				if ( sel_left==sel_right ) redraw();//clear selection
 				break;
 			case FL_MIDDLE_MOUSE:	//middle click to paste from selection
 				write(buff+sel_left, sel_right-sel_left);
@@ -320,7 +325,7 @@ int Fl_Term::handle( int e ) {
 					if ( m ) {
 						const char *sel = m->label();
 						switch ( *sel ) {
-						case '&': //Copy or Paste
+						case '&':	//Copy or Paste
 							if ( sel[1]=='P' )
 								Fl::paste( *this, 1 );
 							else if ( sel_left<sel_right )
@@ -445,7 +450,7 @@ void Fl_Term::buffsize(int new_line_size)
 			clear();
 		}
 	}
-	else {					//clear buffer if failed to double
+	else {//clear buffer if failed to double
 		if ( attr==NULL ) attr = old_attr;
 		if ( buff==NULL ) buff = old_buff;
 		if ( line==NULL ) line = old_line;
@@ -495,86 +500,100 @@ void Fl_Term::append( const char *newtext, int len ){
 			continue;
 		}
 		switch ( c ) {
-		case 	0:	break;
-		case 0x07:	fprintf(stdout, "\007"); fflush(stdout); break;
-		case 0x08:	if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte
-						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x--;
+			case 0x00:
+			case 0x0e:
+			case 0x0f:	break;
+			case 0x07:	fprintf(stdout, "\007"); fflush(stdout); break;
+			case 0x08:
+				if ( cursor_x>line[cursor_y] ) {
+					if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte
+						while ( (buff[cursor_x]&0xc0)==0x80 )
+							cursor_x--;
+				}
+				break;
+			case 0x09:{
+				int l;
+				do {
+					attr[cursor_x]=c_attr;
+					buff[cursor_x++]=' ';
+				 	l=cursor_x-line[cursor_y];
+				} while ( l<=size_x && tabstops[l]==0 );
+			}
 					break;
-		case 0x09: 	do {
-						attr[cursor_x]=c_attr;
-						buff[cursor_x++]=' ';
-					} while ( (cursor_x-line[cursor_y])%8!=0 );
-					break;
-		case 0x0a:	if ( bAlterScreen ) { 	//LF on alter screen is not stored
-						if ( cursor_y==screen_y+roll_bot ) // scroll up one line
-							vt100_Escape((unsigned char *)"D", 1);
-						else {
-							int x = cursor_x-line[cursor_y];
-							cursor_x = line[++cursor_y]+x;
-						}
-					}
-					else {	//not on alter screen, store LF at end of line
-						cursor_x = line[cursor_y+1];
-//if the next line is not empty, assume it's a ESC[2J cleared buffer like in top
-						if ( line[cursor_y+2]!=0 ) cursor_x--;
-						attr[cursor_x] = c_attr;
-						buff[cursor_x++] = 0x0a;
-						next_line();		//hard line feed
-					}
-					break;
-		case 0x0d: 	if ( cursor_x-line[cursor_y]==size_x+1 && *p!=0x0a )
-						next_line();		//soft line feed
-					else
-						cursor_x = line[cursor_y];
-					break;
-		case 0x1b: 	p = vt100_Escape( p, zz-p );
-					break;
-		case 0xff: 	p = telnet_options(p);
-					break;
-		case 0xe2:  if ( bAlterScreen ) {//utf8 box drawing hack
-						c = ' ';
-						if ( *p++==0x94 ) {
-							switch ( *p ) {
-							case 0x80:
-							case 0xac:
-							case 0xb4:
-							case 0xbc: c='_'; break;
-							case 0x82:
-							case 0x94:
-							case 0x98:
-							case 0x9c:
-							case 0xa4: c='|'; break;
-							}
-						}
-						p++;
-					}//fall through
-		default:	if ( bGraphic ) switch ( c ) {//charset 2 box drawing
-						case 'q': c='_'; break;
-						case 'x': c='|';
-						case 't':
-						case 'u':
-						case 'm':
-						case 'j': c='|'; break;
-						case 'l':
-						case 'k': c=' '; break;
-						default: c = '?';
-					}
-					if ( bInsert ) 			//insert one space
-						vt100_Escape((unsigned char *)"[1@",3);
-					if ( cursor_x-line[cursor_y]>=size_x ) {
-						int char_cnt = 0;
-						for ( int i=line[cursor_y]; i<cursor_x; i++ )
-							if ( (buff[i]&0xc0)!=0x80 ) char_cnt++;
-						if ( char_cnt==size_x ) {
-							if ( bAlterScreen )
-								cursor_x--;	//don't overflow in vi
-							else
-								next_line();
-						}
-					}
+			case 0x0a:
+			case 0x0b:
+			case 0x0c:
+				if ( bAlterScreen || line[cursor_y+2]!=0 ) { //IND to next line
+						vt100_Escape((unsigned char *)"D", 1);
+				}
+				else {	//LF and newline
+					cursor_x = line[cursor_y+1]	;
 					attr[cursor_x] = c_attr;
-					buff[cursor_x++] = c;
-					if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
+					buff[cursor_x++] = 0x0a;
+					next_line();
+				}
+				break;
+			case 0x0d:
+				if ( cursor_x-line[cursor_y]==size_x+1 && *p!=0x0a )
+					next_line();//soft line feed
+				else
+					cursor_x = line[cursor_y];
+				break;
+			case 0x1b:
+				p = vt100_Escape( p, zz-p );
+				break;
+			case 0xff:
+				p = telnet_options(p);
+				break;
+		case 0xe2:
+			if ( bAlterScreen ) {//utf8 box drawing hack
+				c = ' ';
+				if ( *p++==0x94 ) {
+					switch ( *p ) {
+						case 0x80:
+						case 0xac:
+						case 0xb4:
+						case 0xbc: c='_'; break;
+						case 0x82:
+						case 0x94:
+						case 0x98:
+						case 0x9c:
+						case 0xa4: c='|'; break;
+						}
+					}
+					p++;
+				}//fall through
+		default:
+			if ( bGraphic ) {
+				switch ( c ){//charset 2 box drawing
+					case 'q': c='_'; break;
+					case 'x': c='|';
+					case 't':
+					case 'u':
+					case 'm':
+					case 'j': c='|'; break;
+					case 'l':
+					case 'k': c=' '; break;
+					default: c = '?';
+				}
+			}
+			if ( bInsert )		//insert one space
+				vt100_Escape((unsigned char *)"[1@",3);
+			if ( cursor_x-line[cursor_y]>=size_x ) {
+				int char_cnt = 0;
+				for ( int i=line[cursor_y]; i<cursor_x; i++ )
+					if ( (buff[i]&0xc0)!=0x80 ) char_cnt++;
+				if ( char_cnt==size_x ) {
+					if ( bWraparound  )
+					next_line();
+					else
+						cursor_x--;
+				}
+			}
+			attr[cursor_x] = c_attr;
+			buff[cursor_x++] = c;
+			if ( line[cursor_y+1]<cursor_x )
+				line[cursor_y+1]=cursor_x;
 		}
 	}
 	if ( !bPrompt && cursor_x>iPrompt )
@@ -585,52 +604,106 @@ void Fl_Term::append( const char *newtext, int len ){
 		Fl::awake( this );
 	}
 }
-
+void Fl_Term::buff_clear(int offset, int len)
+{
+	memset(buff+offset, ' ', len);
+	memset(attr+offset,   7, len);
+}
+/*[2J, mostly used after [?1049h to clear screen
+  and when screen size changed during vi or raspi-config
+  flashwave TL1 use it without [?1049h for splash screen
+  freeBSD use it without [?1049h* for top and vi
+*/
+void Fl_Term::screen_clear(int m0)
+{
+	int lines = size_y;
+	if ( m0==2 ) screen_y = cursor_y;
+	if ( m0==1 ) {
+		lines = cursor_y-screen_y;
+		buff_clear(line[cursor_y], cursor_x-line[cursor_y]+1);
+		cursor_y = screen_y;
+	}
+	if ( m0==0 ) {
+		buff_clear(cursor_x, line[cursor_y+1]-cursor_x);
+		lines = screen_y+size_y-cursor_y;
+	}
+	cursor_x = line[cursor_y];
+	int cy = cursor_y;
+	for ( int i=0; i<lines; i++ ) {
+		buff_clear(cursor_x, size_x);
+		cursor_x += size_x;
+		next_line();
+	}
+	cursor_y = cy;
+	if ( m0==2 || m0==0 ) screen_y--;
+	cursor_x = line[cursor_y];
+}
+void Fl_Term::check_cursor_y()
+{
+	if ( cursor_y< screen_y )
+		cursor_y = screen_y;
+	if ( cursor_y> screen_y+size_y-1 )
+		cursor_y = screen_y+size_y-1;
+	if ( bOriginMode ) {
+		if ( cursor_y<screen_y+roll_top )
+			cursor_y = screen_y+roll_top;
+		if ( cursor_y>screen_y+roll_bot )
+			cursor_y = screen_y+roll_bot;
+	}
+}
 const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 {
 	const unsigned char *zz = sz+cnt;
 	bEscape = true;
 	while ( sz<zz && bEscape ){
-		ESC_code[ESC_idx++] = *sz++;
+		if ( *sz>31 )
+			ESC_code[ESC_idx++] = *sz++;
+		else {
+			switch ( *sz++ ) {
+			case 0x08:	//BS
+					if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte
+						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x--;
+					break;
+			case 0x0b: {//VT
+					int x = cursor_x-line[cursor_y];
+					cursor_x = line[++cursor_y]+x;
+					break;
+					}
+			case 0x0d:	//CR
+					cursor_x = line[cursor_y];
+					break;
+			}
+		}
 		switch( ESC_code[0] ) {
 		case '[':
 			if ( isalpha(ESC_code[ESC_idx-1])
 				|| ESC_code[ESC_idx-1]=='@'
 				|| ESC_code[ESC_idx-1]=='`' ) {
 				bEscape = false;
-				int n0=1, n1=1, n2=1;
-				if ( ESC_idx>1 ) {
-					char *p = strchr(ESC_code,';');
-					if ( p != NULL ) {
-						char *p1 = strchr(p+1, ';');
-						if ( p1!=NULL ) {
-							n0 = atoi(ESC_code+1);
-							n1 = atoi(p+1);
-							n2 = atoi(p1+1);
-						}
-						else {
-							n0 = 0;
-							n1 = atoi(ESC_code+1);
-							n2 = atoi(p+1);
-						}
-					}
-					else
-						if ( isdigit(ESC_code[1]) ) {
-							n0 = atoi(ESC_code+1);
-							n1 = 0;
-							n2 = 0;
-						}
+				int m0=0;	//used by [PsJ and [PsK
+				int n0=1;	//used by most, e.g. [PsA [PsB
+				int n1=1;	//n1;n0 used by [Ps;PtH [Ps;Ptr
+				if ( isdigit(ESC_code[1]) ) {
+					m0 = n0 = atoi(ESC_code+1);
+					if ( n0==0 ) n0=1;
+				}
+				char *p = strchr(ESC_code,';');
+				if ( p != NULL ) {
+					n1 = n0;
+					n0 = atoi(p+1);
+					if ( n0==0 ) n0=1;	//ESC[0;0f == ESC[1;1f
 				}
 				int x;
 				switch ( ESC_code[ESC_idx-1] ) {
 				case 'A': //cursor up n0 times
 					x = cursor_x-line[cursor_y];
 					cursor_y -=n0;
+					check_cursor_y();
 					cursor_x = line[cursor_y]+x;
 					break;
 				case 'd'://line position absolute
-					if ( n0>size_y ) n0 = size_y;
 					x = cursor_x-line[cursor_y];
+					if ( n0>size_y ) n0 = size_y;
 					cursor_y = screen_y+n0-1;
 					cursor_x = line[cursor_y]+x;
 					break;
@@ -638,143 +711,106 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 				case 'B': //cursor down n0 times
 					x = cursor_x-line[cursor_y];
 					cursor_y += n0;
+					check_cursor_y();
 					cursor_x = line[cursor_y]+x;
 					break;
-				case 'I': //cursor forward n0 tab stops
-					n0 *= 8;
+				case '`': //character position absolute
+				case 'G': //cursor to n0th position from left
+					cursor_x = line[cursor_y];
 					//fall through
 				case 'a': //character position relative
 				case 'C': //cursor forward n0 times
-					while ( n0-->0 ) {
+					while ( n0-->0 && cursor_x<line[cursor_y]+size_x-1 ) {
 						if ( (buff[++cursor_x]&0xc0)==0x80 )
 							while ( (buff[++cursor_x]&0xc0)==0x80 );
 					}
 					break;
-				case 'Z': //cursor backward n0 tab stops
-					n0 *= 8;
-					//fall through
 				case 'D': //cursor backward n0 times
-					while ( n0-->0 ) {
+					while ( n0-->0 && cursor_x>line[cursor_y] ) {
 						if ( (buff[--cursor_x]&0xc0)==0x80 )
 							while ( (buff[--cursor_x]&0xc0)==0x80 );
 					}
 					break;
 				case 'E': //cursor to begining of next line n0 times
 					cursor_y += n0;
+					check_cursor_y();
 					cursor_x = line[cursor_y];
 					break;
 				case 'F': //cursor to begining of previous line n0 times
 					cursor_y -= n0;
+					check_cursor_y();
 					cursor_x = line[cursor_y];
 					break;
-				case '`': //character position absolute
-				case 'G': //cursor to n0th position from left
-					n1 = cursor_y-screen_y+1;
-					n2 = n0;				//fall through to 'H'
 				case 'f': //horizontal and vertical position forced
-					if ( n1==0 ) n1=1;
-					if ( n2==0 ) n2=1;		//fall through to 'H'
-				case 'H': //cursor to line n1, postion n2
-					if ( n1>size_y ) n1 = size_y;
-					if ( n2>size_x ) n2 = size_x;
-					cursor_y = screen_y+n1-1;
+				case 'H': //cursor to line n1, postion n0
+					if ( !bAlterScreen && n1==size_y ) { //exit of [2J
+						cursor_y = screen_y+size_y;
+						screen_y++;
+					}
+					else {
+						cursor_y = screen_y+n1-1;
+						if ( bOriginMode ) cursor_y+=roll_top;
+						check_cursor_y();
+					}
 					cursor_x = line[cursor_y];
-					while ( --n2>0 ) {
+					while ( --n0>0 ) {
 						cursor_x++;
 						while ( (buff[cursor_x]&0xc0)==0x80 ) cursor_x++;
 					}
 					break;
-				case 'J': //[J kill till end, 1J begining, 2J entire screen
-					if ( ESC_code[ESC_idx-2]=='[' ) {
-					//[J, tinycore use this for CLI editing
-						if ( !bAlterScreen ) {
-							int i=cursor_y+1; line[i]=cursor_x;
-							while (++i<=screen_y+size_y) line[i]=0;
-							break;
-						}
-						else //tinycore use this to clear alterScreen
-							screen_y = cursor_y;
+				case 'J': //[0J kill till end, 1J begining, 2J entire screen
+					if ( isdigit(ESC_code[1]) ) {
+						screen_clear(m0);
+						break;
 					}
-					/*[2J, mostly used after [?1049h to clear screen
-					  and when screen size changed during vi or raspi-config
-					  flashwave TL1 use it without [?1049h for splash screen
-					  freeBSD use it without [?1049h* for top and vi*/
-					cursor_y = screen_y; cursor_x = line[cursor_y];
-					for ( int i=0; i<size_y; i++ ) {
-						memset(buff+cursor_x, ' ', size_x);
-						memset(attr+cursor_x,   0, size_x);
-						cursor_x += size_x;
-						next_line();
-					}
-					cursor_y = --screen_y; cursor_x = line[cursor_y];
-					break;
+					//fall through to treat [J as [0K,
+					//a hack for tinyCore command editing
 				case 'K': {//[K erase till line end, 1K begining, 2K entire line
-					if ( ESC_code[ESC_idx-2]=='[' ) n0 = 0;
-					int a=0, z=0;
-					if ( line[cursor_y+1]==0 ) line[cursor_y+1] = cursor_x;
-					switch ( n0 ) {
-						case 0:	a=cursor_x; z=line[cursor_y+1]; break;
-						case 1: z=cursor_x; a=line[cursor_y]; break;
-						case 2: a=line[cursor_y]; z=line[cursor_y+1]; break;
-					}
-					memset(buff+a, ' ', z-a);
-					memset(attr+a,   0, z-a);
+						int a=line[cursor_y];
+						int z=line[cursor_y+1];
+						if ( m0==0 ) a = cursor_x;
+						if ( m0==1 ) z = cursor_x;
+						if ( z>a ) buff_clear(a, z-a+1);
 					}
 					break;
 				case 'L': //insert n0 lines
-					for ( int i=roll_bot; i>cursor_y-screen_y; i-- ) {
-						memcpy( buff+line[screen_y+i],
-								buff+line[screen_y+i-n0], size_x );
-						memcpy( attr+line[screen_y+i],
-								attr+line[screen_y+i-n0], size_x );
+					if ( n0 > screen_y+roll_bot-cursor_y )
+						n0 = screen_y+roll_bot-cursor_y;
+					for ( int i=screen_y+roll_bot; i>=cursor_y+n0; i-- ) {
+						memcpy( buff+line[i], buff+line[i-n0], size_x );
+						memcpy( attr+line[i], attr+line[i-n0], size_x );
 					}
-					for ( int i=0; i<n0; i++ ) {
-						memset(buff+line[cursor_y+i], ' ', size_x);
-						memset(attr+line[cursor_y+i],   0, size_x);
-					}
+					cursor_x = line[cursor_y];
+					buff_clear(cursor_x, size_x*n0);
 					break;
 				case 'M': //delete n0 lines
-					for ( int i=cursor_y-screen_y; i<=roll_bot-n0; i++ ) {
-						memcpy( buff+line[screen_y+i],
-								buff+line[screen_y+i+n0], size_x);
-						memcpy( attr+line[screen_y+i],
-								attr+line[screen_y+i+n0], size_x);
+					if ( n0 > screen_y+roll_bot-cursor_y )
+						n0 = screen_y+roll_bot-cursor_y;
+					for ( int i=cursor_y; i<screen_y+roll_bot-n0; i++ ) {
+						memcpy( buff+line[i], buff+line[i+n0], size_x);
+						memcpy( attr+line[i], attr+line[i+n0], size_x);
 					}
-					for ( int i=0; i<n0; i++ ) {
-						memset(buff+line[screen_y+roll_bot-i], ' ', size_x);
-						memset(attr+line[screen_y+roll_bot-i],   0, size_x);
-					}
-					break;
-				case '@': //insert n0 spaces
-					for ( int i=line[cursor_y+1]; i>=cursor_x; i-- ){
-						buff[i+n0]=buff[i];
-						attr[i+n0]=attr[i];
-					}
-					if ( !bAlterScreen ) {
-						line[cursor_y+1]+=n0;
-						if ( line[cursor_y+2]!=0 ) line[cursor_y+2]+=n0;
-						memset(buff+cursor_x, ' ', n0);
-						memset(attr+cursor_x,   0, n0);
-					}
+					cursor_x = line[cursor_y];
+					buff_clear(line[screen_y+roll_bot-n0], size_x*n0);
 					break;
 				case 'P': //delete n0 characters
 					for ( int i=cursor_x; i<line[cursor_y+1]-n0; i++ ) {
 						buff[i]=buff[i+n0];
 						attr[i]=attr[i+n0];
 					}
-					if ( !bAlterScreen ) {
-					//when editing command input longer than a single line
-						line[cursor_y+1]-=n0;
-						if ( line[cursor_y+2]>0 ) line[cursor_y+2]-=n0;
-						memset(buff+line[cursor_y+1], ' ', n0);
-						memset(attr+line[cursor_y+1],   0, n0);
-					}
+					buff_clear(line[cursor_y+1]-n0, n0);
 					break;
+				case '@': //insert n0 spaces
+					for ( int i=line[cursor_y+1]-n0-1; i>=cursor_x; i-- ){
+						buff[i+n0]=buff[i];
+						attr[i+n0]=attr[i];
+					}//fall through
 				case 'X': //erase n0 characters
-					for ( int i=0; i<n0; i++) {
-						buff[cursor_x+i]=' ';
-						attr[cursor_x+i]=0;
-					}
+					buff_clear(cursor_x, n0);
+					break;
+				case 'I': //cursor forward n0 tab stops
+					break;
+				case 'Z': //cursor backward n0 tab stops
 					break;
 				case 'S': // scroll up n0 lines
 					for ( int i=roll_top; i<=roll_bot-n0; i++ ) {
@@ -783,8 +819,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						memcpy( attr+line[screen_y+i],
 								attr+line[screen_y+i+n0], size_x);
 					}
-					memset(buff+line[screen_y+roll_bot-n0+1], ' ', n0*size_x);
-					memset(attr+line[screen_y+roll_bot-n0+1],   0, n0*size_x);
+					buff_clear(line[screen_y+roll_bot-n0+1], n0*size_x);
 					break;
 				case 'T': // scroll down n0 lines
 					for ( int i=roll_bot; i>=roll_top+n0; i-- ) {
@@ -793,61 +828,94 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						memcpy( attr+line[screen_y+i],
 								attr+line[screen_y+i-n0], size_x);
 					}
-					memset(buff+line[screen_y+roll_top], ' ', n0*size_x);
-					memset(attr+line[screen_y+roll_top],   0, n0*size_x);
+					buff_clear(line[screen_y+roll_top], n0*size_x);
+					break;
+				case 'c': // send device attributes
+					send("\033[?1;2c");		//vt100 with options
+					break;
+				case 'g': // set tabstops
+					if ( m0==0 ) { //clear current tab
+						tabstops[cursor_x-line[cursor_y]] = 0;
+					}
+					if ( m0==3 ) { //clear all tab stops
+						memset(tabstops, 0, 256);
+					}
 					break;
 				case 'h':
 					if ( ESC_code[1]=='4' ) bInsert=true;
 					if ( ESC_code[1]=='?' ) {
-						n0 = atoi(ESC_code+2);
-						if ( n0==1 ) bAppCursor=true;
-						if ( n0==25 ) bCursor=true;
-						if ( n0==2004 ) bBracket = true;
-						if ( n0==1049 ) {	//?1049h enter alternate screen
-							bAlterScreen = true;
-							screen_y = cursor_y; cursor_x = line[cursor_y];
-							for ( int i=0; i<size_y; i++ ) {
-								memset(buff+cursor_x, ' ', size_x);
-								memset(attr+cursor_x,   0, size_x);
-								cursor_x += size_x;
-								next_line();
-							}
-							cursor_y = --screen_y; cursor_x = line[cursor_y];
+						switch( atoi(ESC_code+2) ) {
+						case 1: bAppCursor = true; 	break;
+						case 3:	if ( size_x!=132 || size_y!=25 ) {
+									size_x=132; size_y=25;
+									screen_clear(2);
+								}
+								break;
+						case 6: bOriginMode = true; break;
+						case 7: bWraparound = true; break;
+						case 25:	bCursor = true; break;
+						case 2004: bBracket = true; break;
+						case 1049: bAlterScreen = true;//?1049h alternate screen
+								screen_clear(2);
 						}
 					}
 					break;
 				case 'l':
 					if ( ESC_code[1]=='4' ) bInsert=false;
 					if ( ESC_code[1]=='?' ) {
-						n0 = atoi(ESC_code+2);
-						if ( n0==1 )  bAppCursor=false;
-						if ( n0==25 ) bCursor=false;
-						if ( n0==2004 ) bBracket = false;
-						if ( n0==1049 ) { 	//?1049l exit alternate screen
-							bAlterScreen = false;
-							cursor_y = screen_y; cursor_x = line[cursor_y];
-							for ( int i=1; i<=size_y+1; i++ )
-								line[cursor_y+i] = 0;
-							screen_y = max(0, cursor_y-size_y+1);
+						switch( atoi(ESC_code+2) ) {
+						case 1: bAppCursor = false; break;
+						case 3:	if ( size_x!=80 || size_y!=25 ) {
+									size_x=80; size_y=25;
+									screen_clear(2);
+								}
+								break;
+						case 6: bOriginMode= false; break;
+						case 7: bWraparound= false; break;
+						case 25:	bCursor= false; break;
+						case 2004: bBracket= false; break;
+						case 1049: bAlterScreen= false;//?1049l alternate screen
+								cursor_y = screen_y;
+								cursor_x = line[cursor_y];
+								for ( int i=1; i<=size_y+1; i++ )
+									line[cursor_y+i] = 0;
+								screen_y = max(0, cursor_y-size_y+1);
 						}
 					}
 					break;
-				case 'm': //text style, color attributes
-					if ( ESC_code[ESC_idx-2]=='[' ) n0 = 0;
-					if ( n0==0 && n2!=1 ) n0 = n2;	//ESC[0;0m	ESC[01;34m
-					switch ( int(n0/10) ) {			//ESC[34m
-					case 0: if ( n0==1 ) { c_attr|=0x08; break; }//bright
-							if ( n0==7 ) { c_attr =0x70; break; }//negative
-					case 2: c_attr = 7; break;					 //normal
-					case 3: if ( n0==39 ) n0 = 7;	//39 default foreground
-							c_attr = (c_attr&0xf0)+n0%10; break;
-					case 4: if ( n0==49 ) n0 = 0;	//49 default background
-							c_attr = (c_attr&0x0f)+((n0%10)<<4); break;
-					case 9: c_attr = (c_attr&0xf0) + n0%10 + 8; break;
-					case 10:c_attr = (c_attr&0x0f) + ((n0%10+8)<<4); break;
+				case 'm': {//text style, color attributes
+						char *p = ESC_code;
+						while ( p!=NULL ) {
+							m0 = atoi(++p);
+							switch ( m0/10 ) {
+							case 0: if ( m0==0 ) c_attr = 7;	//normal
+									if ( m0==1 ) c_attr|=0x08;	//bright
+									if ( m0==7 ) c_attr =0x70;	//negative
+									break;
+							case 2: c_attr = 7; 				//normal
+									break;
+							case 3: if ( m0==39 ) m0 = 7;//default foreground
+									c_attr = (c_attr&0xf8)+m0%10;
+									break;
+							case 4: if ( m0==49 ) m0 = 0;//default background
+									c_attr = (c_attr&0x0f)+((m0%10)<<4);
+									break;
+							case 9: c_attr = (c_attr&0xf0) + m0%10 + 8;
+									break;
+							case 10:c_attr = (c_attr&0x0f) + ((m0%10+8)<<4);
+									break;
+							}
+							p = strchr(p, ';');
+						}
 					}
 					break;
-				case 'r': roll_top=n1-1; roll_bot=n2-1; break;
+				case 'r': //set margins and move cursor to home
+					if ( n1==1 && n0==1 ) n0=size_y;	//ESC[r
+					roll_top=n1-1; roll_bot=n0-1;
+					cursor_y = screen_y;
+					if ( bOriginMode ) cursor_y+=roll_top;
+					cursor_x = line[cursor_y];
+					break;
 				case 's': //save cursor
 					save_x = cursor_x-line[cursor_y];
 					save_y = cursor_y-screen_y;
@@ -859,27 +927,57 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 				}
 			}
 			break;
-		case 'D': // scroll up one line
-			for ( int i=roll_top; i<roll_bot; i++ ) {
-				memcpy(buff+line[screen_y+i],buff+line[screen_y+i+1],size_x);
-				memcpy(attr+line[screen_y+i],attr+line[screen_y+i+1],size_x);
-			}
-			memset(buff+line[screen_y+roll_bot], ' ', size_x);
-			memset(attr+line[screen_y+roll_bot],   0, size_x);
+		case '7': //save cursor
+			save_x = cursor_x-line[cursor_y];
+			save_y = cursor_y-screen_y;
+			save_attr = c_attr;
 			bEscape = false;
 			break;
-		case 'F': //cursor to lower left corner
+		case '8': //restore cursor
+			cursor_y = save_y+screen_y;
+			cursor_x = line[cursor_y]+save_x;
+			c_attr = save_attr;
+			bEscape = false;
+			break;
+		case 'F': // cursor to lower left corner
 			cursor_y = screen_y+size_y-1;
 			cursor_x = line[cursor_y];
 			bEscape = false;
 			break;
-		case 'M': // scroll down one line
-			for ( int i=roll_bot; i>roll_top; i-- ) {
-				memcpy(buff+line[screen_y+i],buff+line[screen_y+i-1],size_x);
-				memcpy(attr+line[screen_y+i],attr+line[screen_y+i-1],size_x);
+		case 'E': // move to next line
+			cursor_x = line[++cursor_y];
+			bEscape = false;
+			break;
+		case 'D': // move/scroll up one line
+			if ( cursor_y<screen_y+roll_bot ) {// move
+				int x = cursor_x-line[cursor_y];
+				cursor_x = line[++cursor_y]+x;
 			}
-			memset(buff+line[screen_y+roll_top], ' ', size_x);
-			memset(attr+line[screen_y+roll_top],   0, size_x);
+			else {								// scroll
+				for ( int i=roll_top; i<roll_bot; i++ ) {
+					memcpy(buff+line[screen_y+i],buff+line[screen_y+i+1],size_x);
+					memcpy(attr+line[screen_y+i],attr+line[screen_y+i+1],size_x);
+				}
+				buff_clear(line[screen_y+roll_bot], size_x);
+			}
+			bEscape = false;
+			break;
+		case 'M': // move/scroll down one line
+			if ( cursor_y>screen_y+roll_top ) {// move
+				int x = cursor_x-line[cursor_y];
+				cursor_x = line[--cursor_y]+x;
+			}
+			else {								// scroll
+				for ( int i=roll_bot; i>roll_top; i-- ) {
+					memcpy(buff+line[screen_y+i],buff+line[screen_y+i-1],size_x);
+					memcpy(attr+line[screen_y+i],attr+line[screen_y+i-1],size_x);
+				}
+				buff_clear(line[screen_y+roll_top], size_x);
+			}
+			bEscape = false;
+			break;
+		case 'H': //set tabstop
+			tabstops[cursor_x-line[cursor_y]] = 1;
 			bEscape = false;
 			break;
 		case ']': //set window title
@@ -891,16 +989,24 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 				bEscape = false;
 			}
 			break;
+		case ')':
 		case '(': //character sets, 0 for line drawing
 			if ( ESC_idx==2 ) {
 				bGraphic = (ESC_code[1]=='0');
 				bEscape = false;
 			}
 			break;
+		case '#':
+			if ( ESC_idx==2 ) {
+				if ( ESC_code[1]=='8' )
+					memset(buff+line[screen_y], 'E', size_x*size_y);
+				bEscape = false;
+			}
+			break;
 		default: bEscape = false;
 		}
-		if ( ESC_idx==20 ) bEscape = false;
-		if ( !bEscape ) { ESC_idx=0; memset(ESC_code, 0, 20); }
+		if ( ESC_idx==31 ) bEscape = false;
+		if ( !bEscape ) { ESC_idx=0; memset(ESC_code, 0, 32); }
 	}
 	return sz;
 }
@@ -1371,7 +1477,6 @@ void Fl_Term::run_script(char *script)	//called on drag&drop
 #define TNO_WNDSIZE 0x1f
 #define TNO_TERMTYPE 0x18
 #define TNO_NEWENV	0x27
-unsigned char NEGOBEG[]={0xff, 0xfb, 0x03, 0xff, 0xfd, 0x03, 0xff, 0xfd, 0x01};
 unsigned char TERMTYPE[]={0xff, 0xfa, 0x18, 0x00, 0x76, 0x74, 0x31, 0x30, 0x30, 0xff, 0xf0};
 const unsigned char *Fl_Term::telnet_options( const unsigned char *p )
 {

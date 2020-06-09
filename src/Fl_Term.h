@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Term.h 4458 2019-10-08 13:08:10 $"
+// "$Id: Fl_Term.h 4920 2020-06-08 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
-// Copyright 2017-2019 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -23,6 +23,7 @@
 #define _FL_TERM_H_
 class Fl_Term : public Fl_Widget {
 	char c_attr;		//current character attribute(color)
+	char save_attr;		//saved character attribute, used with save_x/save_y
 	char *buff;			//buffer for characters, one byte per char
 	char *attr;			//buffer for attributes, one byte per char
 	int buff_size; 		//current buffer size, doubles at more_chars()
@@ -39,7 +40,7 @@ class Fl_Term : public Fl_Widget {
 	int roll_bot;		//the range of lines that will scroll in vi
 	int sel_left;
 	int sel_right;		//begin and end of selection on screen
-	double font_width;	//current font width in pixels
+	int font_width;	//current font width in pixels
 	int font_height;	//current font height in pixels
 	int font_size;		//current font weight
 	int font_face;		//current font face
@@ -47,7 +48,8 @@ class Fl_Term : public Fl_Widget {
 
 	bool bEscape;		//escape sequence processing mode
 	int ESC_idx;		//current index for ESC_code
-	char ESC_code[20];	//cumulating the current escape sequence before process
+	char ESC_code[32];	//cumulating the current escape sequence before process
+	char tabstops[256];
 
 	bool bInsert;		//insert mode, for inline editing for commands
 	bool bGraphic;		//graphic character mode, for text mode drawing
@@ -57,6 +59,8 @@ class Fl_Term : public Fl_Widget {
 	bool bScrollbar;	//show scrollbar when true
 	bool bDragSelect;	//mouse dragged to select text, instead of scroll text
 	bool bBracket;		//bracketed paste mode
+	bool bWraparound;
+	bool bOriginMode;
 
 	int bTitle;			//title mode, changed through escape sequence
 	int title_idx;
@@ -83,6 +87,9 @@ class Fl_Term : public Fl_Widget {
 protected: 
 	void draw();
 	void next_line();
+	void buff_clear(int offset, int len);
+	void screen_clear(int m0);
+	void check_cursor_y();
 	void append( const char *buf, int len );
 	void put_xml(const char *buf, int len);
 	const unsigned char *vt100_Escape( const unsigned char *buf, int cnt );
@@ -103,6 +110,8 @@ public:
 	int echo() { return bEcho; }
 	int cols() { return size_x; }
 	int rows() { return size_y; }
+	int sizeX() { return size_x*font_width; }
+	int sizeY() { return size_y*font_height; }
 	void echo( int e ) { bEcho = e; }
 	void logg( const char *fn );
 	void srch( const char *word );
