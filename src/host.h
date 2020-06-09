@@ -1,12 +1,12 @@
 //
-// "$Id: Hosts.h 4334 2019-09-28 21:12:15 $"
+// "$Id: Hosts.h 4334 2020-06-09 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
 //
-// Copyright 2017-2019 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
