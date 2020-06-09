@@ -1,7 +1,7 @@
 //
-// "$Id: Hosts.h 4343 2019-09-28 21:12:15 $"
+// "$Id: Hosts.h 4334 2019-09-28 21:12:15 $"
 //
-// HOST pipeHost comHost tcpHost ftpd tftpd 
+// HOST pipeHost comHost tcpHost ftpd tftpd
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
@@ -50,7 +50,7 @@ protected:
 	host_callback* host_cb;
 	std::thread reader;
 
-public: 
+public:
 	HOST()
 	{
 		host_cb = NULL;
@@ -146,7 +146,7 @@ protected:
 public:
 	tcpHost(const char *name);
 	~tcpHost(){}
-	
+
 	virtual const char *name(){ return hostname; }
 	virtual int type() { return HOST_TCP; }
 	virtual	int read();
@@ -161,19 +161,19 @@ private:
 	int ftp_s0;
 	int ftp_s1;
 	char rootDir[1024];
-	
+
 protected:
 	void sock_send( const char *reply );
 
 public:
 	ftpdHost(const char *name);
 	~ftpdHost(){ disconn(); }
-	
+
 	virtual const char *name() { return "FTPD"; }
 	virtual int type() { return HOST_FTPD; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void disconn();	
+	virtual void disconn();
 //	virtual void connect();
 };
 
@@ -182,7 +182,7 @@ private:
 	int tftp_s0;
 	int tftp_s1;
 	char rootDir[1024];
-	
+
 protected:
 	void tftp_Read( FILE *fp );
 	void tftp_Write( FILE *fp );
@@ -190,13 +190,13 @@ protected:
 public:
 	tftpdHost(const char *name);
 	~tftpdHost() { disconn(); }
-	
+
 	virtual const char *name() { return "TFTPD"; }
 	virtual int type() { return HOST_TFTPD; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void send_size(int sx, int sy){}
-	virtual void disconn();	
+	virtual void disconn();
 //	virtual void connect();
 };
 #endif //WIN32

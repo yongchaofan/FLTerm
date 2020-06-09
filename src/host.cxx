@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 27013 2020-06-06 12:15:10 $"
+// "$Id: Hosts.cxx 26984 2020-06-08 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -37,7 +37,7 @@ void HOST::connect()
 		reader.swap(new_reader);
 	}
 }
-void HOST::print( const char *fmt, ... ) 
+void HOST::print( const char *fmt, ... )
 {
 	char buff[4096];
 	va_list args;
@@ -99,7 +99,7 @@ void comHost::xmodem_block()
 		xmodem_buf[0] = EOT;
 		fclose(xmodem_fp);
 	}
-	if ( cnt>0 && cnt<128 ) 
+	if ( cnt>0 && cnt<128 )
 		for ( int i=cnt+3; i<131; i++ ) xmodem_buf[i] = 0;
 	if ( xmodem_crc ) {
 		block_crc();
@@ -139,14 +139,14 @@ void comHost::xmodem_recv(char op)
 					return;
 				}
 				xmodem_block();
-				xmodem_send(); 
+				xmodem_send();
 				if ( xmodem_blk==0 ) do_callback(".",1);
 				break;
 	case 0x15:	do_callback("N",1);			//NAK
 				xmodem_send();
 				break;
 	case 'C':	do_callback("CRC",3);		//start CRC
-				xmodem_crc = true; 
+				xmodem_crc = true;
 				block_crc();
 				xmodem_send();
 				break;
@@ -202,7 +202,7 @@ int comHost::read()
 		DWORD cch;
 		char buf[255];
 		if ( ReadFile(hCommPort, buf, 255, &cch, NULL) ) {
-			if ( bXmodem ) { 
+			if ( bXmodem ) {
 				char op = 0;
 				if ( cch>0 ) op = buf[cch-1];
 				xmodem_recv(op);
@@ -219,7 +219,7 @@ int comHost::read()
 	CloseHandle(hCommPort);
 	status( HOST_IDLE );
 	do_callback("Disconnected", -1);
-	
+
 shutdown:
 	reader.detach();
 	return 0;
@@ -274,7 +274,7 @@ int comHost::read()
 	while ( status()==HOST_CONNECTED ) {
 		char buf[4096];
 		int len = ::read(ttySfd, buf, 4096);
-		if ( bXmodem ) { 
+		if ( bXmodem ) {
 			char op = 0;
 			if ( len>0 ) op = buf[len-1];
 			xmodem_recv(op);
@@ -308,7 +308,7 @@ int comHost::write(const char *buf, int len)
 #endif //WIN32
 
 /**********************************tcpHost******************************/
-tcpHost::tcpHost(const char *name):HOST() 
+tcpHost::tcpHost(const char *name):HOST()
 {
 	strncpy(hostname, name, 63);
 	hostname[63]=0;
@@ -325,23 +325,23 @@ tcpHost::tcpHost(const char *name):HOST()
 }
 int tcpHost::tcp()
 {
-	struct addrinfo *ainfo;	   
+	struct addrinfo *ainfo;
 	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) {
 		do_callback("invalid hostname or ip address", -1);
 		return -1;
 	}
 	((struct sockaddr_in *)(ainfo->ai_addr))->sin_port = htons(port);
-	
+
 	sock = socket(ainfo->ai_family, SOCK_STREAM, 0);
-	if ( sock!=-1 ) 
+	if ( sock!=-1 )
 		print("Trying...");
 	int rc = ::connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
 	freeaddrinfo(ainfo);
-	if ( rc!=-1 ) 
+	if ( rc!=-1 )
 		print("connected\r\n");
 	else {
 		const char *errmsg = "";
-#ifdef WIN32 
+#ifdef WIN32
 		switch( WSAGetLastError() ) {
 		case WSAEHOSTUNREACH:
 		case WSAENETUNREACH: errmsg ="unreachable"; break;
@@ -385,12 +385,12 @@ int tcpHost::read()
 	reader.detach();
 	return 0;
 }
-int tcpHost::write(const char *buf, int len ) 
+int tcpHost::write(const char *buf, int len )
 {
 	if ( sock!=-1 ) {
 		int total=0, cch=0;
 		while ( total<len ) {
-			cch = send( sock, buf+total, len-total, 0); 
+			cch = send( sock, buf+total, len-total, 0);
 			if ( cch<0 ) {
 				disconn();
 				return cch;
@@ -408,7 +408,7 @@ void tcpHost::disconn()
 {
 	if ( reader.joinable() ) {
 		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
-//		reader.join();//cause crash when compiled with visual studio or xcode 
+//		reader.join();//cause crash when compiled with visual studio or xcode
 	}
 }
 pipeHost::pipeHost(const char *name):HOST()
@@ -424,7 +424,7 @@ pipeHost::pipeHost(const char *name):HOST()
 }
 int pipeHost::write( const char *buf, int len )
 {
-	if ( *buf==3 && len==1 ) 
+	if ( *buf==3 && len==1 )
 		disconn();
 	return 0;
 }
@@ -496,7 +496,7 @@ int pipeHost::read()
 	siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
 
 	if ( CreateProcessA( NULL,			// Create the child process.
-						cmdline,	// command line
+						cmdline,		// command line
 						NULL,			// process security attributes
 						NULL,			// primary thread security attributes
 						true,			// handles are inherited
@@ -888,7 +888,7 @@ tcp_close:
 }
 int ftpdHost::write(const char *buf, int len)
 {
-	if ( !reader.joinable() ) 
+	if ( !reader.joinable() )
 		if ( *buf=='\r' ) connect();
 	return 0;
 }
@@ -980,7 +980,7 @@ int tftpdHost::read()
 	if ( bind(tftp_s0, (struct sockaddr*)&svraddr, addrsize)==SOCKET_ERROR ) {
 		print( "Couldn't bind to tftp port, is another server running?\n");
 		goto udp_close;
-	}						
+	}
 	svraddr.sin_port=0;
 	if ( bind(tftp_s1, (struct sockaddr *)&svraddr,addrsize)==SOCKET_ERROR ) {
 		print( "Couldn't bind to tftp port, is another server running?\n");
@@ -995,7 +995,7 @@ int tftpdHost::read()
 		ret = recvfrom( tftp_s0, dataBuf, 516, 0,
 						(struct sockaddr *)&clientaddr, &addrsize );
 		if ( ret==SOCKET_ERROR ) break;
-		
+
 		::connect(tftp_s1, (struct sockaddr *)&clientaddr, addrsize);
 		if ( dataBuf[1]==1  || dataBuf[1]==2 ) {
 			bool bRead = dataBuf[1]==1;
@@ -1028,7 +1028,7 @@ udp_close:
 }
 int tftpdHost::write(const char *buf, int len)
 {
-	if ( !reader.joinable() ) 
+	if ( !reader.joinable() )
 		if ( *buf=='\r' ) connect();
 	return 0;
 }

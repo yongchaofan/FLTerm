@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.cxx 3797 2019-09-29 13:48:10 $"
+// "$Id: Fl_Browser_Input.cxx 3792 2020-06-08 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -38,11 +38,11 @@ Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L)
 void Fl_Browser_Input::resize( int X, int Y, int W, int H )
 {
 	Fl_Input::resize(X, Y, W, H);
-	browserWin->resize( parent()->x()+X, 
-						parent()->y()+Y+( (Y<104) ? h()+1:-104 ), 
+	browserWin->resize( parent()->x()+X,
+						parent()->y()+Y+( (Y<104) ? h()+1:-104 ),
 						w(), 104);
 }
-int Fl_Browser_Input::add( const char *cmd ) 
+int Fl_Browser_Input::add( const char *cmd )
 {
 	if ( *cmd==0 ) return 0;
 	if ( browser->size()==0 ) browser->add(cmd);
@@ -58,7 +58,7 @@ int Fl_Browser_Input::add( const char *cmd )
 	id = i;
 	return i;
 }
-const char * Fl_Browser_Input::first( ) 
+const char * Fl_Browser_Input::first( )
 {
 	id = 1;
 	if ( id<=browser->size() )
@@ -77,12 +77,12 @@ void Fl_Browser_Input::close()
 {
 	browserWin->hide();
 }
-int Fl_Browser_Input::handle( int e ) 
+int Fl_Browser_Input::handle( int e )
 {
 	if ( e!=FL_KEYDOWN ) return Fl_Input::handle(e);
 	char cmd[2]={ 0, 0 };
 	int key = Fl::event_key();
-	switch ( key ) 
+	switch ( key )
 	{
 	case FL_Page_Up:
 	case FL_Page_Down: return 0;		//let Fl_Term handle it
@@ -115,7 +115,7 @@ int Fl_Browser_Input::handle( int e )
 	case FL_Delete:
 	case FL_Enter: browserWin->hide(); break;
 	case FL_Up:
-	case FL_Down: 
+	case FL_Down:
 		if ( browserWin->shown() ) {
 			if ( key==FL_Up && id>1 ) id--;
 			if ( key==FL_Down && id<browser->size() ) id++;
@@ -128,8 +128,8 @@ int Fl_Browser_Input::handle( int e )
 		take_focus();
 		position(size());
 		break;
-	default: 
-		if ( Fl::event_state(FL_ALT|FL_CTRL|FL_META)==0 
+	default:
+		if ( Fl::event_state(FL_ALT|FL_CTRL|FL_META)==0
 			&&position()>0&&position()==size() ) {
 			for ( int i=1; i<=browser->size(); i++ ) {
 				int cmp = strncmp(value(), browser->text(i), position());
