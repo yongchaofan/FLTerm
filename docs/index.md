@@ -1,6 +1,6 @@
 ## Introduction
 
-tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions same as tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.1.2, the win32 exectuable is 645KB, win64 executable 823KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
+tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++ and [FLTK](http://fltk.org), [libssh2](http://libssh2.org) used for ssh2 functions same as tinyTerm. The result is a cross platform terminal emulator that supports all the features of tinyTerm that is still simple and small. At release 1.2.0, the win32 exectuable is 645KB, win64 executable 823KB, macOS executable 1MB, and Linux x86_64 executable 1MB. 
 	
 <table>
 	<tr>
@@ -22,9 +22,9 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 	</tr>
 </table>
 
-Windows 10 user should install from Microsoft Store, users on older versions of Windows, or prefer portable apps download exe files
-
-Apple computer use should install from apple app store, currently in the process of being submitted.
+Windows 10 user should install from Microsoft Store
+Windows 7 or older, or prefer portable apps download exe files
+Linux/macOS user please build from source
 
 ---
 
