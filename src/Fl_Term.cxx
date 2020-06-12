@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 38881 2020-06-08 10:08:20 $"
+// "$Id: Fl_Term.cxx 39135 2020-06-10 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -83,7 +83,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	buff_size = 0;
 	redraw_complete = false;
 	buffsize(8192);
-	textfont(16);
+	textfont(FL_FREE_FONT);
 	textsize(16);
 	size_x = w()/font_width;
 	size_y = h()/font_height;
@@ -109,7 +109,6 @@ void Fl_Term::clear()
 	sel_left = sel_right= 0;
 	c_attr = 7;//default black background, white foreground
 	recv0 = 0;
-
 	ESC_idx = 0;
 	bInsert = bEscape = bGraphic = bTitle = false;
 	bBracket = bAlterScreen = bAppCursor = bOriginMode = false;
@@ -1213,7 +1212,12 @@ int Fl_Term::command(const char *cmd, char **preply)
 			}
 		}
 		else {
+			char *p = mark_prompt();
 			connect(cmd);
+			if ( preply!=NULL ) {	//waitfor prompt if called from script
+				rc = waitfor_prompt();	//no wait if called from edit line
+				*preply = p;
+			}
 		}
 	}
 	return rc;
