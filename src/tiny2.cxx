@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 24517 2020-06-08 10:05:10 $"
+// "$Id: tiny2.cxx 27089 2020-06-11 20:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -28,7 +28,7 @@ const char ABOUT_TERM[]="\r\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
 \tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\r\n\n\
-\tVerision 1.2.0, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.1, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 
 #ifdef WIN32
 const char SCP_TO_FOLDER[]="\
@@ -73,6 +73,7 @@ function term( cmd ) {\n\
 #include <FL/Fl_Choice.H>
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Input_Choice.H>
+#include <FL/Fl_Hold_Browser.H>
 #include <FL/Fl_Sys_Menu_Bar.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_Native_File_Chooser.H>
@@ -84,7 +85,7 @@ void httpd_exit();
 void tab_cb(Fl_Widget *w);
 void localedit_cb(Fl_Widget *w, void *data);
 void menu_cb(Fl_Widget *w, void *data);
-void term_menu_cb(Fl_Widget *w, void *data);
+void conn_menu_cb(Fl_Widget *w, void *data);
 
 Fl_Term *pTerm;
 Fl_Window *pWindow;
@@ -92,21 +93,17 @@ Fl_Tabs *pTabs = NULL;
 Fl_Browser_Input *pCmd;
 Fl_Sys_Menu_Bar *pMenuBar;
 Fl_Menu_Item *pMenuDisconn, *pMenuEcho, *pMenuLogg;
-Fl_Font fontface = FL_FREE_FONT;
+Fl_Font fontnum = FL_COURIER;
+char fontname[256] = "Courier New";
 int fontsize = 16;
 int termcols = 80;
 int termrows = 25;
+int wnd_w = 800;
+int wnd_h = 600;
 int buffsize = 4096;
-int keepalive = 0;
 int localedit = false;
 int sendtoall = false;
-
-Fl_Window *pDialog;
-Fl_Choice *pProtocol;
-Fl_Input_Choice *pPort;
-Fl_Input_Choice *pHostname, *pSettings;
-Fl_Button *pConnect;
-Fl_Button *pCancel;
+int keepalive = 0;
 
 #define CHOOSE_FILE 		Fl_Native_File_Chooser::BROWSE_FILE
 #define CHOOSE_SAVE_FILE	Fl_Native_File_Chooser::BROWSE_SAVE_FILE
@@ -159,6 +156,9 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 	}
 	if ( pTabs!=NULL ) Fl::awake( pTabs );
 }
+/*******************************************************************************
+*  tab management functions                                                    *
+*******************************************************************************/
 void tab_init()
 {
 	pTabs = new Fl_Tabs(0, MENUHEIGHT, pWindow->w(), pWindow->h()-MENUHEIGHT);
@@ -188,7 +188,7 @@ void tab_act(Fl_Term *pt)
 	pTabs->value(pt);
 	pTerm = pt;
 	pTerm->take_focus();		//add "  x" to current active tab
-	pTerm->textfont(fontface);
+	pTerm->textfont(fontnum);
 	pTerm->textsize(fontsize);
 	strncpy(label, pTerm->label(), 24);
 	strcat(label, "  x");
@@ -257,12 +257,21 @@ int term_act(const char *host)
 	return rc;
 }
 
+/*******************************************************************************
+*  connection dialog functions                                                 *
+*******************************************************************************/
+Fl_Window *pConnectDlg;
+Fl_Choice *pProtocol;
+Fl_Input_Choice *pPort;
+Fl_Input_Choice *pHostname, *pSettings;
+Fl_Button *pConnect;
+Fl_Button *pCancel;
+
 #ifdef WIN32
 const char *ports[]={"COM1", "23", "22", "22", "830"};
 #else
 const char *ports[]={"/dev/tty.usbserial", "23", "22", "22", "830"};
 #endif
-
 void protocol_cb(Fl_Widget *w)
 {
 	static int proto = 2;
@@ -304,9 +313,9 @@ void connect_cb(Fl_Widget *w)
 		strcat(buf, ":");
 		strcat(buf, pSettings->value());
 	}
-	pDialog->hide();
+	pConnectDlg->hide();
 	if ( pCmd->add(buf)!=0 )
-		pMenuBar->insert(pMenuBar->find_index("Script")-1, buf+1, 0, term_menu_cb);
+		pMenuBar->insert(pMenuBar->find_index("Script")-1, buf+1, 0, conn_menu_cb);
 	term_connect(buf+1);
 	pMenuDisconn->activate();
 }
@@ -314,13 +323,145 @@ void cancel_cb(Fl_Widget *w)
 {
 	w->parent()->hide();
 }
-void conn_dialog()
+void connect_dialog_build()
 {
-	pDialog->resize(pWindow->x()+100, pWindow->y()+150, 360, 200);
-	pDialog->show();
+	pConnectDlg = new Fl_Window(360, 200, "Connect");
+	{
+		pProtocol = new Fl_Choice(100,20,192,24, "Protocol:");
+		pPort = new Fl_Input_Choice(100,60,192,24, "Port:");
+		pHostname = new Fl_Input_Choice(100,100,192,24,"Host:");
+		pSettings = pHostname;
+		pConnect = new Fl_Button(200,160,80,24, "Connect");
+		pCancel = new Fl_Button(80,160,80,24, "Cancel");
+		pProtocol->textsize(16); pProtocol->labelsize(16);
+		pHostname->textsize(16); pHostname->labelsize(16);
+		pPort->textsize(16); pPort->labelsize(16);
+		pConnect->labelsize(16);
+		pConnect->shortcut(FL_Enter);
+		pCancel->labelsize(16);
+		pProtocol->add("serial|telnet|ssh|sftp|netconf");
+		pProtocol->value(2);
+		pPort->value("22");
+		pHostname->add("192.168.1.1");
+		pHostname->value("192.168.1.1");
+		pProtocol->callback(protocol_cb);
+		pConnect->callback(connect_cb);
+		pCancel->callback(cancel_cb);
+	}
+	pConnectDlg->end();
+	pConnectDlg->set_modal();
+}
+void conn_dialog(Fl_Widget *w, void *data)
+{
+	pConnectDlg->resize(pWindow->x()+100, pWindow->y()+150, 360, 200);
+	pConnectDlg->show();
 	pHostname->take_focus();
 }
 
+/*******************************************************************************
+* font dialog functions                                                        *
+*******************************************************************************/
+Fl_Window *pFontDlg;
+Fl_Hold_Browser *fontobj, *sizeobj;
+Fl_Button *donebtn;
+int **sizes;
+int *numsizes;
+
+void font_cb(Fl_Widget *, long) {
+	int sel = fontobj->value();
+	if (!sel) return;
+	fontnum = long(fontobj->data(sel));
+	pTerm->textfont(fontnum);
+	pCmd->textfont(fontnum);
+	resize_window(pTerm->sizeX(), pTerm->sizeY());
+	sizeobj->clear();
+	int n = numsizes[fontnum];
+	int *s = sizes[fontnum];
+	if (!n) {// no sizes
+	} 
+	else if (s[0] == 0) {// many sizes;
+		int j = 1;
+		for (int i=6; i<=32 || i<s[n-1]; i++) {
+			char buf[20];
+			sprintf(buf,"%d",i);
+			sizeobj->add(buf);
+			if ( i==fontsize ) sizeobj->value(sizeobj->size());
+		}
+	} 
+	else {// some sizes
+		int w = 0;
+		for (int i = 0; i < n; i++) {
+			char buf[20];
+			sprintf(buf,"@b%d",s[i]);
+			sizeobj->add(buf);
+			if ( s[i]==fontsize ) sizeobj->value(sizeobj->size());
+		}
+	}
+}
+void size_cb(Fl_Widget *, long) {
+	int i = sizeobj->value();
+	if (!i) return;
+	const char *c = sizeobj->text(i);
+	while (*c < '0' || *c > '9') c++;
+	fontsize = atoi(c);
+	pTerm->textsize(fontsize);
+	pCmd->textsize(fontsize);
+	resize_window(pTerm->sizeX(), pTerm->sizeY());
+}
+void font_dialog_build()
+{
+	pFontDlg = new Fl_Double_Window(400, 240, "Font Dialog");
+	{
+		fontobj = new Fl_Hold_Browser(10, 20, 290, 210, "Face:");
+		fontobj->align(FL_ALIGN_TOP|FL_ALIGN_LEFT);
+		fontobj->box(FL_FRAME_BOX);
+		fontobj->color(53,3);
+		fontobj->callback(font_cb);
+		sizeobj = new Fl_Hold_Browser(310, 20, 80, 180, "Size:");
+		sizeobj->align(FL_ALIGN_TOP|FL_ALIGN_LEFT);
+		sizeobj->box(FL_FRAME_BOX);
+		sizeobj->color(53,3);
+		sizeobj->callback(size_cb);
+		donebtn = new Fl_Button(310, 206, 80, 24, "Done");
+		donebtn->callback(cancel_cb);
+	}
+	pFontDlg->end();
+	pFontDlg->set_modal();
+}
+void font_dialog_init()
+{
+	int k = Fl::set_fonts(NULL);
+	sizes = new int*[k];
+	numsizes = new int[k];
+	for (long i = 0; i < k; i++) {
+		int t; 
+		const char *name = Fl::get_font_name((Fl_Font)i,&t);
+		if (t==0 ) {
+			fontobj->add(name, (void *)i);
+			if ( strcmp(fontname, name)==0 ) { 
+				fontobj->select(fontobj->size());
+				fontnum = i;
+			}
+			int *s;
+			int n = Fl::get_font_sizes((Fl_Font)i, s);
+			numsizes[i] = n;
+			if (n) {
+				sizes[i] = new int[n];
+				for (int j=0; j<n; j++) sizes[i][j] = s[j];
+			}
+		}
+	}
+}
+void font_dialog(Fl_Widget *w, void *data)
+{
+	pFontDlg->resize(pWindow->x()+200, pWindow->y()+100, 400, 240);
+	pFontDlg->show();
+	fontobj->take_focus();
+}
+
+/*******************************************************************************
+* scripting functions                                                          *
+*******************************************************************************/
 void script_open( const char *fn )
 {
 	const char *ext = fl_filename_ext(fn);
@@ -341,6 +482,15 @@ void script_open( const char *fn )
 	system(fn);
 #endif
 }
+void script_cb(Fl_Widget *w, void *data)
+{
+	const char *script = pMenuBar->text();
+	script_open( script );
+}
+
+/*******************************************************************************
+* command editor functions                                                     *
+*******************************************************************************/
 void cmd_send(Fl_Term *t, const char *cmd)
 {
 	if ( *cmd=='!' ) {
@@ -412,24 +562,19 @@ int move_editor(int x, int y, int w, int h)
 	}
 	return localedit;
 }
-void script_cb(Fl_Widget *w, void *data)
-{
-	const char *script = pMenuBar->text();
-	script_open( script );
-}
-void term_menu_cb(Fl_Widget *w, void *data)
+
+/*******************************************************************************
+* menu call back functions                                                     *
+*******************************************************************************/
+void conn_menu_cb(Fl_Widget *w, void *data)
 {
 	const char *host = pMenuBar->text();
 	term_connect(host);
-//	term_connect( data!=NULL? (const char *)data: pMenuBar->text() );
 }
 void menu_cb(Fl_Widget *w, void *data)
 {
 	const char *menutext = pMenuBar->text();
-	if ( strcmp(menutext, "&Connect...")==0 ) {
-		conn_dialog();
-	}
-	else if ( strcmp(menutext, "&Disconnect")==0 ) {
+	if ( strcmp(menutext, "&Disconnect")==0 ) {
 		pTerm->disconn();
 		pMenuDisconn->deactivate();
 	}
@@ -464,36 +609,6 @@ void menu_cb(Fl_Widget *w, void *data)
 	}
 	else if ( strcmp(menutext, "&Quit")==0 ) {
 		pTerm->quit_script();
-	}
-	else if ( strcmp(menutext, "Monaco")==0 ||
-			  strcmp(menutext, "Consolas")==0  ) {
-		fontface = FL_FREE_FONT;
-		pTerm->textfont(fontface);
-		pCmd->textfont(fontface);
-		resize_window(pTerm->sizeX(), pTerm->sizeY());
-	}
-	else if ( strcmp(menutext, "Courier New")==0 ) {
-		fontface = FL_FREE_FONT+1;
-		pTerm->textfont(fontface);
-		pCmd->textfont(fontface);
-		resize_window(pTerm->sizeX(), pTerm->sizeY());
-	}
-	else if ( strcmp(menutext, "Menlo")==0 ||
-			  strcmp(menutext, "Lucida Console")==0 ) {
-		fontface = FL_FREE_FONT+2;
-		pTerm->textfont(fontface);
-		pCmd->textfont(fontface);
-		resize_window(pTerm->sizeX(), pTerm->sizeY());
-	}
-	else if ( strcmp(menutext, "12")==0 ||
-			  strcmp(menutext, "14")==0 ||
-			  strcmp(menutext, "16")==0 ||
-			  strcmp(menutext, "18")==0 ||
-			  strcmp(menutext, "20")==0 ){
-		fontsize = atoi(menutext);
-		pTerm->textsize(fontsize);
-		pCmd->textsize(fontsize);
-		resize_window(pTerm->sizeX(), pTerm->sizeY());
 	}
 	else if ( strcmp(menutext, "2048")==0 ||
 			  strcmp(menutext, "4096")==0 ||
@@ -534,7 +649,7 @@ void close_cb(Fl_Widget *w, void *data)
 #endif
 Fl_Menu_Item menubar[] = {
 {"Term", 		FL_CMD+'t',0,	0,	FL_SUBMENU},
-{"&Connect...", 0,	menu_cb},
+{"&Connect...", 0,	conn_dialog},
 {"&Disconnect", 0,	menu_cb},
 {"local &Echo",	0,	menu_cb,0,	FL_MENU_TOGGLE},
 {"&Logging...",	0,	menu_cb,0,	FL_MENU_TOGGLE|FL_MENU_DIVIDER},
@@ -546,28 +661,11 @@ Fl_Menu_Item menubar[] = {
 {"&Pause",		0,	menu_cb},
 {"&Quit",		0,	menu_cb,0,	FL_MENU_DIVIDER},
 {0},
-{"Options", 	FL_CMD+'o',0,		0,	FL_SUBMENU},
+{"Options", 	FL_CMD+'o',	0,			0,	FL_SUBMENU},
+{"&Font...",	FL_CMD+'f',	font_dialog,0},
 {"Local &Edit",	FL_CMD+'e',	localedit_cb,0,	FL_MENU_TOGGLE},
-{"Send to all",	0,			sendall_cb,0,	FL_MENU_TOGGLE},
-{"Font &Face",	0,	0,		0,	FL_SUBMENU},
-#ifdef __APPLE__
-{"Menlo",		0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
-{"Courier New", 0,	menu_cb,0,	FL_MENU_RADIO},
-{"Monaco",		0,	menu_cb,0,	FL_MENU_RADIO},
-#else
-{"Consolas",	0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
-{"Courier New",	0,	menu_cb,0,	FL_MENU_RADIO},
-{"Lucida Console",0,menu_cb,0,	FL_MENU_RADIO},
-#endif
-{0},
-{"Font &Size",	0,	0,		0,	FL_SUBMENU},
-{"12",			0,	menu_cb,0,	FL_MENU_RADIO},
-{"14",			0,	menu_cb,0,	FL_MENU_RADIO},
-{"16",			0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
-{"18",			0,	menu_cb,0,	FL_MENU_RADIO},
-{"20",			0,	menu_cb,0,	FL_MENU_RADIO},
-{0},
-{"&Buffer Size", 0,	0,		0,	FL_SUBMENU},
+{"Send to all",	0,			sendall_cb,	0,	FL_MENU_TOGGLE},
+{"&Buffer Size",0,			0,			0,	FL_SUBMENU},
 {"2048",		0,	menu_cb,0,	FL_MENU_RADIO},
 {"4096",		0,	menu_cb,0,	FL_MENU_RADIO},
 {"8192",		0,	menu_cb,0,	FL_MENU_RADIO|FL_MENU_VALUE},
@@ -578,7 +676,12 @@ Fl_Menu_Item menubar[] = {
 {0},
 {0}
 };
-void load_dict(const char *fn)			// set working directory and load scripts to menu
+
+/*******************************************************************************
+*  dictionary functions, load at start, save at end of program                 *
+*******************************************************************************/
+// load_dict set working directory and load scripts to menu
+void load_dict(const char *fn)			
 {
 #ifdef WIN32
  	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES )
@@ -615,7 +718,7 @@ void load_dict(const char *fn)			// set working directory and load scripts to me
 					strncmp(line+1, "serial ",7)==0 ||
 					strncmp(line+1, "netconf ",8)==0 ) {
 					pMenuBar->insert(pMenuBar->find_index("Script")-1,
-													line+1, 0, term_menu_cb);
+													line+1, 0, conn_menu_cb);
 					pHostname->add( strchr(line+1, ' ')+1 );
 				}
 				if (strncmp(line+1, "script ", 7)==0 ) {
@@ -626,34 +729,27 @@ void load_dict(const char *fn)			// set working directory and load scripts to me
 			if ( *line=='~' ) {
 				char name[256] = "Options/";
 				if ( strncmp(line+1, "FontFace", 8)==0 ) {
-					Fl::set_font(FL_FREE_FONT, line+10);
-					strcpy(name+8, "Font Face/");
-					strcat(name, line+10);
+					strncpy(fontname, line+10, 255);
 				}
 				else if ( strncmp(line+1, "FontSize", 8)==0 ) {
 					fontsize = atoi(line+10);
-					strcpy(name+8, "Font Size/");
-					strcat(name, line+10);
 				}
 				else if ( strncmp(line+1, "WndSize ", 8)==0 ) {
-					int w, h;
-					sscanf(line+9, "%dx%d", &w, &h);
-					pWindow->size(w, h);
+					sscanf(line+9, "%dx%d", &wnd_w, &wnd_h);
 				}
 				else if ( strncmp(line+1, "BuffSize", 8)==0 ) {
 					buffsize = atoi(line+10);
 					strcpy(name+8, "Buffer Size/");
 					strcat(name, line+10);
+					Fl_Menu_Item *menu=(Fl_Menu_Item *)pMenuBar->find_item(name);
+					if ( menu!=NULL ) menu->setonly();
 				}
 				else if ( strcmp(line+1, "LocalEdit")==0 ) {
 					localedit_cb(NULL, NULL);
-					strcpy(name+8, "Local Edit");
+					strcpy(name+8, "Local &Edit");
 					Fl_Menu_Item *menu=(Fl_Menu_Item *)pMenuBar->find_item(name);
 					if ( menu!=NULL ) menu->set();
-					continue;
 				}
-				Fl_Menu_Item *menu=(Fl_Menu_Item *)pMenuBar->find_item(name);
-				if ( menu!=NULL ) menu->setonly();
 			}
 		}
 		fclose(fp);
@@ -666,13 +762,14 @@ void save_dict(const char *fn)
 {
 	FILE *fp = fopen(fn, "w");
 	if ( fp!=NULL ) {
+		int t;
+		fprintf(fp, "~WndSize %dx%d\n", pWindow->w(), pWindow->h());
+		fprintf(fp, "~FontFace %s\n", Fl::get_font_name(fontnum, &t));
+		fprintf(fp, "~FontSize %d\n", fontsize);
 		if ( localedit )
 			fprintf(fp, "~LocalEdit\n");
-		if ( fontsize!=16 )
-			fprintf(fp, "~FontSize %d\n", fontsize);
 		if ( buffsize!=4096 )
 			fprintf(fp, "~BuffSize %d\n", buffsize);
-		fprintf(fp, "~WndSize %dx%d\n", pWindow->w(), pWindow->h());
 
 		const char *p = pCmd->first();
 		while ( p!=NULL ) {
@@ -717,49 +814,28 @@ int main(int argc, char **argv)
 	pWindow->callback(close_cb);
 	pWindow->resizable(pTerm);
 	pWindow->end();
+	connect_dialog_build();
+	font_dialog_build();
 
-	pDialog = new Fl_Window(360, 200, "Connect");
-	{
-		pProtocol = new Fl_Choice(100,20,192,24, "Protocol:");
-		pPort = new Fl_Input_Choice(100,60,192,24, "Port:");
-		pHostname = new Fl_Input_Choice(100,100,192,24,"Host:");
-		pSettings = pHostname;
-		pConnect = new Fl_Button(200,160,80,24, "Connect");
-		pCancel = new Fl_Button(80,160,80,24, "Cancel");
-		pProtocol->textsize(16); pProtocol->labelsize(16);
-		pHostname->textsize(16); pHostname->labelsize(16);
-		pPort->textsize(16); pPort->labelsize(16);
-		pConnect->labelsize(16);
-		pConnect->shortcut(FL_Enter);
-		pCancel->labelsize(16);
-		pProtocol->add("serial|telnet|ssh|sftp|netconf");
-		pProtocol->value(2);
-		pPort->value("22");
-		pHostname->add("192.168.1.1");
-		pHostname->value("192.168.1.1");
-		pProtocol->callback(protocol_cb);
-		pConnect->callback(connect_cb);
-		pCancel->callback(cancel_cb);
-	}
-	pDialog->end();
-	pDialog->set_modal();
 
 	Fl::lock();
 #ifdef WIN32
 	pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
 	load_dict("tinyTerm.hist");
+	font_dialog_init();
 	pTerm->buffsize(buffsize);
-	pTerm->textfont(fontface);
+	pTerm->textfont(fontnum);
 	pTerm->textsize(fontsize);
-	pCmd->textfont(fontface);
+	pCmd->textfont(fontnum);
 	pCmd->textsize(fontsize);
+	pWindow->size(wnd_w, wnd_h);
 	pWindow->show();
-
+	
 	if ( localedit )
 		pTerm->disp("\n\033[32mtinyTerm2 > \033[37m");
 	else
-		conn_dialog();
+		conn_dialog(NULL, NULL);
 
 	while ( Fl::wait() ) {
 		Fl_Widget *pt = (Fl_Widget *)Fl::thread_message();
