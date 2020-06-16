@@ -357,7 +357,7 @@ int sshHost::ssh_authentication()
 {
 	int rc = -5;
 	if ( *username==0 ) {
-		const char *p = ssh_gets("\r\nusername:", true);
+		const char *p = ssh_gets("\r\nusername: ", true);
 		if ( p==NULL ) return rc;
 		strncpy(username, p, 31);
 	}
@@ -385,7 +385,7 @@ int sshHost::ssh_authentication()
 	if ( strstr(authlist, "password")!=NULL ) {
 		//password was not set, get it interactively
 		for ( int i=0; i<3; i++ ) {
-			const char *p = ssh_gets("password:", false);
+			const char *p = ssh_gets("password: ", false);
 			if ( p!=NULL ) {
 				strncpy(password, p, 31);
 				if (!libssh2_userauth_password(session,username,password))
@@ -434,7 +434,10 @@ int sshHost::read()
 	}
 	const char *banner;
 	banner=libssh2_session_banner_get(session);
-	if ( banner!=NULL ) do_callback(banner, strlen(banner));
+	if ( banner!=NULL ) {
+		do_callback(banner, strlen(banner));
+		print("\r\n");
+	} 
 
 	status( HOST_AUTHENTICATING );
 	if ( ssh_knownhost()!=0 ) {
