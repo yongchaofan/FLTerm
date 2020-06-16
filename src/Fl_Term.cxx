@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 39135 2020-06-10 10:08:20 $"
+// "$Id: Fl_Term.cxx 39219 2020-06-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -24,6 +24,7 @@ using namespace std;
 
 int move_editor(int x, int y, int w, int h);
 void sleep_ms( int ms );
+char *SHA1 (const char *msg);
 
 void host_cb0(void *data, const char *buf, int len)
 {
@@ -113,6 +114,7 @@ void Fl_Term::clear()
 	bInsert = bEscape = bGraphic = bTitle = false;
 	bBracket = bAlterScreen = bAppCursor = bOriginMode = false;
 	bWraparound = true;
+	bScrollbar = false;
 	bCursor = true;
 	bPrompt = true;
 	memset(tabstops, 0, 256);
@@ -171,7 +173,7 @@ void Fl_Term::draw()
 
 	int ly = screen_y;
 	if ( ly<0 ) ly=0;
-	int dx, dy = y()-4;
+	int dx, dy = y();
 	for ( int i=0; i<size_y; i++ ) {
 		dx = x()+1;
 		dy += font_height;
@@ -215,13 +217,13 @@ void Fl_Term::draw()
 			drawCursor = true;
 		}
 		if ( drawCursor==false ) {
-			drawCursor = !move_editor(dx, dy, w()-dx, font_height-1);
+			drawCursor = !move_editor(dx, dy+4, w()-dx, font_height-1);
 		}
 		if ( drawCursor ) {
 			move_editor(0, 0, 1, 1);
 			take_focus();
 			fl_color(FL_WHITE);		//draw a white bar as cursor
-			fl_rectf(dx+1, dy+font_height-4, 8, 4);
+			fl_rectf(dx+1, dy+font_height, 8, 4);
 		}
 	}
 	if ( bScrollbar) {
@@ -1169,15 +1171,14 @@ int Fl_Term::command(const char *cmd, char **preply)
 			mark_prompt();
 			send(cmd+5);
 		}
+		else if ( strncmp(cmd,"Copy",5)==0 ) {
+			Fl::copy(buff, cursor_x, 1);
+		}
 		else if ( strncmp(cmd,"Hostname",8)==0 ) {
 			if ( preply!=NULL ) {
 				if ( connected() ) {
 					*preply = (char *)label();
 					rc = strlen(*preply);
-				}
-				else {
-					*preply = NULL;
-					rc = 0;
 				}
 			}
 		}
@@ -1278,7 +1279,7 @@ void Fl_Term::put_xml(const char *buf, int len) {
 
 void Fl_Term::scripter(char *cmds)
 {
-	char *p1=cmds, *p0;
+	char *p1=cmds, *p0, *reply;
 	bScriptRun = true; bScriptPause = false;
 	while ( bScriptRun && p1!=NULL )
 	{
@@ -1286,7 +1287,7 @@ void Fl_Term::scripter(char *cmds)
 		p0 = p1;
 		p1 = strchr(p0, 0x0a);
 		if ( p1!=NULL ) *p1++ = 0;
-		command(p0, NULL);
+		command(p0, &reply);
 	}
 	free(cmds);
 	bScriptRun = bScriptPause = false;
