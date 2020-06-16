@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27089 2020-06-11 20:05:10 $"
+// "$Id: tiny2.cxx 26593 2020-06-18 20:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -21,30 +21,14 @@ const char ABOUT_TERM[]="\r\n\
 \ttinyTerm2 is a simple, small and scriptable terminal emulator,\r\n\n\
 \ta serial/telnet/ssh/sftp/netconf client with unique features:\r\n\n\n\
 \t    * cross platform, Windows, macOS and Linux\r\n\n\
-\t    * download as small portable signle exe\r\n\n\
+\t    * small executable runs on minimum resource\r\n\n\
 \t    * command history and autocompletion\r\n\n\
 \t    * text based batch command automation\r\n\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
 \tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\r\n\n\
-\tVerision 1.2.1, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
-
-#ifdef WIN32
-const char SCP_TO_FOLDER[]="\
-var xml = new ActiveXObject(\"Microsoft.XMLHTTP\");\n\
-var port = \"8080/?\";\n\
-if ( WScript.Arguments.length>0 ) port = WScript.Arguments(0)+\"/?\";\n\
-var filename = term(\"!Selection\");\n\
-var objShell = new ActiveXObject(\"Shell.Application\");\n\
-var objFolder = objShell.BrowseForFolder(0,\"Destination folder\",0x11,\"\");\n\
-if ( objFolder ) term(\"!scp :\"+filename+\" \"+objFolder.Self.path);\n\
-function term( cmd ) {\n\
-	xml.Open (\"GET\", \"http://127.0.0.1:\"+port+cmd, false);\n\
-	xml.Send();\n\
-	return xml.responseText;\n\
-}";
-#endif
+\tVerision 1.2.0, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 
 #include <stdio.h>
 #include <string.h>
@@ -684,16 +668,16 @@ Fl_Menu_Item menubar[] = {
 void load_dict(const char *fn)			
 {
 #ifdef WIN32
- 	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES )
- 	{						// if current directory doesn't have .hist
-		_chdir(getenv("USERPROFILE"));
-		_mkdir("Documents\\tinyTerm");
-		_chdir("Documents\\tinyTerm");
-	}
-	if ( GetFileAttributes("scp_to_folder.js")==INVALID_FILE_ATTRIBUTES ) {
-		FILE *fp = fopen("scp_to_folder.js", "w");
-		if ( fp!=NULL ) {
-			fprintf(fp, "%s", SCP_TO_FOLDER);
+ 	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES ) {
+	// current directory doesn't have .hist
+		FILE *fp = fopen(fn, "w");
+		if ( fp==NULL ) {
+			//don't have write access to current directory, store installation
+			_chdir(getenv("USERPROFILE"));
+			_mkdir("Documents\\tinyTerm");
+			_chdir("Documents\\tinyTerm");
+		}
+		else {//will create .hist in the same directory as .exe
 			fclose(fp);
 		}
 	}
@@ -832,8 +816,12 @@ int main(int argc, char **argv)
 	pWindow->size(wnd_w, wnd_h);
 	pWindow->show();
 	
-	if ( localedit )
+	if ( localedit ) {
 		pTerm->disp("\n\033[32mtinyTerm2 > \033[37m");
+		struct stat sb;
+		if ( fl_stat("tinyTerm.html", &sb)!=-1 ) 
+			script_open("tinyTerm.html");
+	}
 	else
 		conn_dialog(NULL, NULL);
 
