@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 26593 2020-06-18 20:05:10 $"
+// "$Id: tiny2.cxx 26173 2020-06-18 20:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -133,10 +133,9 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	}
 	if ( data==NULL ) {//disconnected
+		term->disp("\r\n\033[33mPress Enter to restart\033[37m\r\n");
 		if ( localedit )
 			term->disp("\r\n\033[32mtinyTerm2 > \033[37m");
-		else
-			term->disp("\r\n\033[33mPress Enter to restart\033[37m\r\n");
 	}
 	if ( pTabs!=NULL ) Fl::awake( pTabs );
 }
@@ -499,9 +498,13 @@ void cmd_send(Fl_Term *t, const char *cmd)
 			t->send("\r");
 		}
 		else {
-			t->disp(cmd);
-			t->disp("\n");
-			term_connect(cmd);
+			 if ( *cmd ) {
+				t->disp(cmd);
+				t->disp("\n");
+				term_connect(cmd);
+			}
+			else
+				pTerm->send("\r");
 		}
 	}
 }
@@ -669,17 +672,10 @@ void load_dict(const char *fn)
 {
 #ifdef WIN32
  	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES ) {
-	// current directory doesn't have .hist
-		FILE *fp = fopen(fn, "w");
-		if ( fp==NULL ) {
-			//don't have write access to current directory, store installation
-			_chdir(getenv("USERPROFILE"));
-			_mkdir("Documents\\tinyTerm");
-			_chdir("Documents\\tinyTerm");
-		}
-		else {//will create .hist in the same directory as .exe
-			fclose(fp);
-		}
+	// current directory doesn't have .hist, change to home directory
+		_chdir(getenv("USERPROFILE"));
+		_mkdir("Documents\\tinyTerm");
+		_chdir("Documents\\tinyTerm");
 	}
 #else
 	char *homedir = getenv("HOME");
@@ -768,16 +764,6 @@ int main(int argc, char **argv)
 	httpd_init();
 	libssh2_init(0);
 	Fl::scheme("gtk+");
-#ifdef __APPLE__
-	Fl::set_font(FL_FREE_FONT, "Menlo");
-	Fl::set_font(FL_FREE_FONT+1, "Courier New");
-	Fl::set_font(FL_FREE_FONT+2, "Monaco");
-#else
-	Fl::set_font(FL_FREE_FONT, "Consolas");
-	Fl::set_font(FL_FREE_FONT+1, "Courier New");
-	Fl::set_font(FL_FREE_FONT+2, "Lucida Console");
-#endif
-
 
 	pWindow = new Fl_Double_Window(800, 640, "tinyTerm2");
 	{
