@@ -1,23 +1,17 @@
 #Makefile for macOS/Linux
-HEADERS = src/host.h src/ssh2.h 
-LIBS =  -lssh2 -lmbedcrypto
-OBJ_DIR = obj
-OBJS = $(OBJ_DIR)/tiny2.o $(OBJ_DIR)/ssh2.o $(OBJ_DIR)/host.o\
-		$(OBJ_DIR)/Fl_Term.o $(OBJ_DIR)/Fl_Browser_Input.o
-		
-CFLAGS= -Os -std=c++11 ${shell fltk-config --cxxflags}
-LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++
+HEADERS = src/host.h src/ssh2.h
+OBJS = obj/tiny2.o obj/ssh2.o obj/host.o obj/Fl_Term.o obj/Fl_Browser_Input.o
 
-all: OBJ_DIR tinyTerm2 
+CFLAGS= -Os -std=c++11 ${shell fltk-config --cxxflags} -I.
+LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++ -lssh2 -lmbedcrypto
+
+all: tinyTerm2 
 
 tinyTerm2: ${OBJS} 
-	cc -o "$@" ${OBJS} ${LDFLAGS} ${LIBS}
+	cc -o "$@" ${OBJS} ${LDFLAGS}
 
-$(OBJ_DIR)/%.o: src/%.cxx ${HEADERS}
-	${CC} ${CFLAGS} -I. -c $< -o $@
-
-OBJ_DIR:
-	test ! -d $(OBJ_DIR) && mkdir $(OBJ_DIR)
+obj/%.o: src/%.cxx ${HEADERS}
+	${CC} ${CFLAGS} -c $< -o $@
 
 clean:
-	rm *.o "tinyTerm2"
+	rm obj/*.o "tinyTerm2"
