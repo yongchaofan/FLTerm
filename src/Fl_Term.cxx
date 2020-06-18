@@ -84,7 +84,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	buff_size = 0;
 	redraw_complete = false;
 	buffsize(8192);
-	textfont(FL_FREE_FONT);
+	textfont(FL_COURIER);
 	textsize(16);
 	size_x = w()/font_width;
 	size_y = h()/font_height;
@@ -769,8 +769,8 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 						int a=line[cursor_y];
 						int z=line[cursor_y+1];
 						if ( m0==0 ) a = cursor_x;
-						if ( m0==1 ) z = cursor_x;
-						if ( z>a ) buff_clear(a, z-a+1);
+						if ( m0==1 ) z = cursor_x+1;
+						if ( z>a ) buff_clear(a, z-a);
 					}
 					break;
 				case 'L': //insert n0 lines
