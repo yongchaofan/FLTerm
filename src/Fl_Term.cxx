@@ -140,14 +140,14 @@ void Fl_Term::textfont( Fl_Font fontface )
 {
 	font_face = fontface;
 	fl_font(font_face, font_size);
-	font_width = fl_width("abcdefghijklmnopqrstuvwxzy")/26;
+	font_width = fl_width("abcdefghij")/10;
 	font_height = fl_height();
 }
 void Fl_Term::textsize( int fontsize )
 {
 	font_size = fontsize;
 	fl_font(font_face, font_size);
-	font_width = fl_width("abcdefghijklmnopqrstuvwxzy")/26;
+	font_width = fl_width("abcdefghij")/10;
 	font_height = fl_height();
 }
 
