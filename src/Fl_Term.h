@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4920 2020-06-08 13:08:10 $"
+// "$Id: Fl_Term.h 4922 2020-06-18 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -40,7 +40,7 @@ class Fl_Term : public Fl_Widget {
 	int roll_bot;		//the range of lines that will scroll in vi
 	int sel_left;
 	int sel_right;		//begin and end of selection on screen
-	int font_width;	//current font width in pixels
+	float font_width;	//current font width in pixels
 	int font_height;	//current font height in pixels
 	int font_size;		//current font weight
 	int font_face;		//current font face
