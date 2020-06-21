@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 39219 2020-06-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 39209 2020-06-20 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -22,9 +22,10 @@
 #include <thread>
 using namespace std;
 
-int move_editor(int x, int y, int w, int h);
-void sleep_ms( int ms );
-char *SHA1 (const char *msg);
+int move_editor(int x, int y, int w, int h);//defined in tiny2.cxx
+#ifndef WIN32 
+void Sleep(int ms);		//defined in ssh2.cxx
+#endif
 
 void host_cb0(void *data, const char *buf, int len)
 {
@@ -46,7 +47,8 @@ void Fl_Term::host_cb( const char *buf, int len )
 				append(buf, len);
 		}
 		else {//len<0 Disconnected, or failure
-			disp("\033[31m"); disp(buf);
+			disp("\033[31m\r\n"); disp(buf);
+			disp("\033[37m, Press \033[33mEnter\033[37m to restart\r\n");
 			if ( host->type()==HOST_CONF ) bEcho = false;
 			sTitle[10] = 0;
 			do_callback( this, (void *)NULL );
@@ -1064,7 +1066,7 @@ int Fl_Term::waitfor_prompt( )
 {
 	int oldlen = recv0;
 	for ( int i=0; i<iTimeOut*10 && !bPrompt; i++ ) {
-		sleep_ms(100);
+		Sleep(100);
 		if ( cursor_x>oldlen ) { i=0; oldlen=cursor_x; }
 	}
 	bPrompt = true;
@@ -1197,7 +1199,7 @@ int Fl_Term::command(const char *cmd, char **preply)
 			iPrompt = strlen(sPrompt);
 		}
 		else if ( strncmp(cmd,"Wait ",5)==0 ) {
-			sleep_ms(atoi(cmd+5)*1000);
+			Sleep(atoi(cmd+5)*1000);
 		}
 		else if ( strncmp(cmd,"Waitfor ",8)==0 ) {
 			char *p = buff+recv0;
@@ -1209,7 +1211,7 @@ int Fl_Term::command(const char *cmd, char **preply)
 					rc = cursor_x-recv0;
 					break;
 				}
-				sleep_ms(100);
+				Sleep(100);
 			}
 		}
 		else {
@@ -1283,7 +1285,7 @@ void Fl_Term::scripter(char *cmds)
 	bScriptRun = true; bScriptPause = false;
 	while ( bScriptRun && p1!=NULL )
 	{
-		if ( bScriptPause ) { sleep_ms(100); continue; }
+		if ( bScriptPause ) { Sleep(100); continue; }
 		p0 = p1;
 		p1 = strchr(p0, 0x0a);
 		if ( p1!=NULL ) *p1++ = 0;

@@ -1,12 +1,12 @@
 //
-// "$Id: Hosts.h 4334 2020-06-09 21:12:15 $"
+// "$Id: Hosts.h 4460 2020-06-19 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd
 //
 //	  host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
 //
-// Copyright 2017-2020 by Yongchao Fan.
+// Copyright 2017-2019 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -122,7 +122,9 @@ private:
 	HANDLE hStdioWrite;
 	PROCESS_INFORMATION piStd;
 #else
-	FILE *pPipe;
+	int pty_master;		//pty master
+	int pty_slave;		//pty slave
+	pid_t shell_pid;
 #endif
 public:
 	pipeHost(const char *name);
@@ -134,6 +136,9 @@ public:
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
 //	virtual void connect();
+#ifndef WIN32
+	virtual void send_size(int sx, int sy);
+#endif
 };
 
 class tcpHost : public HOST {

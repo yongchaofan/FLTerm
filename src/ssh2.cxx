@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38469 2020-06-08 11:55:10 $"
+// "$Id: ssh2.cxx 38448 2020-06-20 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -22,19 +22,15 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include "ssh2.h"
-void sleep_ms(int ms)
-{
-#ifdef WIN32
-	Sleep(ms);
-#else
-	usleep(ms*1000);
-#endif
-}
 
 #ifndef WIN32
-	#include <pwd.h>
-	#include <dirent.h>
-	#include <fnmatch.h>
+#include <pwd.h>
+#include <dirent.h>
+#include <fnmatch.h>
+void Sleep(int ms)
+{
+	usleep(ms*1000);
+}
 #else
 	#include <shlwapi.h>
 int wchar_to_utf8(WCHAR *wbuf, int wcnt, char *buf, int cnt)
@@ -348,7 +344,7 @@ char* sshHost::ssh_gets( const char *prompt, int echo )
 	for ( int i=0; i<3000&&bGets; i++ ) {
 		if ( bReturn ) return keys;
 		if ( cursor>old_cursor ) { old_cursor=cursor; i=0; }
-		sleep_ms(100);
+		Sleep(100);
 	}
 	return NULL;
 }
@@ -492,7 +488,7 @@ int sshHost::read()
 		}
 	}
 	status( HOST_IDLE );
-	do_callback("Disonnected", -1);
+	do_callback("Disconnected", -1);
 	tun_closeall();
 	*username = 0;
 	*password = 0;
@@ -1059,7 +1055,7 @@ void sshHost::tun(char *cmd)
 			std::thread tun_thread( *cmd==':' ? &sshHost::tun_remote :
 									&sshHost::tun_local, this, lpath, rpath );
 			tun_thread.detach();
-			sleep_ms(100);
+			Sleep(100);
 		}
 	}
 	else {

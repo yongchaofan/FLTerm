@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 26173 2020-06-18 20:05:10 $"
+// "$Id: tiny2.cxx 26109 2020-06-18 20:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -133,9 +133,8 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	}
 	if ( data==NULL ) {//disconnected
-		term->disp("\r\n\033[33mPress Enter to restart\033[37m\r\n");
 		if ( localedit )
-			term->disp("\r\n\033[32mtinyTerm2 > \033[37m");
+			term->disp("\r\n\033[32mtinyTerm2> \033[37m");
 	}
 	if ( pTabs!=NULL ) Fl::awake( pTabs );
 }
@@ -803,7 +802,7 @@ int main(int argc, char **argv)
 	pWindow->show();
 	
 	if ( localedit ) {
-		pTerm->disp("\n\033[32mtinyTerm2 > \033[37m");
+		pTerm->disp("\n\033[32mtinyTerm2> \033[37m");
 		struct stat sb;
 		if ( fl_stat("tinyTerm.html", &sb)!=-1 ) 
 			script_open("tinyTerm.html");

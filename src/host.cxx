@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 26984 2020-06-08 12:15:10 $"
+// "$Id: Hosts.cxx 28440 2020-06-19 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -26,9 +26,12 @@
 	#include <termios.h>
 	#include <unistd.h>
 	#include <fcntl.h>
+	#include <sys/ioctl.h>
+	#include <signal.h>
 	#include <errno.h>
 #endif
 #include "host.h"
+using namespace std;
 
 void HOST::connect()
 {
@@ -287,7 +290,7 @@ int comHost::read()
 	}
 	close(ttySfd);
 	status( HOST_IDLE );
-	do_callback("Disconnected\r\n", -1);
+	do_callback("Disconnected", -1);
 
 shutdown:
 	reader.detach();
@@ -375,7 +378,7 @@ int tcpHost::read()
 			do_callback(buf, cch);
 		}
 		status( HOST_IDLE );
-		do_callback("Disconnected\r\n", -1);
+		do_callback("Disconnected", -1);
 	}
 
 	if ( sock!=-1 ) {
@@ -415,49 +418,16 @@ pipeHost::pipeHost(const char *name):HOST()
 {
 	strncpy(cmdline, name, 255);
 	cmdline[255] = 0;
-#ifndef WIN32
-	pPipe = NULL;
-#else
+#ifdef WIN32
 	hStdioRead = NULL;
 	hStdioWrite = NULL;
+#else
+	pty_master = -1;
+	pty_slave = -1;
+	shell_pid = -1;
 #endif
 }
-int pipeHost::write( const char *buf, int len )
-{
-	if ( *buf==3 && len==1 )
-		disconn();
-	return 0;
-}
-#ifndef WIN32
-int pipeHost::read()
-{
-	if ( (pPipe=popen(cmdline, "r"))!=NULL ) {
-		status( HOST_CONNECTED );
-		char buf[1536];
-		while ( fgets(buf, 1536, pPipe) ) {
-			do_callback(buf, strlen(buf));
-		}
-		status( HOST_IDLE );
-		do_callback("", 0);
-	}
-	else
-		do_callback("Command execution error\n", -1);
-
-	if ( pPipe!=NULL ) {
-		pclose(pPipe);
-		pPipe = NULL;
-	}
-	reader.detach();
-	return 0;
-}
-void pipeHost::disconn()
-{
-	if ( pPipe!=NULL ) {
-		pclose(pPipe);
-		pPipe = NULL;
-	}
-}
-#else
+#ifdef WIN32
 int pipeHost::read()
 {
 	HANDLE Stdin_Rd, Stdin_Wr ;
@@ -528,12 +498,18 @@ int pipeHost::read()
 		do_callback( "", -1 );
 	}
 	else
-		do_callback( "command execution error\n", -1 );
+		do_callback( "unsupported command", -1 );
 
 	CloseHandle( hStdioRead );
 	CloseHandle( hStdioWrite );
 	reader.detach();
 	return 1;
+}
+int pipeHost::write( const char *buf, int len )
+{
+	if ( *buf==3 && len==1 )
+		disconn();
+	return 0;
 }
 void pipeHost::disconn()
 {
@@ -541,9 +517,98 @@ void pipeHost::disconn()
 		TerminateProcess(piStd.hProcess,0);
 	CloseHandle(piStd.hThread);
 	CloseHandle(piStd.hProcess);
-}
-//end if pipeHost WIN32 definition
+}//end of pipeHost WIN32 definition
+#else
+int pipeHost::read()
+{
+	char *slave_name;
+	pty_master = posix_openpt(O_RDWR|O_NOCTTY);
+	if ( pty_master==-1 ) {
+		do_callback("possix_openpt", -1);
+		return -1;
+	}
+	if ( grantpt(pty_master)==-1 ) {
+		do_callback("grantpt", -2);
+		goto pty_close;
+	}
+	if ( unlockpt(pty_master)==-1 ) {
+		do_callback("unlockpt", -3);
+		goto pty_close;
+	}
 
+	slave_name = ptsname(pty_master);
+	if ( slave_name==NULL ) {
+		do_callback("slave name", -4);
+		goto pty_close;
+	}
+	pty_slave = open(slave_name, O_RDWR|O_NOCTTY);
+	if ( pty_slave==-1 ) {
+		do_callback("slave open", -5);
+		goto pty_close;
+	}
+	
+	shell_pid = fork();
+	if ( shell_pid==0 ) { //child process for shell
+		close(pty_master);
+		setsid();
+		if ( ioctl(pty_slave, TIOCSCTTY, NULL)==-1 ) {
+			perror("ioctl(TIOCSCTTY)");
+			goto pty_close;
+		}
+		dup2(pty_slave, 0);
+		dup2(pty_slave, 1);
+		dup2(pty_slave, 2);
+
+		char *env[] = { "TERM=vt100", NULL };
+		execl( cmdline, cmdline, (char *)NULL );
+		return false;
+	}
+	else if ( shell_pid<0 ) {
+		do_callback("fork", -6);
+		goto pty_close;
+	}
+	else {
+		close(pty_slave);
+		do_callback("shell started", 0);
+		status( HOST_CONNECTED );
+		char buf[4096];
+		int len = 0;
+		while ( (len=::read(pty_master, buf, 4095))>0 ) {
+			buf[len] = 0;
+			do_callback(buf, len);
+		}
+		status( HOST_IDLE );
+		do_callback("Disconnected", -1);
+	}
+pty_close:
+	close(pty_master);
+	reader.detach();
+	return 0;
+}
+int pipeHost::write( const char *buf, int len )
+{
+	for ( int i=0; i<len; i++ ) 
+		if ( ::write( pty_master, buf+i, 1 )<0 ) 
+			close(pty_master);
+	return 0;
+}
+void pipeHost::send_size(int sx, int sy)
+{
+	struct winsize ws; 
+	ws.ws_col = (unsigned short)sx; 
+	ws.ws_row = (unsigned short)sy;
+
+	if ( ioctl(pty_master, TIOCSWINSZ, &ws)==-1 ) 
+		do_callback("set window size", -1);
+}
+void pipeHost::disconn()
+{
+	kill( shell_pid, SIGTERM );	
+}
+#endif
+
+
+#ifdef WIN32
 /*begin ftpd tftpd Win32 definition
 int sock_select( SOCKET s, int secs )
 {
@@ -1042,3 +1107,4 @@ void tftpdHost::disconn( )
 }
 */
 #endif //WIN32
+
