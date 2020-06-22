@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 39209 2020-06-20 10:08:20 $"
+// "$Id: Fl_Term.cxx 39318 2020-06-20 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -47,8 +47,12 @@ void Fl_Term::host_cb( const char *buf, int len )
 				append(buf, len);
 		}
 		else {//len<0 Disconnected, or failure
-			disp("\033[31m\r\n"); disp(buf);
-			disp("\033[37m, Press \033[33mEnter\033[37m to restart\r\n");
+			if ( *buf ) {
+				disp("\033[31m\r\n");
+				disp(buf);
+				disp("\033[37m, Press \033[33mEnter");
+				disp("\033[37m to reconnect\r\n");
+			}
 			if ( host->type()==HOST_CONF ) bEcho = false;
 			sTitle[10] = 0;
 			do_callback( this, (void *)NULL );
@@ -505,7 +509,7 @@ void Fl_Term::append( const char *newtext, int len ){
 			case 0x00:
 			case 0x0e:
 			case 0x0f:	break;
-			case 0x07:	fprintf(stdout, "\007"); fflush(stdout); break;
+			case 0x07:	fl_beep(FL_BEEP_DEFAULT); break;
 			case 0x08:
 				if ( cursor_x>line[cursor_y] ) {
 					if ( (buff[cursor_x--]&0xc0)==0x80 )//utf8 continuation byte

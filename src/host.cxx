@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 28440 2020-06-19 12:15:10 $"
+// "$Id: Hosts.cxx 28386 2020-06-19 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -548,7 +548,10 @@ int pipeHost::read()
 	}
 	
 	shell_pid = fork();
-	if ( shell_pid==0 ) { //child process for shell
+	if ( shell_pid<0 ) {
+		do_callback("fork", -6);
+	}
+	else if ( shell_pid==0 ) {//child process for shell
 		close(pty_master);
 		setsid();
 		if ( ioctl(pty_slave, TIOCSCTTY, NULL)==-1 ) {
@@ -558,14 +561,8 @@ int pipeHost::read()
 		dup2(pty_slave, 0);
 		dup2(pty_slave, 1);
 		dup2(pty_slave, 2);
-
-		char *env[] = { "TERM=vt100", NULL };
 		execl( cmdline, cmdline, (char *)NULL );
 		return false;
-	}
-	else if ( shell_pid<0 ) {
-		do_callback("fork", -6);
-		goto pty_close;
 	}
 	else {
 		close(pty_slave);
@@ -578,7 +575,7 @@ int pipeHost::read()
 			do_callback(buf, len);
 		}
 		status( HOST_IDLE );
-		do_callback("Disconnected", -1);
+		do_callback("", -1);
 	}
 pty_close:
 	close(pty_master);
@@ -599,7 +596,7 @@ void pipeHost::send_size(int sx, int sy)
 	ws.ws_row = (unsigned short)sy;
 
 	if ( ioctl(pty_master, TIOCSWINSZ, &ws)==-1 ) 
-		do_callback("set window size", -1);
+		do_callback("\r\nerror setting window size\r\n", 29);
 }
 void pipeHost::disconn()
 {

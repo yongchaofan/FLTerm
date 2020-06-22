@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 26109 2020-06-18 20:05:10 $"
+// "$Id: tiny2.cxx 26528 2020-06-20 20:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -28,7 +28,7 @@ const char ABOUT_TERM[]="\r\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
 \tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\r\n\n\
-\tVerision 1.2.0, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.1, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 
 #include <stdio.h>
 #include <string.h>
@@ -94,9 +94,10 @@ int keepalive = 0;
 static Fl_Native_File_Chooser fnfc;
 const char *file_chooser(const char *title, const char *filter, int type)
 {
+	char cwd[4096];
 	fnfc.title(title);
 	fnfc.filter(filter);
-	fnfc.directory(".");
+	fnfc.directory(fl_getcwd(cwd,4096));
 	fnfc.type(type);
 	switch ( fnfc.show() ) {			// Show native chooser
 		case -1:  			 			// ERROR
@@ -250,9 +251,9 @@ Fl_Button *pConnect;
 Fl_Button *pCancel;
 
 #ifdef WIN32
-const char *ports[]={"COM1", "23", "22", "22", "830"};
+const char *ports[]={"COM1", "23", "22", "22", "830", ""};
 #else
-const char *ports[]={"/dev/tty.usbserial", "23", "22", "22", "830"};
+const char *ports[]={"/dev/tty.usbserial", "23", "22", "22", "830", ""};
 #endif
 void protocol_cb(Fl_Widget *w)
 {
@@ -271,6 +272,14 @@ void protocol_cb(Fl_Widget *w)
 		pSettings->add("230400,n,8,1");
 		pSettings->value("9600,n,8,1");
 	}
+	if ( proto==5 ) {
+		pHostname->label("Command:");
+#ifdef WIN32
+		pHostname->value("ipconfig");
+#else
+		pHostname->value("/bin/sh");
+#endif
+	}
 	else {
 		pHostname->label("Host:");
 		pHostname->value("192.168.1.1");
@@ -282,18 +291,22 @@ void connect_cb(Fl_Widget *w)
 	int proto = pProtocol->value();
 	strcat(buf, pProtocol->mvalue()->label());
 	strcat(buf, " ");
-	if ( proto>0 ) {
+	if ( proto==0 ) {		//serial connection
+		strcat(buf, pPort->value());
+		strcat(buf, ":");
+		strcat(buf, pSettings->value());
+	}
+	else if ( proto==5 ) {	//local shell
+		strncpy(buf+1, pHostname->value(), 128);
+		buf[128] = 0;
+	}
+	else {					//telnet/ssh/sftp/netconf
 		pHostname->add(pHostname->value());
 		strcat(buf, pHostname->value());
 		if ( strcmp(ports[proto],pPort->value())!=0 ) {
 			strcat(buf, ":");
 			strcat(buf, pPort->value());
 		}
-	}
-	else {
-		strcat(buf, pPort->value());
-		strcat(buf, ":");
-		strcat(buf, pSettings->value());
 	}
 	pConnectDlg->hide();
 	if ( pCmd->add(buf)!=0 )
@@ -321,7 +334,7 @@ void connect_dialog_build()
 		pConnect->labelsize(16);
 		pConnect->shortcut(FL_Enter);
 		pCancel->labelsize(16);
-		pProtocol->add("serial|telnet|ssh|sftp|netconf");
+		pProtocol->add("serial|telnet|ssh|sftp|netconf|local shell");
 		pProtocol->value(2);
 		pPort->value("22");
 		pHostname->add("192.168.1.1");
@@ -349,10 +362,11 @@ Fl_Button *donebtn;
 int **sizes;
 int *numsizes;
 
-void font_cb(Fl_Widget *, long) {
+void font_cb(Fl_Widget *, long)
+{
 	int sel = fontobj->value();
 	if (!sel) return;
-	fontnum = long(fontobj->data(sel));
+	fontnum = (long)fontobj->data(sel);
 	pTerm->textfont(fontnum);
 	pCmd->textfont(fontnum);
 	resize_window(pTerm->sizeX(), pTerm->sizeY());
@@ -380,7 +394,8 @@ void font_cb(Fl_Widget *, long) {
 		}
 	}
 }
-void size_cb(Fl_Widget *, long) {
+void size_cb(Fl_Widget *, long) 
+{
 	int i = sizeobj->value();
 	if (!i) return;
 	const char *c = sizeobj->text(i);
@@ -461,7 +476,9 @@ void script_open( const char *fn )
 	sprintf(http_port, "%d", httport);
 	ShellExecuteA(NULL, "open", fn, http_port, NULL, SW_SHOW);
 #else
-	system(fn);
+	char cmd[4096];
+	sprintf(cmd, "%s %d", fn, httport);
+	system(cmd);
 #endif
 }
 void script_cb(Fl_Widget *w, void *data)
@@ -669,22 +686,23 @@ Fl_Menu_Item menubar[] = {
 // load_dict set working directory and load scripts to menu
 void load_dict(const char *fn)			
 {
-#ifdef WIN32
- 	if ( GetFileAttributes(fn)==INVALID_FILE_ATTRIBUTES ) {
-	// current directory doesn't have .hist, change to home directory
-		_chdir(getenv("USERPROFILE"));
-		_mkdir("Documents\\tinyTerm");
-		_chdir("Documents\\tinyTerm");
-	}
-#else
-	char *homedir = getenv("HOME");
-	if ( homedir==NULL ) homedir = getpwuid(getuid())->pw_dir;
-	chdir(homedir);
-	mkdir("tinyTerm", 0755);
-	chdir("tinyTerm");
-#endif
-
 	FILE *fp = fopen(fn, "r");
+	if ( fp==NULL ) {// current directory doesn't have .hist
+#ifdef WIN32		// try home directory
+		if ( _chdir(getenv("USERPROFILE"))==0 ) {
+			_mkdir("Documents\\tinyTerm");
+			_chdir("Documents\\tinyTerm");
+		}
+#else
+		char *homedir = getenv("HOME");
+		if ( homedir==NULL ) homedir = getpwuid(getuid())->pw_dir;
+		if ( chdir(homedir)==0 ) {
+			mkdir("tinyTerm", 0755);
+			chdir("tinyTerm");
+		}
+#endif
+		fp = fopen(fn, "r");
+	}
 	if ( fp!=NULL ) {
 		char line[256];
 		while ( fgets(line, 256, fp)!=NULL ) {
