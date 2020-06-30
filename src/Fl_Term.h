@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4922 2020-06-18 13:08:10 $"
+// "$Id: Fl_Term.h 4900 2020-06-30 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -84,7 +84,7 @@ class Fl_Term : public Fl_Widget {
 	FILE *fpLogFile;
 	HOST *host;
 
-protected: 
+protected:
 	void draw();
 	void next_line();
 	void buff_clear(int offset, int len);
@@ -99,11 +99,11 @@ public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
 	~Fl_Term();
 	void clear();
-	int  handle( int e );
-	void resize( int X, int Y, int W, int H );
-	void textfont( Fl_Font fontface );
-	void textsize( int fontsize );
-	void buffsize( int lines );
+	int  handle(int e);
+	void resize(int X, int Y, int W, int H);
+	void textfont(Fl_Font fontface);
+	void textsize(int fontsize);
+	void buffsize(int lines);
 	const char *title() { return sTitle; }
 
 	int logg() { return fpLogFile!=NULL; }
@@ -112,13 +112,13 @@ public:
 	int rows() { return size_y; }
 	int sizeX() { return size_x*font_width; }
 	int sizeY() { return size_y*font_height; }
-	void echo( int e ) { bEcho = e; }
-	void logg( const char *fn );
-	void srch( const char *word );
+	void echo(int e) { bEcho = e; }
+	void logg(const char *fn);
+	void srch(const char *word);
 
 	int connected() { return host!=NULL ? host->live() : false; }
-	void connect( const char *hostname );
-	void host_cb( const char *buf, int len );
+	void connect(const char *hostname);
+	void host_cb(const char *buf, int len);
 	char *gets(const char *prompt, int echo);
 	void disconn();
 
@@ -139,7 +139,7 @@ public:
 
 	void scripter(char *cmds);
 	void run_script(char *script);
-	void pause_script( );
+	void pause_script();
 	void quit_script();
 
 	void term_pwd(char *dst);

@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 28386 2020-06-19 12:15:10 $"
+// "$Id: Hosts.cxx 28380 2020-06-30 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -40,7 +40,7 @@ void HOST::connect()
 		reader.swap(new_reader);
 	}
 }
-void HOST::print( const char *fmt, ... )
+void HOST::print(const char *fmt, ...)
 {
 	char buff[4096];
 	va_list args;
@@ -377,7 +377,6 @@ int tcpHost::read()
 		while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
 			do_callback(buf, cch);
 		}
-		status( HOST_IDLE );
 		do_callback("Disconnected", -1);
 	}
 
@@ -386,9 +385,10 @@ int tcpHost::read()
 		sock = -1;
 	}
 	reader.detach();
+	status(HOST_IDLE);
 	return 0;
 }
-int tcpHost::write(const char *buf, int len )
+int tcpHost::write(const char *buf, int len)
 {
 	if ( sock!=-1 ) {
 		int total=0, cch=0;

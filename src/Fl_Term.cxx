@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 39318 2020-06-20 10:08:20 $"
+// "$Id: Fl_Term.cxx 39430 2020-06-30 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -24,7 +24,7 @@ using namespace std;
 
 int move_editor(int x, int y, int w, int h);//defined in tiny2.cxx
 #ifndef WIN32 
-void Sleep(int ms);		//defined in ssh2.cxx
+#define Sleep(x) usleep((x)*1000);
 #endif
 
 void host_cb0(void *data, const char *buf, int len)
@@ -94,6 +94,8 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	textsize(16);
 	size_x = w()/font_width;
 	size_y = h()/font_height;
+	roll_top = 0;
+	roll_bot = size_y-1;
 	color(FL_BLACK);
 	clear();
 	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
@@ -131,7 +133,7 @@ void Fl_Term::clear()
 
 	Fl::unlock();
 }
-void Fl_Term::resize( int X, int Y, int W, int H )
+void Fl_Term::resize(int X, int Y, int W, int H)
 {
 	Fl_Widget::resize(X,Y,W,H);
 	size_x = w()/font_width;
@@ -142,21 +144,20 @@ void Fl_Term::resize( int X, int Y, int W, int H )
 	if ( host!=NULL ) host->send_size(size_x, size_y);
 	redraw();
 }
-void Fl_Term::textfont( Fl_Font fontface )
+void Fl_Term::textfont(Fl_Font fontface)
 {
 	font_face = fontface;
 	fl_font(font_face, font_size);
 	font_width = fl_width("abcdefghij")/10;
 	font_height = fl_height();
 }
-void Fl_Term::textsize( int fontsize )
+void Fl_Term::textsize(int fontsize)
 {
 	font_size = fontsize;
 	fl_font(font_face, font_size);
 	font_width = fl_width("abcdefghij")/10;
 	font_height = fl_height();
 }
-
 const unsigned int VT_attr[] = {
 	0x00000000, 0xc0000000, 0x00c00000, 0xc0c00000,	//0,1,2,3
 	0x2060c000, 0xc000c000, 0x00c0c000, 0xc0c0c000,	//4,5,6,7
@@ -205,7 +206,9 @@ void Fl_Term::draw()
 				}
 				fl_color( font_color );
 			}
-			fl_draw( buff+j, n-j, dx, dy );
+			int m = (buff[n-1]==0x0a) ? n-1 : n;	//don't draw LF, 
+			//which will result in little squares on some platforms
+			fl_draw( buff+j, m-j, dx, dy );
 			dx += wi;
 			j=n;
 		}
@@ -240,7 +243,8 @@ void Fl_Term::draw()
 		fl_rectf(x()+w()-8, y()+slider_y-8, 8, 16);
 	}
 }
-int Fl_Term::handle( int e ) {
+int Fl_Term::handle(int e)
+{
 	switch (e) {
 		case FL_FOCUS: redraw(); return 1;
 		case FL_MOUSEWHEEL:
@@ -486,7 +490,8 @@ void Fl_Term::next_line()
 		Fl::unlock();
 	}
 }
-void Fl_Term::append( const char *newtext, int len ){
+void Fl_Term::append( const char *newtext, int len )
+{
 	const unsigned char *p = (const unsigned char *)newtext;
 	const unsigned char *zz = p+len;
 
@@ -657,7 +662,7 @@ void Fl_Term::check_cursor_y()
 			cursor_y = screen_y+roll_bot;
 	}
 }
-const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
+const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 {
 	const unsigned char *zz = sz+cnt;
 	bEscape = true;
@@ -1016,7 +1021,7 @@ const unsigned char *Fl_Term::vt100_Escape( const unsigned char *sz, int cnt )
 	}
 	return sz;
 }
-void Fl_Term::logg( const char *fn )
+void Fl_Term::logg(const char *fn)
 {
 	if ( fpLogFile!=NULL ) {
 		fclose( fpLogFile );
@@ -1032,7 +1037,7 @@ void Fl_Term::logg( const char *fn )
 		}
 	}
 }
-void Fl_Term::srch( const char *sstr )
+void Fl_Term::srch(const char *sstr)
 {
 	int l = strlen(sstr);
 	char *p = buff+sel_left;
@@ -1066,7 +1071,7 @@ char *Fl_Term::mark_prompt()
 	recv0 = cursor_x;
 	return buff+cursor_x;
 }
-int Fl_Term::waitfor_prompt( )
+int Fl_Term::waitfor_prompt()
 {
 	int oldlen = recv0;
 	for ( int i=0; i<iTimeOut*10 && !bPrompt; i++ ) {
@@ -1093,7 +1098,7 @@ int Fl_Term::recv(char **preply)
 	return len;
 }
 
-void Fl_Term::connect( const char *hostname )
+void Fl_Term::connect(const char *hostname)
 {
 	if ( host!=NULL ) {
 		if ( host->live() ) return;
@@ -1229,7 +1234,8 @@ int Fl_Term::command(const char *cmd, char **preply)
 	}
 	return rc;
 }
-void Fl_Term::put_xml(const char *buf, int len) {
+void Fl_Term::put_xml(const char *buf, int len)
+{
 	const char *p=buf, *q;
 	const char spaces[256]="\r\n                                               \
                                                                               ";
@@ -1298,7 +1304,7 @@ void Fl_Term::scripter(char *cmds)
 	free(cmds);
 	bScriptRun = bScriptPause = false;
 }
-void Fl_Term::pause_script( )
+void Fl_Term::pause_script()
 {
 	if ( bScriptRun ) {
 		bScriptPause = true;
@@ -1308,7 +1314,7 @@ void Fl_Term::pause_script( )
 			quit_script( );
 	}
 }
-void Fl_Term::quit_script( )
+void Fl_Term::quit_script()
 {
 	if ( bScriptRun ) {
 		bScriptRun = bScriptPause = false;

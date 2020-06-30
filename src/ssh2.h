@@ -1,12 +1,12 @@
 //
-// "$Id: ssh2.h 3253 2019-05-21 23:48:10 $"
+// "$Id: ssh2.h 3252 2020-06-30 13:48:10 $"
 //
 //  sshHost sftpHost
 //
 //	host implementation for terminal simulator
 //    to be used with the Fl_Term widget.
 //
-// Copyright 2017-2019 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -62,7 +62,7 @@ protected:
 
 	int scp_read_one(const char *rpath, const char *lpath);
 	int scp_write_one(const char *lpath, const char *rpath);
-	TUNNEL *tun_add( int tun_sock, LIBSSH2_CHANNEL *tun_channel,
+	TUNNEL *tun_add(int tun_sock, LIBSSH2_CHANNEL *tun_channel,
 							char *localip, unsigned short localport,
 							char *remoteip, unsigned short remoteport);
 	void tun_del(int tun_sock);

@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Browser_Input.h 977 2019-05-09 13:48:10 $"
+// "$Id: Fl_Browser_Input.h 980 2020-06-30 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -22,7 +22,6 @@
 
 #ifndef _BROWSER_INPUT_H_
 #define _BROWSER_INPUT_H_
-
 class Fl_Browser_Input: public Fl_Input {
 private:
 	Fl_Menu_Window *browserWin;
@@ -31,11 +30,11 @@ private:
 public:
 	Fl_Browser_Input(int X,int Y,int W,int H,const char* L=0);
 	~Fl_Browser_Input() {}
-	void resize( int X, int Y, int W, int H );
-	int handle( int e );
-	int add( const char *cmd );
+	void resize(int X, int Y, int W, int H);
+	int handle(int e);
+	int add(const char *cmd);
 	const char *first();
 	const char *next();
 	void close();
 };
-#endif  //acInput
+#endif  //_BROWSER_INPUT_H_

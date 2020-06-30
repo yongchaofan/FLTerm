@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Browser_Input.cxx 3792 2020-06-08 13:48:10 $"
+// "$Id: Fl_Browser_Input.cxx 3803 2020-06-21 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
-// Copyright 2017-2018 by Yongchao Fan.
+// Copyright 2017-2020 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -15,7 +15,6 @@
 //     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 #include "Fl_Browser_Input.h"
-#include <string.h>
 #ifdef __APPLE__
 #define FL_CMD FL_META
 #else
@@ -35,14 +34,14 @@ Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L)
 	browserWin->resizable(browser);
 	id = 0;
 }
-void Fl_Browser_Input::resize( int X, int Y, int W, int H )
+void Fl_Browser_Input::resize(int X, int Y, int W, int H)
 {
 	Fl_Input::resize(X, Y, W, H);
 	browserWin->resize( parent()->x()+X,
 						parent()->y()+Y+( (Y<104) ? h()+1:-104 ),
 						w(), 104);
 }
-int Fl_Browser_Input::add( const char *cmd )
+int Fl_Browser_Input::add(const char *cmd)
 {
 	if ( *cmd==0 ) return 0;
 	if ( browser->size()==0 ) browser->add(cmd);
@@ -58,7 +57,7 @@ int Fl_Browser_Input::add( const char *cmd )
 	id = i;
 	return i;
 }
-const char * Fl_Browser_Input::first( )
+const char * Fl_Browser_Input::first()
 {
 	id = 1;
 	if ( id<=browser->size() )
@@ -66,7 +65,7 @@ const char * Fl_Browser_Input::first( )
 	else
 		return NULL;
 }
-const char * Fl_Browser_Input::next( )
+const char * Fl_Browser_Input::next()
 {
 	if ( id<browser->size() )
 		return browser->text(++id);
@@ -77,7 +76,7 @@ void Fl_Browser_Input::close()
 {
 	browserWin->hide();
 }
-int Fl_Browser_Input::handle( int e )
+int Fl_Browser_Input::handle(int e)
 {
 	if ( e!=FL_KEYDOWN ) return Fl_Input::handle(e);
 	char cmd[2]={ 0, 0 };
@@ -144,10 +143,10 @@ int Fl_Browser_Input::handle( int e )
 					browser->middleline(id);
 					value(browser->text(id));
 					position(p, size());
-					if ( !browserWin->shown() ) {
-						browserWin->show();
-						take_focus();
-					}
+				//	if ( !browserWin->shown() ) {//show list when there is match
+				//		browserWin->show();
+				//		take_focus();
+				//	}
 					break;
 				}
 			}

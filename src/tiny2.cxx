@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 26528 2020-06-20 20:05:10 $"
+// "$Id: tiny2.cxx 26440 2020-06-30 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -694,9 +694,7 @@ void load_dict(const char *fn)
 			_chdir("Documents\\tinyTerm");
 		}
 #else
-		char *homedir = getenv("HOME");
-		if ( homedir==NULL ) homedir = getpwuid(getuid())->pw_dir;
-		if ( chdir(homedir)==0 ) {
+		if ( chdir(getenv("HOME"))==0 ) {
 			mkdir("tinyTerm", 0755);
 			chdir("tinyTerm");
 		}
