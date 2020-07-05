@@ -17,6 +17,7 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 	32-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2.exe">tinyTerm2.exe</a><br/>
 	64-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2_x64.exe">tinyTerm2_x64.exe</a><br/>
 	WinXP: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2_xp.exe">tinyTerm2_xp.exe</a></h4>
+	MacOS: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2.pkg">tinyTerm2.pkg</a></h4>
 		<h4>License: <a href="https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE">GPL 3.0</a></h4>
 	    </td>
 	</tr>
