@@ -13,11 +13,11 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 	    <td>
 		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm2">1.2.1</a></h4>
 		<h4>Appx package:<br/><a href="https://www.microsoft.com/store/apps/9NXGN9LJTL05">Microsoft Store</a></h4>
+		<h4>MacOS package:<br/><a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2.pkg">tinyTerm2.pkg</a></h4>
 		<h4>Portable version:<br/>
 	32-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2.exe">tinyTerm2.exe</a><br/>
 	64-bit: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2_x64.exe">tinyTerm2_x64.exe</a><br/>
 	WinXP: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2_xp.exe">tinyTerm2_xp.exe</a></h4>
-	MacOS: <a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.1/tinyTerm2.pkg">tinyTerm2.pkg</a></h4>
 		<h4>License: <a href="https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE">GPL 3.0</a></h4>
 	    </td>
 	</tr>
