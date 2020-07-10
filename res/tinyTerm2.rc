@@ -1,8 +1,8 @@
 #pragma code_page(65001)
 
 1 VERSIONINFO
-FILEVERSION 1,2,1,0
-PRODUCTVERSION 1,2,1,0
+FILEVERSION 1,2,2,0
+PRODUCTVERSION 1,2,2,0
 FILEOS 0x4
 FILETYPE 0x1
 {
@@ -13,7 +13,7 @@ BLOCK "StringFileInfo"
 		VALUE "FileDescription", "tiny Terminal emulator 2"
 		VALUE "LegalCopyright", "©2018-2020 Yongchao Fan"
 		VALUE "ProductName", "tinyTerm2"
-		VALUE "ProductVersion", "1.2.1.0"
+		VALUE "ProductVersion", "1.2.2.0"
 	}
 }
 
