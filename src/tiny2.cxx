@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 26426 2020-07-04 10:05:10 $"
+// "$Id: tiny2.cxx 26369 2020-07-10 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -17,7 +17,7 @@
 //     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 
-const char ABOUT_TERM[]="\r\n\
+const char ABOUT_TERM2[]="\r\n\
 \ttinyTerm2 is a simple, small and scriptable terminal emulator,\r\n\n\
 \ta serial/telnet/ssh/sftp/netconf client with unique features:\r\n\n\n\
 \t    * cross platform, Windows, macOS and Linux\r\n\n\
@@ -28,6 +28,7 @@ const char ABOUT_TERM[]="\r\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
 \tVerision 1.2.2, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+const char TINYTERM2[]="\r\n\033[32mtinyTerm2> \033[37m";
 
 #include <stdio.h>
 #include <string.h>
@@ -66,7 +67,6 @@ void httpd_init();
 void httpd_exit();
 
 void tab_cb(Fl_Widget *w);
-void localedit_cb(Fl_Widget *w, void *data);
 void menu_cb(Fl_Widget *w, void *data);
 void conn_menu_cb(Fl_Widget *w, void *data);
 
@@ -83,8 +83,7 @@ int termcols = 80;
 int termrows = 25;
 int wnd_w = 800;
 int wnd_h = 600;
-int buffsize = 4096;
-int localedit = false;
+int buffsize = 8192;
 int sendtoall = false;
 int keepalive = 0;
 
@@ -107,7 +106,7 @@ const char *file_chooser(const char *title, const char *filter, int type)
 void about_cb(Fl_Widget *w, void *data)
 {
 	char buf[4096];
-	sprintf(buf, ABOUT_TERM, httport);
+	sprintf(buf, ABOUT_TERM2, httport);
 	pTerm->disp(buf);
 }
 const char *kb_gets(const char *prompt, int echo)
@@ -133,8 +132,8 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	}
 	if ( data==NULL ) {//disconnected
-		if ( localedit )
-			term->disp("\r\n\033[32mtinyTerm2> \033[37m");
+		if ( pCmd->visible() )
+			term->disp(TINYTERM2);
 	}
 	if ( pTabs!=NULL ) Fl::awake( pTabs );
 }
@@ -542,11 +541,10 @@ void cmd_cb(Fl_Widget *o, void *p)
 }
 void localedit_cb(Fl_Widget *w, void *data)
 {
-	localedit = !localedit;
-	if ( !localedit ) {
-		pCmd->resize(0, 0, 1, 1);
-		pTerm->take_focus();
-	}
+	if ( pCmd->visible() )
+		pCmd->hide();
+	else
+		pCmd->show();
 	pTerm->redraw();
 }
 void sendall_cb(Fl_Widget *w, void *data)
@@ -557,25 +555,26 @@ void sendall_cb(Fl_Widget *w, void *data)
 }
 int move_editor(int x, int y, int w, int h)
 {
-	if ( localedit ) {
+	if ( pCmd->visible() ) {
 		pCmd->resize(x, y, w, h);
 		pCmd->take_focus();
+		return true;
 	}
-	return localedit;
+	return false;
 }
 
 /*******************************************************************************
 * menu call back functions                                                     *
 *******************************************************************************/
-void conn_menu_cb(Fl_Widget *w, void *data)
-{
-	const char *host = pMenuBar->text();
-	term_connect(host);
-}
-void menu_add_script(const char *fname)
+void script_menu_add(const char *fname)
 {
 	pMenuBar->insert(pMenuBar->find_index("Options")-1,
-					fl_filename_name(fname), 0, script_cb, strdup(fname));
+						fl_filename_name(fname), 0, 
+						script_cb, strdup(fname));
+}
+void conn_menu_cb(Fl_Widget *w, void *data)
+{
+	term_connect(pMenuBar->text());
 }
 void menu_cb(Fl_Widget *w, void *data)
 {
@@ -605,7 +604,7 @@ void menu_cb(Fl_Widget *w, void *data)
 		const char *fname = file_chooser("script:", "All\t*.*", CHOOSE_FILE);
 		if ( fname!=NULL ) {
 			script_open(fname);
-			menu_add_script(fname);
+			script_menu_add(fname);
 			char cmd[256]="!script ";
 			strncpy(cmd+8, fname, 248);
 			cmd[255] = 0;
@@ -711,16 +710,16 @@ void load_dict()
 			line[strcspn(line, "\n")] = 0;
 			if ( *line=='~' ) {
 				char name[256] = "Options/";
-				if ( strncmp(line+1, "FontFace", 8)==0 ) {
+				if ( strncmp(line+1, "FontFace ", 9)==0 ) {
 					strncpy(fontname, line+10, 255);
 				}
-				else if ( strncmp(line+1, "FontSize", 8)==0 ) {
+				else if ( strncmp(line+1, "FontSize ", 9)==0 ) {
 					fontsize = atoi(line+10);
 				}
 				else if ( strncmp(line+1, "WndSize ", 8)==0 ) {
 					sscanf(line+9, "%dx%d", &wnd_w, &wnd_h);
 				}
-				else if ( strncmp(line+1, "BuffSize", 8)==0 ) {
+				else if ( strncmp(line+1, "BuffSize ", 9)==0 ) {
 					buffsize = atoi(line+10);
 					strcpy(name+8, "Buffer Size/");
 					strcat(name, line+10);
@@ -728,7 +727,7 @@ void load_dict()
 					if ( menu!=NULL ) menu->setonly();
 				}
 				else if ( strcmp(line+1, "LocalEdit")==0 ) {
-					localedit_cb(NULL, NULL);
+					pCmd->show();
 					strcpy(name+8, "Local &Edit");
 					Fl_Menu_Item *menu=(Fl_Menu_Item *)pMenuBar->find_item(name);
 					if ( menu!=NULL ) menu->set();
@@ -746,8 +745,11 @@ void load_dict()
 												line+1, 0, conn_menu_cb);
 						pHostname->add(strchr(line+1, ' ')+1);
 					}
-					if (strncmp(line+1, "script ", 7)==0 ) {
-						menu_add_script(line+8);
+					else if (strncmp(line+1, "script ", 7)==0 ) {
+						script_menu_add(line+8);
+					}
+					else if ( strncmp(line+1, "Boot ", 5)==0 ) {
+						script_open(line+6);
 					}
 				}
 			}
@@ -766,8 +768,8 @@ void save_dict()
 		fprintf(fp, "~WndSize %dx%d\n", pWindow->w(), pWindow->h());
 		fprintf(fp, "~FontFace %s\n", Fl::get_font_name(fontnum, &t));
 		fprintf(fp, "~FontSize %d\n", fontsize);
-		if ( localedit ) fprintf(fp, "~LocalEdit\n");
-		if ( buffsize!=4096 ) fprintf(fp, "~BuffSize %d\n", buffsize);
+		if ( pCmd->visible() ) fprintf(fp, "~LocalEdit\n");
+		if ( buffsize!=8192 ) fprintf(fp, "~BuffSize %d\n", buffsize);
 
 		const char *p = pCmd->first();
 		while ( p!=NULL ) {
@@ -792,13 +794,13 @@ int main(int argc, char **argv)
 								pWindow->h()-MENUHEIGHT, "term");
 		pTerm->callback( term_cb );
 		pCmd = new Fl_Browser_Input( 0, pWindow->h()-1, 1, 1, "");
-//		pCmd->set_browser(browser);
 		pCmd->box(FL_FLAT_BOX);
 		pCmd->color(FL_BLACK);
 		pCmd->textcolor(FL_YELLOW);
 		pCmd->cursor_color(FL_WHITE);
 		pCmd->when(FL_WHEN_ENTER_KEY_ALWAYS);
 		pCmd->callback(cmd_cb);
+		pCmd->hide();
 	}
 	pWindow->callback(close_cb);
 	pWindow->resizable(pTerm);
@@ -821,12 +823,8 @@ int main(int argc, char **argv)
 	pWindow->size(wnd_w, wnd_h);
 	pWindow->show();
 	
-	if ( localedit ) {
-		pTerm->disp("\n\033[32mtinyTerm2> \033[37m");
-		struct stat sb;
-		if ( fl_stat("tinyTerm.html", &sb)!=-1 ) 
-			script_open("tinyTerm.html");
-	}
+	if ( pCmd->visible() )
+		pTerm->disp(TINYTERM2);
 	else
 		conn_dialog(NULL, NULL);
 
