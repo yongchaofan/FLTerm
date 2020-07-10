@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 28380 2020-06-30 12:15:10 $"
+// "$Id: Hosts.cxx 28436 2020-06-30 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -51,14 +51,14 @@ void HOST::print(const char *fmt, ...)
 	do_callback("\033[37m",5);
 }
 /**********************************comHost******************************/
-const char SOH = 0x01;
 comHost::comHost(const char *address)
 {
-	*portname = 0;
 #ifdef WIN32
 	strcpy(portname, "\\\\.\\");
+#else
+	strcpy(portname, "/dev/");
 #endif //WIN32
-	strncat(portname, address, 63);
+	strncat(portname, address, 58);
 	portname[63] = 0;
 	bXmodem = false;
 
@@ -94,7 +94,7 @@ void comHost::block_crc()
  }
 void comHost::xmodem_block()
 {
-	xmodem_buf[0] = SOH;
+	xmodem_buf[0] = 0x01; //SOH
 	xmodem_buf[1] = ++xmodem_blk;
 	xmodem_buf[2] = 255-xmodem_blk;
 	int cnt = fread( xmodem_buf+3, 1, 128, xmodem_fp );
@@ -495,11 +495,11 @@ int pipeHost::read()
 				break;
 		}
 		status( HOST_IDLE );
-		do_callback( "", -1 );
 	}
 	else
-		do_callback( "unsupported command", -1 );
-
+		do_callback( "\033[31m\tunsupported!", 18);
+	
+	do_callback( "", -1 );
 	CloseHandle( hStdioRead );
 	CloseHandle( hStdioWrite );
 	reader.detach();
@@ -561,7 +561,8 @@ int pipeHost::read()
 		dup2(pty_slave, 0);
 		dup2(pty_slave, 1);
 		dup2(pty_slave, 2);
-		execl( cmdline, cmdline, (char *)NULL );
+		execl(cmdline, cmdline, (char *)NULL);
+		printf("\033[31m\terror executing shell command!");
 		return false;
 	}
 	else {

@@ -60,6 +60,7 @@ protected:
 	int ssh_authentication();
 	void write_keys(const char *buf, int len);
 
+	void print_total(time_t start, long long total);
 	int scp_read_one(const char *rpath, const char *lpath);
 	int scp_write_one(const char *lpath, const char *rpath);
 	TUNNEL *tun_add(int tun_sock, LIBSSH2_CHANNEL *tun_channel,

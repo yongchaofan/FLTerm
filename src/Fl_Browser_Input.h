@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.h 980 2020-06-30 13:48:10 $"
+// "$Id: Fl_Browser_Input.h 920 2020-07-09 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -18,13 +18,11 @@
 #include <FL/Fl.H>
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Browser.H>
-#include <FL/Fl_Menu_Window.H>
 
 #ifndef _BROWSER_INPUT_H_
 #define _BROWSER_INPUT_H_
 class Fl_Browser_Input: public Fl_Input {
 private:
-	Fl_Menu_Window *browserWin;
 	Fl_Browser *browser;
 	int id;
 public:

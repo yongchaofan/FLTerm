@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 26440 2020-06-30 10:05:10 $"
+// "$Id: tiny2.cxx 26426 2020-07-04 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -27,8 +27,7 @@ const char ABOUT_TERM[]="\r\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tdownload: https://www.microsoft.com/store/apps/9PBX72DJMZT5\r\n\n\
-\tVerision 1.2.1, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.2, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 
 #include <stdio.h>
 #include <string.h>
@@ -246,66 +245,65 @@ int term_act(const char *host)
 Fl_Window *pConnectDlg;
 Fl_Choice *pProtocol;
 Fl_Input_Choice *pPort;
-Fl_Input_Choice *pHostname, *pSettings;
+Fl_Input_Choice *pHostname;
 Fl_Button *pConnect;
 Fl_Button *pCancel;
 
+const char *ports[]=
 #ifdef WIN32
-const char *ports[]={"COM1", "23", "22", "22", "830", ""};
+	{"COM1", "23", "22", "22", "830", "ipconfig"};
 #else
-const char *ports[]={"/dev/tty.usbserial", "23", "22", "22", "830", ""};
-#endif
+	#ifdef __APPLE__
+		{"tty.usbserial", "23", "22", "22", "830", "/bin/zsh"};
+	#else //Linux
+		{"ttyS0", "23", "22", "22", "830", "/bin/bash"};
+	#endif //__APPLE__
+#endif //WIN32
 void protocol_cb(Fl_Widget *w)
 {
 	static int proto = 2;
-	if ( proto==0 ) pSettings->menubutton()->clear();
+	if ( proto==0 ) pHostname->menubutton()->clear();
 	proto = pProtocol->value();
 	pPort->value(ports[proto]);
+	pPort->label(proto==5?"Shell:":" Port:");
 	if ( proto==0 ) {
 		pHostname->menubutton()->clear();
-		pSettings->label("Settings:");
-		pSettings->add("9600,n,8,1");
-		pSettings->add("19200,n,8,1");
-		pSettings->add("38400,n,8,1");
-		pSettings->add("57600,n,8,1");
-		pSettings->add("115200,n,8,1");
-		pSettings->add("230400,n,8,1");
-		pSettings->value("9600,n,8,1");
-	}
-	if ( proto==5 ) {
-		pHostname->label("Command:");
-#ifdef WIN32
-		pHostname->value("ipconfig");
-#else
-		pHostname->value("/bin/sh");
-#endif
+		pHostname->label("Settings:");
+		pHostname->add("9600,n,8,1");
+		pHostname->add("19200,n,8,1");
+		pHostname->add("38400,n,8,1");
+		pHostname->add("57600,n,8,1");
+		pHostname->add("115200,n,8,1");
+		pHostname->add("230400,n,8,1");
+		pHostname->value("9600,n,8,1");
 	}
 	else {
-		pHostname->label("Host:");
-		pHostname->value("192.168.1.1");
+		pHostname->label("      Host:");
+		pHostname->value(proto==5?"":"192.168.1.1");
 	}
 }
 void connect_cb(Fl_Widget *w)
 {
 	char buf[256]="!";
 	int proto = pProtocol->value();
-	strcat(buf, pProtocol->mvalue()->label());
-	strcat(buf, " ");
-	if ( proto==0 ) {		//serial connection
+	if ( proto==5 ) {		//local shell
 		strcat(buf, pPort->value());
-		strcat(buf, ":");
-		strcat(buf, pSettings->value());
 	}
-	else if ( proto==5 ) {	//local shell
-		strncpy(buf+1, pHostname->value(), 128);
-		buf[128] = 0;
-	}
-	else {					//telnet/ssh/sftp/netconf
-		pHostname->add(pHostname->value());
-		strcat(buf, pHostname->value());
-		if ( strcmp(ports[proto],pPort->value())!=0 ) {
-			strcat(buf, ":");
+	else {
+		strcat(buf, pProtocol->mvalue()->label());
+		strcat(buf, " ");
+		if ( proto==0 ) {	//serial connection
 			strcat(buf, pPort->value());
+			strcat(buf, ":");
+			strcat(buf, pHostname->value());
+		}
+		else {				//telnet/ssh/sftp/netconf
+			pHostname->add(pHostname->value());
+			strcat(buf, pHostname->value());
+			if ( strcmp(ports[proto],pPort->value())!=0 ) {
+				strcat(buf, ":");
+				strcat(buf, pPort->value());
+			}
 		}
 	}
 	pConnectDlg->hide();
@@ -325,7 +323,6 @@ void connect_dialog_build()
 		pProtocol = new Fl_Choice(100,20,192,24, "Protocol:");
 		pPort = new Fl_Input_Choice(100,60,192,24, "Port:");
 		pHostname = new Fl_Input_Choice(100,100,192,24,"Host:");
-		pSettings = pHostname;
 		pConnect = new Fl_Button(200,160,80,24, "Connect");
 		pCancel = new Fl_Button(80,160,80,24, "Cancel");
 		pProtocol->textsize(16); pProtocol->labelsize(16);
@@ -476,15 +473,16 @@ void script_open( const char *fn )
 	sprintf(http_port, "%d", httport);
 	ShellExecuteA(NULL, "open", fn, http_port, NULL, SW_SHOW);
 #else
-	char cmd[4096];
-	sprintf(cmd, "%s %d", fn, httport);
+	char cmd[4096]="open ";
+	strcat(cmd, fn);
 	system(cmd);
 #endif
 }
 void script_cb(Fl_Widget *w, void *data)
 {
-	const char *script = pMenuBar->text();
-	script_open( script );
+	const Fl_Menu_Item *menu = pMenuBar->menu();
+	const Fl_Menu_Item script = menu[pMenuBar->value()];
+	script_open((char *)script.user_data());
 }
 
 /*******************************************************************************
@@ -503,7 +501,7 @@ void cmd_send(Fl_Term *t, const char *cmd)
 									strdup(cmd+4), (char **)NULL);
 			scp_thread.detach();
 		}
-		else if ( strncmp(cmd, "!script ",8)==0 )
+		else if ( strncmp(cmd, "!script ", 8)==0 )
 			script_open(cmd+8);
 		else
 			t->command(cmd, NULL);
@@ -532,7 +530,7 @@ void cmd_cb(Fl_Widget *o, void *p)
 	}
 
 	const char *cmd = pCmd->value();		//normal callback
-	pCmd->add( cmd );
+	pCmd->add(cmd);
 	if ( !sendtoall || pTabs==NULL ) {
 		cmd_send(pTerm, cmd);
 	}
@@ -574,6 +572,11 @@ void conn_menu_cb(Fl_Widget *w, void *data)
 	const char *host = pMenuBar->text();
 	term_connect(host);
 }
+void menu_add_script(const char *fname)
+{
+	pMenuBar->insert(pMenuBar->find_index("Options")-1,
+					fl_filename_name(fname), 0, script_cb, strdup(fname));
+}
 void menu_cb(Fl_Widget *w, void *data)
 {
 	const char *menutext = pMenuBar->text();
@@ -601,10 +604,12 @@ void menu_cb(Fl_Widget *w, void *data)
 	else if ( strcmp(menutext, "&Run...")==0 ) {
 		const char *fname = file_chooser("script:", "All\t*.*", CHOOSE_FILE);
 		if ( fname!=NULL ) {
-			char relative_name[FL_PATH_MAX+8]="!script ";
-			fl_filename_relative(relative_name+8, FL_PATH_MAX, fname);
-			pCmd->add(relative_name);
-			script_open(relative_name+8);
+			script_open(fname);
+			menu_add_script(fname);
+			char cmd[256]="!script ";
+			strncpy(cmd+8, fname, 248);
+			cmd[255] = 0;
+			pCmd->add(cmd);
 		}
 	}
 	else if ( strcmp(menutext, "&Pause")==0 ) {
@@ -684,43 +689,26 @@ Fl_Menu_Item menubar[] = {
 *  dictionary functions, load at start, save at end of program                 *
 *******************************************************************************/
 // load_dict set working directory and load scripts to menu
-void load_dict(const char *fn)			
-{
-	FILE *fp = fopen(fn, "r");
-	if ( fp==NULL ) {// current directory doesn't have .hist
-#ifdef WIN32		// try home directory
-		if ( _chdir(getenv("USERPROFILE"))==0 ) {
-			_mkdir("Documents\\tinyTerm");
-			_chdir("Documents\\tinyTerm");
-		}
+#ifdef WIN32
+const char *HOMEDIR = "USERPROFILE";
 #else
-		if ( chdir(getenv("HOME"))==0 ) {
-			mkdir("tinyTerm", 0755);
-			chdir("tinyTerm");
-		}
+const char *HOMEDIR = "HOME";
 #endif
-		fp = fopen(fn, "r");
+const char *DICTFILE = "tinyTerm.hist";
+void load_dict()			
+{
+	FILE *fp = fopen(DICTFILE, "r");
+	if ( fp==NULL ) {// current directory doesn't have .hist
+		if ( fl_chdir(getenv(HOMEDIR))==0 ) {
+			fl_mkdir(".tinyTerm", 0755);
+			fl_chdir(".tinyTerm");
+			fp = fopen(DICTFILE, "r");
+		}
 	}
 	if ( fp!=NULL ) {
 		char line[256];
 		while ( fgets(line, 256, fp)!=NULL ) {
 			line[strcspn(line, "\n")] = 0;
-			pCmd->add(line);
-			if ( *line=='!' ) {
-				if (strncmp(line+1, "ssh ",   4)==0 ||
-					strncmp(line+1, "sftp ",  5)==0 ||
-					strncmp(line+1, "telnet ",7)==0 ||
-					strncmp(line+1, "serial ",7)==0 ||
-					strncmp(line+1, "netconf ",8)==0 ) {
-					pMenuBar->insert(pMenuBar->find_index("Script")-1,
-													line+1, 0, conn_menu_cb);
-					pHostname->add( strchr(line+1, ' ')+1 );
-				}
-				if (strncmp(line+1, "script ", 7)==0 ) {
-					pMenuBar->insert(pMenuBar->find_index("Options")-1,
-										line+8, 0, script_cb);
-				}
-			}
 			if ( *line=='~' ) {
 				char name[256] = "Options/";
 				if ( strncmp(line+1, "FontFace", 8)==0 ) {
@@ -746,6 +734,23 @@ void load_dict(const char *fn)
 					if ( menu!=NULL ) menu->set();
 				}
 			}
+			else {
+				pCmd->add(line);
+				if ( *line=='!' ) {
+					if (strncmp(line+1, "ssh ",   4)==0 ||
+						strncmp(line+1, "sftp ",  5)==0 ||
+						strncmp(line+1, "telnet ",7)==0 ||
+						strncmp(line+1, "serial ",7)==0 ||
+						strncmp(line+1, "netconf ",8)==0 ) {
+						pMenuBar->insert(pMenuBar->find_index("Script")-1,
+												line+1, 0, conn_menu_cb);
+						pHostname->add(strchr(line+1, ' ')+1);
+					}
+					if (strncmp(line+1, "script ", 7)==0 ) {
+						menu_add_script(line+8);
+					}
+				}
+			}
 		}
 		fclose(fp);
 	}
@@ -753,18 +758,16 @@ void load_dict(const char *fn)
 	pMenuLogg = (Fl_Menu_Item *)pMenuBar->find_item("Term/&Logging...");
 	pMenuEcho = (Fl_Menu_Item *)pMenuBar->find_item("Term/local &Echo");
 }
-void save_dict(const char *fn)
+void save_dict()
 {
-	FILE *fp = fopen(fn, "w");
+	FILE *fp = fopen(DICTFILE, "w");
 	if ( fp!=NULL ) {
 		int t;
 		fprintf(fp, "~WndSize %dx%d\n", pWindow->w(), pWindow->h());
 		fprintf(fp, "~FontFace %s\n", Fl::get_font_name(fontnum, &t));
 		fprintf(fp, "~FontSize %d\n", fontsize);
-		if ( localedit )
-			fprintf(fp, "~LocalEdit\n");
-		if ( buffsize!=4096 )
-			fprintf(fp, "~BuffSize %d\n", buffsize);
+		if ( localedit ) fprintf(fp, "~LocalEdit\n");
+		if ( buffsize!=4096 ) fprintf(fp, "~BuffSize %d\n", buffsize);
 
 		const char *p = pCmd->first();
 		while ( p!=NULL ) {
@@ -789,6 +792,7 @@ int main(int argc, char **argv)
 								pWindow->h()-MENUHEIGHT, "term");
 		pTerm->callback( term_cb );
 		pCmd = new Fl_Browser_Input( 0, pWindow->h()-1, 1, 1, "");
+//		pCmd->set_browser(browser);
 		pCmd->box(FL_FLAT_BOX);
 		pCmd->color(FL_BLACK);
 		pCmd->textcolor(FL_YELLOW);
@@ -807,7 +811,7 @@ int main(int argc, char **argv)
 #ifdef WIN32
 	pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
-	load_dict("tinyTerm.hist");
+	load_dict();
 	font_dialog_init();
 	pTerm->buffsize(buffsize);
 	pTerm->textfont(fontnum);
@@ -830,7 +834,7 @@ int main(int argc, char **argv)
 		Fl_Widget *pt = (Fl_Widget *)Fl::thread_message();
 		if ( pt!=NULL )pt->redraw();
 	}
-	save_dict("tinyTerm.hist");
+	save_dict();
 	libssh2_exit();
 	httpd_exit();
 	return 0;
