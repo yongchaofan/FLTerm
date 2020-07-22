@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4900 2020-06-30 13:08:10 $"
+// "$Id: Fl_Term.h 4878 2020-07-18 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -18,6 +18,7 @@
 #include <FL/fl_draw.H>
 #include "host.h"
 #include <atomic>
+#include <mutex>
 
 #ifndef _FL_TERM_H_
 #define _FL_TERM_H_
@@ -44,7 +45,8 @@ class Fl_Term : public Fl_Widget {
 	int font_height;	//current font height in pixels
 	int font_size;		//current font weight
 	int font_face;		//current font face
-	std::atomic<bool> redraw_complete;
+	std::atomic<bool> redraw_pending;
+	std::mutex append_mtx;
 
 	bool bEscape;		//escape sequence processing mode
 	int ESC_idx;		//current index for ESC_code
@@ -103,21 +105,20 @@ public:
 	void resize(int X, int Y, int W, int H);
 	void textfont(Fl_Font fontface);
 	void textsize(int fontsize);
-	void buffsize(int lines);
+	bool pending(){ return redraw_pending; }
+	void pending(bool p) { redraw_pending=p; }
 	const char *title() { return sTitle; }
 
 	int logg() { return fpLogFile!=NULL; }
 	int echo() { return bEcho; }
-	int cols() { return size_x; }
-	int rows() { return size_y; }
 	int sizeX() { return size_x*font_width; }
-	int sizeY() { return size_y*font_height; }
+	int sizeY() { return size_y*font_height+font_height/2; }
 	void echo(int e) { bEcho = e; }
 	void logg(const char *fn);
+	void save(const char *fn);
 	void srch(const char *word);
 
-	int connected() { return host!=NULL ? host->live() : false; }
-	void connect(const char *hostname);
+	bool live() { return host!=NULL ? host->live() : false; }
 	void host_cb(const char *buf, int len);
 	char *gets(const char *prompt, int echo);
 	void disconn();
@@ -129,23 +130,19 @@ public:
 	}
 
 	void learn_prompt();
-	char *mark_prompt();
+	int  mark_prompt();
 	int  waitfor_prompt();
 
 	void disp(const char *buf);
 	void send(const char *buf);
-	int recv(char **preply);
 	int command(const char *cmd, char **preply);
+	int connect(HOST *newhost, char **preply);
 
-	void scripter(char *cmds);
-	void run_script(char *script);
-	void pause_script();
-	void quit_script();
-
-	void term_pwd(char *dst);
-	int scp(char *cmd, char **preply);
-	int tun(char *cmd, char **preply);
 	void copier(char *files);
-	int xmodem(const char *fn);
+	void scripter(char *cmds);
+	void run_script(const char *script);
+	bool script_running() { return bScriptRun; }
+	bool pause_script();
+	void quit_script();
 };
 #endif

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 39430 2020-06-30 10:08:20 $"
+// "$Id: Fl_Term.cxx 36836 2020-07-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -14,17 +14,17 @@
 //
 //     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
-#include "ssh2.h"
+#include <thread>
 #include "Fl_Term.h"
 #include <FL/fl_ask.H>
-#include <FL/Fl_Menu.H>
 #include <FL/filename.H>// needed for fl_decode_uri
-#include <thread>
 using namespace std;
 
-int move_editor(int x, int y, int w, int h);//defined in tiny2.cxx
+//defined in tiny2.cxx
+void move_editor(int x, int y, int w, int h);
 #ifndef WIN32 
-#define Sleep(x) usleep((x)*1000);
+#include <unistd.h>		// needed for usleep
+#define Sleep(x) usleep((x)*1000)
 #endif
 
 void host_cb0(void *data, const char *buf, int len)
@@ -63,13 +63,6 @@ void Fl_Term::host_cb( const char *buf, int len )
 #else
 #define FL_CMD FL_ALT
 #endif
-Fl_Menu_Item rclick_menu[]={
-	{"&Copy", 		FL_CMD+'c'},
-	{"&Paste",		FL_CMD+'v'},
-	{"select &All", FL_CMD+'a'},
-	{"paste &Selection",0},
-	{0}
-};
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bEcho = false;
@@ -85,11 +78,9 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	fpLogFile = NULL;
 
 	line = NULL;
-	line_size = 0;
 	buff = attr = NULL;
-	buff_size = 0;
-	redraw_complete = false;
-	buffsize(8192);
+	clear();
+
 	textfont(FL_COURIER);
 	textsize(16);
 	size_x = w()/font_width;
@@ -97,8 +88,6 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	roll_top = 0;
 	roll_bot = size_y-1;
 	color(FL_BLACK);
-	clear();
-	for ( int i=0; i<4; i++ ) rclick_menu[i].labelsize(16);
 }
 Fl_Term::~Fl_Term()
 {
@@ -110,6 +99,11 @@ Fl_Term::~Fl_Term()
 void Fl_Term::clear()
 {
 	Fl::lock();
+	line_size = 4096;
+	buff_size = 4096*64;
+	buff = (char *)realloc(buff, buff_size);
+	attr = (char *)realloc(attr, buff_size);
+	line = (int * )realloc(line, line_size*sizeof(int));
 	if ( line!=NULL ) memset(line, 0, line_size*sizeof(int) );
 	if ( buff!=NULL ) memset(buff, 0, buff_size);
 	if ( attr!=NULL ) memset(attr, 0, buff_size);
@@ -130,7 +124,7 @@ void Fl_Term::clear()
 
 	xmlIndent=0;
 	xmlTagIsOpen=true;
-
+	redraw_pending=true;
 	Fl::unlock();
 }
 void Fl_Term::resize(int X, int Y, int W, int H)
@@ -165,8 +159,8 @@ const unsigned int VT_attr[] = {
 	FL_BLUE, FL_MAGENTA, FL_CYAN, FL_WHITE
 };
 void Fl_Term::draw()
-{
-	redraw_complete = true;
+{	
+	pending(false);
 	fl_color(color());
 	fl_rectf(x(),y(),w(),h());
 	fl_font(font_face, font_size);
@@ -179,8 +173,7 @@ void Fl_Term::draw()
 	}
 
 	int ly = screen_y;
-	if ( ly<0 ) ly=0;
-	int dx, dy = y();
+	int dx, dy=y();
 	for ( int i=0; i<size_y; i++ ) {
 		dx = x()+1;
 		dy += font_height;
@@ -213,27 +206,17 @@ void Fl_Term::draw()
 			j=n;
 		}
 	}
-	dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
-	dy = y()+(cursor_y-screen_y)*font_height;
 	if ( bCursor && active() ) {
-		bool drawCursor = false;
+		dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
+		dy = y()+(cursor_y-screen_y)*font_height;
+		fl_color(FL_WHITE);		//draw a white bar as cursor
+		fl_rectf(dx+1, dy+4, 2, font_height-1);
+		
+		if ( bAlterScreen) dx=-1;
 		if ( host!=NULL ) {
-			if ( host->status()==HOST_AUTHENTICATING ) {
-				drawCursor = true;
-			}
+			if ( host->status()==HOST_AUTHENTICATING ) dx=-1;
 		}
-		if ( bAlterScreen ) {
-			drawCursor = true;
-		}
-		if ( drawCursor==false ) {
-			drawCursor = !move_editor(dx, dy+4, w()-dx, font_height-1);
-		}
-		if ( drawCursor ) {
-			move_editor(0, 0, 1, 1);
-			take_focus();
-			fl_color(FL_WHITE);		//draw a white bar as cursor
-			fl_rectf(dx+1, dy+font_height, 8, 4);
-		}
+		move_editor(dx, dy+4, w()-dx, font_height);
 	}
 	if ( bScrollbar) {
 		fl_color(FL_DARK3);			//draw scrollbar
@@ -246,7 +229,12 @@ void Fl_Term::draw()
 int Fl_Term::handle(int e)
 {
 	switch (e) {
-		case FL_FOCUS: redraw(); return 1;
+		case FL_LEAVE: 	//copy only when mouse leaves the term
+			if ( sel_left<sel_right )
+				Fl::copy(buff+sel_left, sel_right-sel_left, 1);
+			//fall through
+		case FL_ENTER: return 1;
+		case FL_FOCUS: 	redraw(); return 1;
 		case FL_MOUSEWHEEL:
 			if ( !bAlterScreen ) {
 				screen_y += Fl::event_dy();
@@ -324,33 +312,14 @@ int Fl_Term::handle(int e)
 				if ( sel_left>sel_right ) {
 					int t=sel_left; sel_left=sel_right; sel_right=t;
 				}
-				if ( sel_left==sel_right ) redraw();//clear selection
+				if ( sel_left==sel_right ) //clear selection
+					redraw();
 				break;
-			case FL_MIDDLE_MOUSE:	//middle click to paste from selection
-				write(buff+sel_left, sel_right-sel_left);
-				break;
-			case FL_RIGHT_MOUSE: {	//right click for context menu
-					int ex = Fl::event_x(), ey=Fl::event_y();
-					const Fl_Menu_Item *m = rclick_menu->popup( ex, ey );
-					if ( m ) {
-						const char *sel = m->label();
-						switch ( *sel ) {
-						case '&':	//Copy or Paste
-							if ( sel[1]=='P' )
-								Fl::paste( *this, 1 );
-							else if ( sel_left<sel_right )
-								Fl::copy( buff+sel_left, sel_right-sel_left, 1);
-							break;
-						case 's':	//"select All"
-							sel_left = 0; sel_right = cursor_x; redraw();
-							break;
-						case 'p':	//"paste Selection"
-							if ( sel_left<sel_right )
-								write(buff+sel_left, sel_right-sel_left);
-							break;
-						}
-					}
-				}
+			case FL_RIGHT_MOUSE:	//middle click to paste from selection
+				if ( sel_left<sel_right ) 
+					write(buff+sel_left, sel_right-sel_left);
+				else 
+					Fl::paste(*this, 1);
 				break;
 			}
 			return 1;
@@ -359,10 +328,8 @@ int Fl_Term::handle(int e)
 		case FL_DND_DRAG:
 		case FL_DND_LEAVE:  return 1;
 		case FL_PASTE:
-			if ( host!=NULL )
-				if ( host->type()==HOST_CONF ) bDND = false;
 			if ( bDND ) {		//drop text to run as script
-				run_script(strdup(Fl::event_text()));
+				run_script(Fl::event_text());
 			}
 			else {				//paste or netconf
 				if ( bBracket ) write( "\033[200~", 6 );	//bracketed paste
@@ -373,99 +340,49 @@ int Fl_Term::handle(int e)
 			return 1;
 		case FL_SHORTCUT:
 		case FL_KEYDOWN:
-			if ( Fl::event_state(FL_CMD) ) {
-				switch ( Fl::event_key() )
-				{
-				case 'a': sel_left = 0; sel_right = cursor_x; redraw();
-						  return 1;
-				case 'c': if ( sel_left<sel_right )
-							Fl::copy( buff+sel_left, sel_right-sel_left, 1);
-						  return 1;
-				case 'b': if ( sel_left<sel_right )
-							write(buff+sel_left, sel_right-sel_left);
-						  return 1;
-				case 'v': Fl::paste( *this, 1 ); return 1;
-				}
-			}
-			else {
+			if ( Fl::event_state(FL_CMD) ) break;	//don't handle CMD+key
 #ifdef __APPLE__
-				int del;
-				if ( Fl::compose(del) ) {
-					int y = (cursor_y-screen_y+1)*font_height;
-					int x = (cursor_x-line[cursor_y])*font_width;
-					Fl::insertion_point_location(x,y,font_height);
-					for ( int i=0; i<del; i++ ) write("\177",1);
-				}
-#endif
-				int key = Fl::event_key();
-				switch (key) {
-				case FL_Page_Up:
-					if ( !bAlterScreen ) {
-						bScrollbar = true;
-						screen_y -= size_y-1;
-						if ( screen_y<0 ) screen_y = 0;
-						redraw();
-					}
-					break;
-				case FL_Page_Down:
-					if ( !bAlterScreen ) {
-						screen_y += size_y-1;
-						if ( screen_y>cursor_y-size_y ) bScrollbar = false;
-						if ( screen_y>cursor_y ) screen_y = cursor_y;
-						redraw();
-					}
-					break;
-				case FL_Up:	  write(bAppCursor?"\033OA":"\033[A",3); break;
-				case FL_Down: write(bAppCursor?"\033OB":"\033[B",3); break;
-				case FL_Right:write(bAppCursor?"\033OC":"\033[C",3); break;
-				case FL_Left: write(bAppCursor?"\033OD":"\033[D",3); break;
-				case FL_BackSpace: write("\177", 1); break;
-				case FL_Pause: pause_script(); break;
-				case FL_Enter:
-				default:
-					write(Fl::event_text(), Fl::event_length());
-					if ( screen_y < cursor_y-size_y+1 )
-						screen_y = cursor_y-size_y+1;
-				}
-				return 1;
+			int del;
+			if ( Fl::compose(del) ) {
+				int y = (cursor_y-screen_y+1)*font_height;
+				int x = (cursor_x-line[cursor_y])*font_width;
+				Fl::insertion_point_location(x,y,font_height);
+				for ( int i=0; i<del; i++ ) write("\177",1);
 			}
+#endif
+			int key = Fl::event_key();
+			switch (key) {
+			case FL_Page_Up:
+				if ( !bAlterScreen ) {
+					bScrollbar = true;
+					screen_y -= size_y-1;
+					if ( screen_y<0 ) screen_y = 0;
+					redraw();
+				}
+				break;
+			case FL_Page_Down:
+				if ( !bAlterScreen ) {
+					screen_y += size_y-1;
+					if ( screen_y>cursor_y-size_y ) bScrollbar = false;
+					if ( screen_y>cursor_y ) screen_y = cursor_y;
+					redraw();
+				}
+				break;
+			case FL_Up:	  write(bAppCursor?"\033OA":"\033[A",3); break;
+			case FL_Down: write(bAppCursor?"\033OB":"\033[B",3); break;
+			case FL_Right:write(bAppCursor?"\033OC":"\033[C",3); break;
+			case FL_Left: write(bAppCursor?"\033OD":"\033[D",3); break;
+			case FL_BackSpace: write("\177", 1); break;
+			case FL_Pause: pause_script(); break;
+			case FL_Enter:
+			default:
+				write(Fl::event_text(), Fl::event_length());
+				if ( screen_y < cursor_y-size_y+1 )
+					screen_y = cursor_y-size_y+1;
+			}
+			return 1;
 	}
 	return Fl_Widget::handle(e);
-}
-void Fl_Term::buffsize(int new_line_size)
-{
-	new_line_size += 512;
-	if ( new_line_size == line_size ) return;
-
-	int new_buff_size = new_line_size*64;
-	char *old_buff = buff;
-	char *old_attr = attr;
-	int *old_line = line;
-
-	Fl::lock();
-	buff = (char *)realloc(buff, new_buff_size);
-	attr = (char *)realloc(attr, new_buff_size);
-	line = (int * )realloc(line, new_line_size*sizeof(int));
-	if ( buff!=NULL && attr!=NULL && line!=NULL ) {
-		if ( new_line_size>line_size ) {
-			memset(line+line_size, 0, (new_line_size-line_size)*sizeof(int));
-			memset(buff+buff_size, 0, new_buff_size-buff_size);
-			memset(attr+buff_size, 0, new_buff_size-buff_size);
-			buff_size = new_buff_size;
-			line_size = new_line_size;
-		}
-		else {
-			buff_size = new_buff_size;
-			line_size = new_line_size;
-			clear();
-		}
-	}
-	else {//clear buffer if failed to double
-		if ( attr==NULL ) attr = old_attr;
-		if ( buff==NULL ) buff = old_buff;
-		if ( line==NULL ) line = old_line;
-	}
-	Fl::unlock();
 }
 void Fl_Term::next_line()
 {
@@ -473,20 +390,43 @@ void Fl_Term::next_line()
 	if ( screen_y==cursor_y-size_y ) screen_y++;
 	if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
 
-	if ( cursor_x>=buff_size-1024 || cursor_y==line_size-2 ) {
+	if ( cursor_x>buff_size-1024 || cursor_y>line_size-3 ) {
 		Fl::lock();
-		int i, len = line[1024];
-		recv0 -= len;
-		cursor_x -= len;
-		cursor_y -= 1024;
-		screen_y -= 1024;
-		if ( screen_y<0 ) screen_y = 0;
-		memmove(buff, buff+len, buff_size-len);
-		memset(buff+cursor_x, 0, buff_size-cursor_x);
-		memmove(attr, attr+len, buff_size-len);
-		memset(attr+cursor_x, 0, buff_size-cursor_x);
-		for ( i=0; i<cursor_y+2; i++ ) line[i] = line[i+1024]-len;
-		while ( i<line_size ) line[i++]=0;
+		if ( line_size<65536 ) {	//double buffer size till 64k lines
+			char *old_buff = buff;
+			char *old_attr = attr;
+			int *old_line = line;
+			buff = (char *)realloc(buff, buff_size*2);
+			attr = (char *)realloc(attr, buff_size*2);
+			line = (int  *)realloc(line, (line_size*2)*sizeof(int));
+			if ( buff!=NULL && attr!=NULL && line!=NULL ) {
+				memset(line+line_size, 0, line_size*sizeof(int));
+				memset(buff+buff_size, 0, buff_size);
+				memset(attr+buff_size, 0, buff_size);
+				buff_size*=2;
+				line_size*=2;
+			}
+			else {//clear buffer if failed to double
+				if ( attr==NULL ) attr = old_attr;
+				if ( buff==NULL ) buff = old_buff;
+				if ( line==NULL ) line = old_line;
+				clear();
+			}
+		}
+		else {						//erase half of buffer at 64k lines
+			int middle = line[32768];
+			for ( int i=32768; i<cursor_y+2; i++ ) line[i]-=middle;
+			memmove(line, line+32768, 32768*sizeof(int));
+			memset(line+32768, 0, 32768*sizeof(int));
+			screen_y-=32768; if ( screen_y<0 ) screen_y=0;
+			cursor_y-=32768;
+			cursor_x-=middle;
+			recv0-=middle; if ( recv0<0 ) recv0=0;
+			memmove(attr, attr+middle, line[cursor_y+1]);
+			memset(attr+line[cursor_y+1], 0, 65536*64-line[cursor_y+1]);
+			memmove(buff, buff+middle, line[cursor_y+1]);
+			memset(buff+line[cursor_y+1], 0, 65536*64-line[cursor_y+1]);
+		}
 		Fl::unlock();
 	}
 }
@@ -494,7 +434,8 @@ void Fl_Term::append( const char *newtext, int len )
 {
 	const unsigned char *p = (const unsigned char *)newtext;
 	const unsigned char *zz = p+len;
-
+	
+	append_mtx.lock();	//only one thread can append to buffer at a time
 	if ( fpLogFile!=NULL ) fwrite( newtext, 1, len, fpLogFile );
 	if ( bEscape ) p = vt100_Escape( p, zz-p );
 	while ( p < zz ) {
@@ -610,10 +551,8 @@ void Fl_Term::append( const char *newtext, int len )
 	if ( !bPrompt && cursor_x>iPrompt )
 		if (strncmp(sPrompt, buff+cursor_x-iPrompt, iPrompt)==0)
 			bPrompt = true;
-	if ( visible() && redraw_complete ) {
-		redraw_complete = false;
-		Fl::awake( this );
-	}
+	append_mtx.unlock();
+	pending(true);
 }
 void Fl_Term::buff_clear(int offset, int len)
 {
@@ -995,7 +934,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 			if ( ESC_code[ESC_idx-1]==';' ) {
 				if ( ESC_code[1]=='0' ) {
 					bTitle = true;
-					title_idx = 10;
+					title_idx = 0;
 				}
 				bEscape = false;
 			}
@@ -1029,12 +968,27 @@ void Fl_Term::logg(const char *fn)
 		disp("\r\n\033[32m***Log file closed***\033[37m\r\n");
 	}
 	else {
-		fpLogFile = fl_fopen( fn, "wb" );
+		fpLogFile = fl_fopen(fn, "wb");
 		if ( fpLogFile != NULL ) {
 			disp("\r\n\033[32m***");
 			disp(fn);
 			disp(" opened for logging***\033[37m\r\n");
 		}
+	}
+}
+void Fl_Term::save(const char *fn)
+{
+	FILE *fp = fl_fopen(fn, "wb");
+	if ( fp!=NULL ) {
+		for (int i=0; i<cursor_x; i+=8192) {
+			int len = i+8192<cursor_x ? 8192 : cursor_x-i;
+			fwrite(buff+i, 1, len, fp);
+		}
+		fclose(fp);
+		char msg[256];
+		sprintf(msg, "\r\n\033[32m***%d bytes saved to %s***\03337m\r\n",
+				cursor_x, fn);
+		disp(msg);
 	}
 }
 void Fl_Term::srch(const char *sstr)
@@ -1065,11 +1019,10 @@ void Fl_Term::learn_prompt()
 		iPrompt = 2;
 	}
 }
-char *Fl_Term::mark_prompt()
+int Fl_Term::mark_prompt()
 {
 	bPrompt = false;
-	recv0 = cursor_x;
-	return buff+cursor_x;
+	return recv0=cursor_x;
 }
 int Fl_Term::waitfor_prompt()
 {
@@ -1083,67 +1036,35 @@ int Fl_Term::waitfor_prompt()
 }
 void Fl_Term::disp(const char *buf)
 {
-	recv0 = cursor_x;
 	append(buf, strlen(buf));
 }
 void Fl_Term::send(const char *buf)
 {
 	write(buf, strlen(buf));
 }
-int Fl_Term::recv(char **preply)
+int Fl_Term::connect(HOST *newhost, char **preply )
 {
-	if ( preply!=NULL ) *preply = buff+recv0;
-	int len = cursor_x-recv0;
-	recv0 = cursor_x;
-	return len;
-}
-
-void Fl_Term::connect(const char *hostname)
-{
+	int rc = 0;
 	if ( host!=NULL ) {
-		if ( host->live() ) return;
+		if ( host->live() ) return rc;
 		delete host;
-		host = NULL;
 	}
-	if ( strncmp(hostname, "ssh " , 4)==0 ) {
-		host = new sshHost(hostname+4);
+
+	host = newhost;
+	char label[32];
+	strncpy(label, host->name(), 29);
+	label[29]=0;
+	strcat(label, "  x");
+	copy_label(label);
+	host->callback(host_cb0, this);
+
+	mark_prompt();
+	host->connect();
+	if ( preply!=NULL ) {	//waitfor prompt if called from script
+		*preply = buff+recv0;	//no wait if called from edit line
+		rc = waitfor_prompt();
 	}
-	else if ( strncmp(hostname, "sftp ", 5)==0 ) {
-		host = new sftpHost(hostname+5);
-	}
-	else if ( strncmp(hostname, "telnet ", 7)==0 ) {
-		host = new tcpHost(hostname+7);
-	}
-	else if ( strncmp(hostname, "serial ", 7)==0 ) {
-		host = new comHost(hostname+7);
-	}
-	else if ( strncmp(hostname, "netconf ", 8)==0 ) {
-		char netconf[256];
-		strcpy(netconf, "-s ");
-		strcat(netconf, hostname);
-		host = new sshHost(netconf);
-	}
-/*
-#ifdef WIN32
-	else if ( strncmp(hostname, "ftpd ", 5)==0 ) {
-		host = new ftpdHost(hostname+5);
-	}
-	else if ( strncmp(hostname, "tftpd ", 6)==0 ) {
-		host = new tftpdHost(hostname+6);
-	}
-#endif
-*/
-	else
-		host = new pipeHost(hostname);
-	if ( host!=NULL ) {
-		char label[32];
-		strncpy(label, host->name(), 28);
-		label[28]=0;
-		strcat(label, "  x");
-		copy_label(label);
-		host->callback(host_cb0, this);
-		host->connect();
-	}
+	return rc;
 }
 void Fl_Term::disconn()
 {
@@ -1152,19 +1073,20 @@ void Fl_Term::disconn()
 }
 char *Fl_Term::gets(const char *prompt, int echo)
 {
-	return ((sshHost *)host)->ssh_gets(prompt, echo);
+	if ( host!=NULL ) 
+		return host->gets(prompt, echo);
+	return NULL;
 }
-
 int Fl_Term::command(const char *cmd, char **preply)
 {
 	int rc = 0;
 	if ( *cmd!='!' ) {
-		if ( connected() ) {
-			char *p = mark_prompt();
+		if ( live() ) {
+			mark_prompt();
 			send(cmd);
 			send("\r");
 			rc = waitfor_prompt();
-			if ( preply!=NULL ) *preply = p;
+			if ( preply!=NULL ) *preply = buff+recv0;
 		}
 		else {
 			disp(cmd);
@@ -1172,65 +1094,71 @@ int Fl_Term::command(const char *cmd, char **preply)
 		}
 	}
 	else {
-		cmd++;
+		const char *p = strchr(++cmd, ' ');	//p points to cmd parameter
+		if ( p!=NULL ) 
+			while (*p==' ') p++;
+		else 
+			p = cmd+strlen(cmd);
+		
 		if ( strncmp(cmd,"Clear",5)==0 ) clear();
-		else if ( strncmp(cmd,"Log ",4)==0 ) logg( cmd+4 );
-		else if ( strncmp(cmd,"Find ",5)==0 ) srch(cmd+5);
-		else if ( strncmp(cmd,"Disp ",5)==0 ) disp(cmd+5);
-		else if ( strncmp(cmd,"Recv", 4)==0 ) rc = recv(preply);
-		else if ( strncmp(cmd,"Send ",5)==0 ) {
+		else if ( strncmp(cmd,"Log",3)==0 ) logg( p );
+		else if ( strncmp(cmd,"Find",4)==0 ) srch(p);
+		else if ( strncmp(cmd,"Wait",4)==0 ) Sleep(atoi(p)*1000);
+		else if ( strncmp(cmd,"Disp",4)==0 ) {
 			mark_prompt();
-			send(cmd+5);
+			disp(p);
 		}
-		else if ( strncmp(cmd,"Copy",5)==0 ) {
+		else if ( strncmp(cmd,"Send",4)==0 ) {
+			mark_prompt();
+			send(p);
+		}
+		else if ( strncmp(cmd,"Recv",4)==0 ) {
+			if ( preply!=NULL ) *preply = buff+recv0;
+			rc = cursor_x-recv0;
+			recv0 = cursor_x;
+		}
+		else if ( strncmp(cmd,"Copy",4)==0 ) {
 			Fl::copy(buff, cursor_x, 1);
 		}
 		else if ( strncmp(cmd,"Hostname",8)==0 ) {
-			if ( preply!=NULL ) {
-				if ( connected() ) {
-					*preply = (char *)label();
-					rc = strlen(*preply);
-				}
+			if ( preply!=NULL && live() ) {
+				*preply = (char *)label();
+				rc = strlen(*preply);
 			}
 		}
 		else if ( strncmp(cmd,"Selection",9)==0) {
 			if ( preply!=NULL ) *preply = buff+sel_left;
 			rc = sel_right-sel_left;
 		}
-		else if ( strncmp(cmd,"scp ",4)==0 ) rc = scp(strdup(cmd+4),preply);
-		else if ( strncmp(cmd,"tun",3)==0 )  rc = tun(strdup(cmd+3),preply);
-		else if ( strncmp(cmd,"xmodem ",7)==0 ) rc = xmodem(cmd+7);
-		else if ( strncmp(cmd,"Timeout",7)==0 ) iTimeOut = atoi(cmd+8);
-		else if ( strncmp(cmd,"Prompt ",7)==0 ) {
-			strncpy(sPrompt, cmd+7, 31);
-			sPrompt[31] = 0;
-			fl_decode_uri(sPrompt);
-			iPrompt = strlen(sPrompt);
+		else if ( strncmp(cmd,"Timeout",7)==0 ) iTimeOut = atoi(p);
+		else if ( strncmp(cmd,"Prompt", 6)==0 ) {
+			if ( cmd[6]==' ' ) {
+				strncpy(sPrompt, p, 31);
+				sPrompt[31] = 0;
+				fl_decode_uri(sPrompt);
+				iPrompt = strlen(sPrompt);
+			}
+			else 
+				learn_prompt();
+			if ( preply!=NULL ) *preply = sPrompt;
+			rc = iPrompt;
 		}
-		else if ( strncmp(cmd,"Wait ",5)==0 ) {
-			Sleep(atoi(cmd+5)*1000);
+		else if ( strncmp(cmd,"Title",5)==0) {
+			if ( preply!=NULL ) *preply = sTitle;
+			rc = strlen(sTitle); 
 		}
-		else if ( strncmp(cmd,"Waitfor ",8)==0 ) {
-			char *p = buff+recv0;
-			bWait = true;
-			for ( int i=0; i<iTimeOut*10&&bWait; i++ ) {
-				buff[cursor_x]=0;
-				if ( strstr(p, cmd+8)!=NULL ) {
-					if ( preply!=NULL ) *preply = p;
-					rc = cursor_x-recv0;
-					break;
-				}
-				Sleep(100);
+		else if ( strncmp(cmd,"scp",3)==0
+				||strncmp(cmd,"tun",3)==0 
+				||strncmp(cmd,"xmodem",6)==0 ) {
+			mark_prompt();
+			host->command(cmd);
+			if ( preply!=NULL ) {
+				*preply = buff+recv0;
+				rc = waitfor_prompt();
 			}
 		}
-		else {
-			char *p = mark_prompt();
-			connect(cmd);
-			if ( preply!=NULL ) {	//waitfor prompt if called from script
-				rc = waitfor_prompt();	//no wait if called from edit line
-				*preply = p;
-			}
-		}
+		else 
+			return -1;	//no match, return to make new connection
 	}
 	return rc;
 }
@@ -1246,7 +1174,7 @@ void Fl_Term::put_xml(const char *buf, int len)
 	while ( *p!=0 && *p!='<' ) p++;
 	if ( p>buf ) append(buf, p-buf);
 	while ( *p!=0 && p<buf+len ) {
-		while (*p==0x0d || *p==0x0a || *p=='\t' || *p==' ' ) p++;
+		while (*p==0x0d || *p==0x0a || *p=='\t' || *p==' ') p++;
 		if ( *p=='<' ) { //tag
 			if ( p[1]=='/' ) {
 				if ( !xmlTagIsOpen ) {
@@ -1288,13 +1216,42 @@ void Fl_Term::put_xml(const char *buf, int len)
 	}
 	if ( strncmp(p-6, "]]>]]>", 6)==0 ) append("\n\033[37m", 6);
 }
-
+void Fl_Term::copier(char *files)
+{
+	bScriptRun = true;
+	char *p=files, *p1, dst[256]="";
+	if ( host->type()==HOST_SSH ) {
+		char *p1, *p2;
+		command("pwd", &p2);
+		p1 = strchr(p2, 0x0a);
+		if ( p1!=NULL ) {
+			p2 = p1+1;
+			p1 = strchr(p2, 0x0a);
+			if ( p1!=NULL ) {
+				strncpy(dst, p2, p1-p2);
+				dst[p1-p2]='/';
+				dst[255]=0;
+			}
+		}
+	}
+	while ( p!=NULL ) {
+		p1 = strchr(p, 0x0a);
+		if ( p1!=NULL ) *p1++ = 0;
+		if ( host!=NULL ) 
+			host->send_file(p, dst);
+		else 
+			break;
+		p = p1;
+	}
+	free(files);
+	bScriptRun = false;
+	if ( host!=NULL ) host->write("\r",1);
+}
 void Fl_Term::scripter(char *cmds)
 {
 	char *p1=cmds, *p0, *reply;
 	bScriptRun = true; bScriptPause = false;
-	while ( bScriptRun && p1!=NULL )
-	{
+	while ( bScriptRun && p1!=NULL ) {
 		if ( bScriptPause ) { Sleep(100); continue; }
 		p0 = p1;
 		p1 = strchr(p0, 0x0a);
@@ -1304,161 +1261,15 @@ void Fl_Term::scripter(char *cmds)
 	free(cmds);
 	bScriptRun = bScriptPause = false;
 }
-void Fl_Term::pause_script()
+void Fl_Term::run_script(const char *s)	//called on drag&drop
 {
-	if ( bScriptRun ) {
-		bScriptPause = true;
-		if ( fl_choice("script paused","Quit","Continue",0)==1 )
-			bScriptPause=false;
-		else
-			quit_script( );
-	}
-}
-void Fl_Term::quit_script()
-{
-	if ( bScriptRun ) {
-		bScriptRun = bScriptPause = false;
-		fl_alert("script stopped");
-	}
-}
-void Fl_Term::term_pwd(char *dst)
-{
-	char *p1, *p2;
-	command("pwd", &p2);
-	p1 = strchr(p2, 0x0a);
-	if ( p1!=NULL ) {
-		p2 = p1+1;
-		p1 = strchr(p2, 0x0a);
-		if ( p1!=NULL ) {
-			strncpy(dst, p2, p1-p2);
-			dst[p1-p2]=0;
-		}
-	}
-}
-int Fl_Term::xmodem(const char *fn)
-{
-	if ( host==NULL ) {
-		disp("not connected yet\n");
-		return 0;
-	}
-	if ( host->type()!=HOST_COM ) {
-		disp("not ssh connection\n");
-		return 0;
-	}
-	FILE *fp = fopen(fn, "rb");
-	if ( fp==NULL ) {
-		disp("xmodem couldn't open file ");
-		disp(fn);
-		disp("\n");
-		return 0;
-	}
-	((comHost *)host)->xmodem(fp);
-	return 1;
-}
-int Fl_Term::scp(char *cmd, char **preply)
-{
-	if ( host==NULL ) {
-		disp("not connected yet\n");
-		return 0;
-	}
-	if ( host->type()!=HOST_SSH ) {
-		disp("not ssh connection\n");
-		return 0;
-	}
-
-	learn_prompt();
-	char *reply = mark_prompt();
-	char *p = strchr(cmd, ' ');
-	if ( p!=NULL ) {
-		*p++ = 0;
-		char *local, *remote, *rpath, rlist[1024];
-		if ( *cmd==':' ) {			//scp_read
-			local = p; remote = cmd+1;
-			strcpy(rlist, "ls -1  ");
-		}
-		else {						//scp_write
-			local = cmd; remote = p+1;
-			strcpy(rlist, "ls -ld ");
-		}
-		if ( *remote=='/') 			//get remote dir
-			strcpy(rlist+7, remote);
-		else {
-			term_pwd(rlist+7);
-			if ( *remote ) {
-				strcat(rlist, "/");
-				strcat(rlist, remote);
-			}
-		}
-		if ( command(rlist, &rpath)>0 ) {
-			reply = mark_prompt();
-			char *p = strchr(rpath, 0x0a);
-			if ( p!=NULL ) {
-				if ( *cmd==':' ) {	//scp_read
-					remote = strdup(p+1);
-					((sshHost *)host)->scp_read(local, remote);
-				}
-				else {				//scp_write
-					if ( p[1]=='d' ) strcat(rlist, "/");
-					remote = strdup(rlist+7);
-					((sshHost *)host)->scp_write(local, remote);
-				}
-				free(remote);
-			}
-		}
-	}
-	free(cmd);
-	if ( host!=NULL ) host->write("\r", 1);
-	if ( preply!=NULL ) *preply = reply;
-	return waitfor_prompt();
-}
-int Fl_Term::tun(char *cmd, char **preply)
-{
-	if ( host==NULL ) {
-		disp("not connected yet\n");
-		return 0;
-	}
-	if ( host->type()!=HOST_SSH ) {
-		disp("not ssh connection\n");
-		return 0;
-	}
-
-	if ( preply!=NULL ) *preply = mark_prompt();
-	((sshHost *)host)->tun(cmd);
-	free(cmd);
-	return waitfor_prompt();
-}
-void Fl_Term::copier(char *files)
-{
-	if ( host==NULL ) return;
-	if ( host->type()!=HOST_SSH && host->type()!=HOST_SFTP ) return;
-
-	bScriptRun = true;
-	char rdir[1024];
-	term_pwd(rdir);
-	strcat(rdir, "/");
-
-	char *p=files, *p1;
-	do {
-		p1 = strchr(p, 0x0a);
-		if ( p1!=NULL ) *p1++ = 0;
-		if ( host->type()==HOST_SSH )
-			((sshHost *)host)->scp_write(p, rdir);
-		else if ( host->type()==HOST_SFTP )
-			((sftpHost *)host)->sftp_put(p, rdir);
-	}
-	while ( (p=p1)!=NULL && host!=NULL );
-	if ( host!=NULL ) host->write("\r",1);
-	free(files);
-	bScriptRun = false;
-}
-void Fl_Term::run_script(char *script)	//called on drag&drop
-{
+	if ( !live() ) { write(s, strlen(s)); return; }
 	if ( bScriptRun ) {
 		fl_alert("another script is still running");
-		free(script);
 		return;
 	}
 
+	char *script = strdup(s);
 	learn_prompt();
 	char *p0 = script;
 	char *p1=strchr(p0, 0x0a);
@@ -1467,19 +1278,29 @@ void Fl_Term::run_script(char *script)	//called on drag&drop
 	int rc = fl_stat(p0, &sb);
 	if ( p1!=NULL ) *p1=0x0a;
 
-	if ( rc!=-1 && host!=NULL ) {	//files dropped
-		if ( host->type()==HOST_COM ) {
-			xmodem(script);			//xmodem send on SERIAL host
-		}
-		else {
-			std::thread scripterThread(&Fl_Term::copier, this, script);
-			scripterThread.detach();
-		}
+	if ( rc!=-1 ) {				//files dropped
+		std::thread scripterThread(&Fl_Term::copier, this, script);
+		scripterThread.detach();
 	}
-	else {							//script dropped
+	else {						//script dropped
+		if ( host->type()==HOST_CONF ) {
+			write(s, strlen(s));
+			if ( bEcho ) append(s, strlen(s));
+			free(script);
+			return;
+		}
 		std::thread scripterThread(&Fl_Term::scripter, this, script);
 		scripterThread.detach();
 	}
+}
+bool Fl_Term::pause_script()
+{
+	bScriptPause = !bScriptPause;
+	return bScriptPause;
+}
+void Fl_Term::quit_script()
+{
+	bScriptRun = bScriptPause = false;
 }
 
 #define TNO_IAC		0xff
@@ -1533,3 +1354,53 @@ const unsigned char *Fl_Term::telnet_options( const unsigned char *p )
 	}
 	return p+1;
 }
+/*
+int Fl_Term::scp(const char *cmd0, char **preply)
+{
+	char *cmd = strdup(cmd0);
+	learn_prompt();
+	int reply0 = mark_prompt();
+	char *p = strchr(cmd, ' ');
+	if ( p!=NULL ) {
+		*p++ = 0;
+		char *local, *remote, *rpath, rlist[1024];
+		if ( *cmd==':' ) {			//scp_read
+			local = p; remote = cmd+1;
+			strcpy(rlist, "ls -1  ");
+		}
+		else {						//scp_write
+			local = cmd; remote = p+1;
+			strcpy(rlist, "ls -ld ");
+		}
+		if ( *remote=='/') 			//get remote dir
+			strcpy(rlist+7, remote);
+		else {
+			term_pwd(rlist+7);
+			if ( *remote ) {
+				strcat(rlist, "/");
+				strcat(rlist, remote);
+			}
+		}
+		if ( command(rlist, &rpath)>0 ) {
+			reply0 = mark_prompt();
+			char *p = strchr(rpath, 0x0a);
+			if ( p!=NULL ) {
+				if ( *cmd==':' ) {	//scp_read
+					remote = strdup(p+1);
+					((sshHost *)host)->scp_read(local, remote);
+				}
+				else {				//scp_write
+					if ( p[1]=='d' ) strcat(rlist, "/");
+					remote = strdup(rlist+7);
+					((sshHost *)host)->scp_write(local, remote);
+				}
+				free(remote);
+			}
+		}
+	}
+	free(cmd);
+	if ( host!=NULL ) host->write("\r", 1);
+	int rc = waitfor_prompt();
+	if ( preply!=NULL ) *preply = buff+reply0;
+	return rc;
+}*/
