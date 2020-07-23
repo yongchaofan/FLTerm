@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.cxx 3656 2020-07-09 13:48:10 $"
+// "$Id: Fl_Browser_Input.cxx 3448 2020-07-18 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -71,28 +71,24 @@ int Fl_Browser_Input::handle( int e )
 	if ( e!=FL_KEYDOWN ) return Fl_Input::handle(e);
 	char cmd[2]={ 0, 0 };
 	int key = Fl::event_key();
-	switch ( key ) {
-		case FL_Page_Up:
-		case FL_Page_Down: 
-			return 0;	//let Fl_Term handle it
-		case FL_Tab: 	
-			cmd[0] = key; cut();
-			do_callback(this, (void *)value());
-			do_callback(this, (void *)cmd);
-			value("");
-			//fall through		
-		case FL_Escape: 
-			browser->hide();
-			return 1;	//prevent ESCAPE from close the program
-		case FL_BackSpace:
-		case FL_Delete:	//CMD+Delete delete entry from dictionary
-			if ( Fl::event_state(FL_CMD) ) {
-				browser->remove(id--);
-				if ( id<0 ) id=0;
-				browser->value(id);
-				browser->middleline(id);
-				return 1;
-			}
+	switch ( key )
+	{
+	case FL_Page_Up:
+	case FL_Page_Down: return 0;		//let Fl_Term handle it
+	case FL_Tab: 	cmd[0] = key; cut();
+					do_callback(this, (void *)value());
+					do_callback(this, (void *)cmd);
+	case FL_Escape: value("");			//prevent ESCAPE from close the program
+					browser->hide();
+					return 1;
+	case FL_BackSpace: if ( size()==0 ) do_callback(this, (void *)"\b");
+	case FL_Delete:	if ( Fl::event_state(FL_CMD) ) {
+						browser->remove(id--);
+						if ( id<0 ) id=0;
+						browser->value(id);
+						browser->middleline(id);
+						return 1;
+					}
 	}
 	int rc = Fl_Input::handle(e);
 	if ( Fl::event_state(FL_CTRL) ) {
@@ -104,48 +100,43 @@ int Fl_Browser_Input::handle( int e )
 		return rc;
 	}
 	switch ( key ) {
-		case FL_BackSpace: 
-			if ( size()==0 ) do_callback(this, (void *)"\b");
-			//fall through
-		case FL_Delete:
-		case FL_Enter: 
-			browser->hide();
-			break;
-		case FL_Up:
-		case FL_Down:
-			if ( ((Fl_Widget *)browser)->visible() ) {
-				if ( key==FL_Up && id>1 ) id--;
-				if ( key==FL_Down && id<browser->size() ) id++;
-				browser->value(id);
-			}
-			else {
-				browser->show();
-				browser->redraw();
-			}
-			value(browser->text(id));
-			position(size());
+	case FL_BackSpace:
+	case FL_Delete:
+	case FL_Enter: browser->hide(); break;
+	case FL_Up:
+	case FL_Down:
+		if ( ((Fl_Widget *)browser)->visible() ) {
+			if ( key==FL_Up && id>1 ) id--;
+			if ( key==FL_Down && id<browser->size() ) id++;
+			browser->value(id);
+		}
+		else {
+			browser->show();
 			take_focus();
-			break;
-		default:
-			if ( Fl::event_state(FL_ALT|FL_CTRL|FL_META)==0
-				&& size()>0 && position()==size() ) { //search dictionary
-				for ( int i=1; i<=browser->size(); i++ ) {
-					int cmp = strncmp(value(), browser->text(i), position());
-					if ( cmp>0 ) continue;
-					if ( cmp==0 ) {		//match found
-						id = i;
-						int p = position();
-						browser->select(id);
-						browser->middleline(id);
-						value(browser->text(id));
-						position(p, size());
-					}
-					else {//cmp<0, 		no matches
-						browser->hide();
-					}
+		}
+		value(browser->text(id));
+		position(size());
+		break;
+	default:
+		if ( Fl::event_state(FL_ALT|FL_CTRL|FL_META)==0
+			&&position()>0&&position()==size() ) {
+			for ( int i=1; i<=browser->size(); i++ ) {
+				int cmp = strncmp(value(), browser->text(i), position());
+				if ( cmp<0 ) {
+					browser->hide();
+					break;
+				}
+				if ( cmp==0 ) {
+					id = i;
+					int p = position();
+					browser->select(id);
+					browser->middleline(id);
+					value(browser->text(id));
+					position(p, size());
 					break;
 				}
 			}
+		}
 	}
 	return rc;
 }
