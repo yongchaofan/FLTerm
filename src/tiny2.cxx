@@ -27,7 +27,7 @@ const char ABOUT_TERM2[]="\r\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tVerision 1.2.2, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.3, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 const char TINYTERM2[]="\r\n\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -80,7 +80,7 @@ int wnd_h = 600;
 bool sendtoall = false;
 bool local_edit = false;
 
-#define OPEN_FILE 		Fl_Native_File_Chooser::BROWSE_FILE
+#define OPEN_FILE 	Fl_Native_File_Chooser::BROWSE_FILE
 #define SAVE_FILE	Fl_Native_File_Chooser::BROWSE_SAVE_FILE
 static Fl_Native_File_Chooser fnfc;
 const char *file_chooser(const char *title, const char *filter, int type)

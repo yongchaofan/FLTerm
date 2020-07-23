@@ -1219,7 +1219,7 @@ void Fl_Term::put_xml(const char *buf, int len)
 void Fl_Term::copier(char *files)
 {
 	bScriptRun = true;
-	char *p=files, *p1, dst[256]="";
+	char dst[256]="";
 	if ( host->type()==HOST_SSH ) {
 		char *p1, *p2;
 		command("pwd", &p2);
@@ -1234,8 +1234,9 @@ void Fl_Term::copier(char *files)
 			}
 		}
 	}
+	char *p = files;
 	while ( p!=NULL ) {
-		p1 = strchr(p, 0x0a);
+		char *p1 = strchr(p, 0x0a);
 		if ( p1!=NULL ) *p1++ = 0;
 		if ( host!=NULL ) 
 			host->send_file(p, dst);

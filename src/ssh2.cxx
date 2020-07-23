@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 40052 2020-07-15 11:55:10 $"
+// "$Id: ssh2.cxx 40050 2020-07-15 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -774,7 +774,7 @@ int sshHost::scp_write(char *lpath, char *rpath)
 void sshHost::send_file(char *src, char *dst)
 {
 	if ( *subsystem==0 ) {	//ssh
-//		for ( char *p=src; *p; p++ ) if ( *p=='\\' ) *p='/';
+		for ( char *p=src; *p; p++ ) if ( *p=='\\' ) *p='/';
 		scp_write(src, dst);
 	}
 	else {					//netconf
