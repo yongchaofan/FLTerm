@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 36836 2020-07-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 36699 2020-07-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -206,18 +206,18 @@ void Fl_Term::draw()
 			j=n;
 		}
 	}
+	dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
+	dy = y()+(cursor_y-screen_y)*font_height;
+	if ( !bCursor ) dx=-1;
+	if ( bAlterScreen) dx=-1;
+	if ( host!=NULL )
+		if ( host->status()==HOST_AUTHENTICATING ) dx=-1;
 	if ( bCursor && active() ) {
-		dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
-		dy = y()+(cursor_y-screen_y)*font_height;
 		fl_color(FL_WHITE);		//draw a white bar as cursor
 		fl_rectf(dx+1, dy+4, 2, font_height-1);
-		
-		if ( bAlterScreen) dx=-1;
-		if ( host!=NULL ) {
-			if ( host->status()==HOST_AUTHENTICATING ) dx=-1;
-		}
-		move_editor(dx, dy+4, w()-dx, font_height);
 	}
+	move_editor(dx, dy+4, w()-dx, font_height);
+	
 	if ( bScrollbar) {
 		fl_color(FL_DARK3);			//draw scrollbar
 		fl_rectf(x()+w()-8, y(), 8, y()+h());
