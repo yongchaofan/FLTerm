@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 36699 2020-07-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 36794 2020-07-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -20,8 +20,9 @@
 #include <FL/filename.H>// needed for fl_decode_uri
 using namespace std;
 
-//defined in tiny2.cxx
-void move_editor(int x, int y, int w, int h);
+//defined in tiny2.cxx 
+//returns false if editor is hiden, drawing of cursor needed
+bool show_editor(int x, int y, int w, int h);
 #ifndef WIN32 
 #include <unistd.h>		// needed for usleep
 #define Sleep(x) usleep((x)*1000)
@@ -54,7 +55,7 @@ void Fl_Term::host_cb( const char *buf, int len )
 				disp("\033[37m to reconnect\r\n");
 			}
 			if ( host->type()==HOST_CONF ) bEcho = false;
-			sTitle[10] = 0;
+			*sTitle = 0;
 			do_callback( this, (void *)NULL );
 		}
 }
@@ -69,7 +70,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bScrollbar = false;
 	host = NULL;
 
-	strcpy(sTitle, "tinyTerm2 ");
+	*sTitle = 0;
 	strcpy(sPrompt, "> ");
 	iPrompt = 2;
 	iTimeOut = 30;
@@ -165,11 +166,9 @@ void Fl_Term::draw()
 	fl_rectf(x(),y(),w(),h());
 	fl_font(font_face, font_size);
 
-	int sel_l = sel_left;
-	int sel_r = sel_right;
+	int sel_l=sel_left, sel_r=sel_right;
 	if ( sel_l>sel_r ) {
-		sel_l = sel_right;
-		sel_r = sel_left;
+		sel_l=sel_right; sel_r=sel_left;
 	}
 
 	int ly = screen_y;
@@ -208,15 +207,16 @@ void Fl_Term::draw()
 	}
 	dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
 	dy = y()+(cursor_y-screen_y)*font_height;
-	if ( !bCursor ) dx=-1;
-	if ( bAlterScreen) dx=-1;
+	bool editor = bCursor;
+	if ( bAlterScreen) editor=false;
 	if ( host!=NULL )
-		if ( host->status()==HOST_AUTHENTICATING ) dx=-1;
-	if ( bCursor && active() ) {
-		fl_color(FL_WHITE);		//draw a white bar as cursor
-		fl_rectf(dx+1, dy+4, 2, font_height-1);
+		if ( host->status()==HOST_AUTHENTICATING ) editor=false;
+	if ( !show_editor(editor?dx:-1, dy+4, w()-dx-8, font_height) ) {
+		if ( bCursor ) {
+			fl_color(FL_WHITE);		//draw a white bar as cursor
+			fl_rectf(dx, dy+font_height, font_width, 4);
+		}
 	}
-	move_editor(dx, dy+4, w()-dx, font_height);
 	
 	if ( bScrollbar) {
 		fl_color(FL_DARK3);			//draw scrollbar
@@ -754,7 +754,9 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					for ( int i=line[cursor_y+1]-n0-1; i>=cursor_x; i-- ){
 						buff[i+n0]=buff[i];
 						attr[i+n0]=attr[i];
-					}//fall through
+					}
+					line[cursor_y+1]+=n0;
+					//fall through
 				case 'X': //erase n0 characters
 					buff_clear(cursor_x, n0);
 					break;
