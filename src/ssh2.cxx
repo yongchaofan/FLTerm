@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 40050 2020-07-15 11:55:10 $"
+// "$Id: ssh2.cxx 40129 2020-07-15 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -184,14 +184,12 @@ sshHost::sshHost(const char *name) : tcpHost(name)
 const char *keytypes[] = {
 	"unknown", "rsa", "dss", "ecdsa256", "ecdsa384", "ecdsa521", "ed25519"
 };
-const char *knownhostfile="known_hosts";
+const char *knownhostfile=".ssh/known_hosts";
 int sshHost::ssh_knownhost()
 {
 	int type, check, buff_len;
 	size_t len;
 	char keybuf[256];
-//	char knownhostfile[MAX_PATH+64];
-//	strcpy(knownhostfile, homedir);
 
 	const char *key = libssh2_session_hostkey(session, &len, &type);
 	if ( key==NULL ) return -4;
@@ -206,6 +204,15 @@ int sshHost::ssh_knownhost()
 
 	LIBSSH2_KNOWNHOSTS *nh = libssh2_knownhost_init(session);
 	if ( nh==NULL ) return -4;
+
+	struct stat sb;
+	if ( stat(knownhostfile, &sb)==-1 ) {
+#ifdef WIN32
+		mkdir(".ssh");
+#else
+		mkdir(".ssh", 0700);
+#endif
+	}
 	struct libssh2_knownhost *host;
 	libssh2_knownhost_readfile(nh, knownhostfile,
 							   LIBSSH2_KNOWNHOST_FILE_OPENSSH);
@@ -233,7 +240,7 @@ int sshHost::ssh_knownhost()
 	case LIBSSH2_KNOWNHOST_CHECK_NOTFOUND:
 		if ( p==NULL ) {
 			print("%s\r\n\033[33mhostkey unknown!\n", keybuf);
-			p = gets("Add to .tinyTerm/known_hosts?(Yes/No)", true);
+			p = gets("Add to .ssh/known_hosts?(Yes/No)", true);
 		}
 		if ( p==NULL ) {
 			do_callback("\r\n", 2);
@@ -319,8 +326,9 @@ char* sshHost::gets(const char *prompt, int echo)
 	else
 		return NULL;
 }
-const char *pubkeys[] = { "id_ed25519.pub", "id_rsa.pub" };
-const char *privkeys[] = { "id_ed25519", "id_rsa" };
+const char *pubkeys[] = {".ssh/id_ed25519.pub", ".ssh/id_ecdsa.pub",
+						".ssh/id_rsa.pub" };
+const char *privkeys[] = {".ssh/id_ed25519", ".ssh/id_ecdsa", ".ssh/id_rsa"};
 int sshHost::ssh_authentication()
 {
 	int rc = -5;
@@ -334,49 +342,52 @@ int sshHost::ssh_authentication()
 	if ( authlist==NULL ) return 0;	// null authentication passed
 	if ( *password && strstr(authlist, "password")!=NULL ) {
 		if ( !libssh2_userauth_password(session, username, password) )
-			return 0;		//password authentication pass
+			rc = 0;		//password authentication pass
 		else	// password provided, it either works or not
-			return rc;		//won't try anyting else on failure
+			return rc;	//won't try anyting else on failure
 	}
-	if ( strstr(authlist, "publickey")!=NULL ) {
+	if ( rc!=0 && strstr(authlist, "publickey")!=NULL ) {
 		struct stat buf;
-		if ( stat(pubkeys[0], &buf)==0 && stat(privkeys[0], &buf)==0 ) {
-			if ( !libssh2_userauth_publickey_fromfile(session, username,
-								pubkeys[0], privkeys[0], passphrase) ) {
-				print("\033[32m\npublic key(ed25519) authenticated\n");
-				return 0;
-			}
-		}
-		if ( stat(pubkeys[1], &buf)==0 && stat(privkeys[1], &buf)==0 ) {
-			if ( !libssh2_userauth_publickey_fromfile(session, username,
-								pubkeys[1], privkeys[1], passphrase) ) {
-				print("\033[32m\npublic key(rsa) authenticated\n");
-				return 0;
+		for ( int i=0; i<sizeof(privkeys); i++ ) {
+			if ( stat(privkeys[i], &buf)==0 ) {
+				if ( !libssh2_userauth_publickey_fromfile(session,
+						username, pubkeys[i], privkeys[i], passphrase) ) {
+					print("\033[32mpublic key(%s) authenticated\n", 
+													privkeys[i]+8);
+					rc=0;
+					break;
+				}
 			}
 		}
 	}
-	if ( strstr(authlist, "password")!=NULL ) {
+	if ( rc!=0 && strstr(authlist, "password")!=NULL ) {
 		//password was not set, get it interactively
 		for ( int i=0; i<3; i++ ) {
 			const char *p = gets("password: ", false);
 			if ( p!=NULL ) {
 				strncpy(password, p, 31);
-				if (!libssh2_userauth_password(session,username,password))
-					return 0;//password authentication passed
+				if (!libssh2_userauth_password(session,username,password)) {
+					rc=0;//password authentication passed
+					break;
+				}
 			}
 			else
 				do_callback("\r\n", 2);
 		}
 	}
-	else if ( strstr(authlist, "keyboard-interactive")!=NULL ) {
+	else if ( rc!=0 && strstr(authlist, "keyboard-interactive")!=NULL ) {
 		for ( int i=0; i<3; i++ ) {
 			if (!libssh2_userauth_keyboard_interactive(session, username,
 														&kbd_callback) ) {
-				return 0;
+				print("\033[32mkeyboard interactive authenticated\n");
+				rc=0;
+				break;
 			}
 		}
 	}
-	*username=0; *password=0; *passphrase=0;
+	memset(username, 0, sizeof(username));
+	memset(password, 0, sizeof(password));
+	memset(passphrase,0,sizeof(passphrase));
 	return rc;
 }
 int sshHost::wait_socket()
