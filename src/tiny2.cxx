@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27130 2020-07-18 10:05:10 $"
+// "$Id: tiny2.cxx 27331 2020-07-18 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -27,8 +27,8 @@ const char ABOUT_TERM2[]="\r\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tVerision 1.2.3, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
-const char TINYTERM2[]="\r\n\033[32mtinyTerm2> \033[37m";
+\tVerision 1.2.4, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
 #include "host.h"
@@ -39,8 +39,14 @@ const char TINYTERM2[]="\r\n\033[32mtinyTerm2> \033[37m";
 #define TABHEIGHT	24
 #ifdef __APPLE__
   #define MENUHEIGHT 0
+  #define DEFAULTFONT "Menlo Regular"
 #else
   #define MENUHEIGHT 24
+  #ifdef WIN32
+    #define DEFAULTFONT "Consolas"
+  #else
+	#define DEFAULTFONT "Courier New"
+  #endif
 #endif
 #include <FL/platform.H>// needed for fl_display
 #include <FL/Fl.H>
@@ -71,7 +77,7 @@ Fl_Sys_Menu_Bar *pMenuBar;
 Fl_Menu_Item *pMenuDisconn, *pMenuEcho, *pMenuLogg;
 int iTermMenu;
 Fl_Font fontnum = FL_COURIER;
-char fontname[256] = "Courier New";
+char fontname[256] = DEFAULTFONT;
 int fontsize = 16;
 int termcols = 80;
 int termrows = 25;
@@ -585,7 +591,7 @@ void cmd_cb(Fl_Widget *o, void *p)
 void sendall_cb(Fl_Widget *w, void *data)
 {
 	sendtoall = !sendtoall;
-	pCmd->color(sendtoall?0xC0000000:FL_BLACK);
+	pCmd->color(sendtoall?0x40004000:FL_BLACK);
 }
 void localedit_cb(Fl_Widget *w, void *data)
 {
@@ -594,23 +600,26 @@ void localedit_cb(Fl_Widget *w, void *data)
 		if ( !pTerm->live() ) 
 			pTerm->disp(TINYTERM2);
 		pCmd->show();
+		pTerm->pending(true);
 	}
 	else {
 		pCmd->hide();
 		pTerm->take_focus();
 	}
 }
-void move_editor(int x, int y, int w, int h)
+bool show_editor(int x, int y, int w, int h)
 {
 	if ( local_edit && x>=0 ) {
 		pCmd->show();
 		pCmd->take_focus();
 		pCmd->resize(x, y, w, h);
+		return true;
 	}
 	else if ( pCmd->visible() ) {
 		pCmd->hide();
 		pTerm->take_focus();
 	}
+	return false;
 }
 /*******************************************************************************
 * menu call back functions                                                     *
@@ -744,8 +753,8 @@ void load_dict()
 	FILE *fp = fopen(DICTFILE, "r");
 	if ( fp==NULL ) {// current directory doesn't have .hist
 		if ( fl_chdir(getenv(HOMEDIR))==0 ) {
-			fl_mkdir(".tinyTerm", 0755);
-			fl_chdir(".tinyTerm");
+			fl_mkdir(".tinyTerm", 0700);
+			DICTFILE = ".tinyTerm/tinyTerm.hist";
 			fp = fopen(DICTFILE, "r");
 		}
 	}
@@ -836,7 +845,7 @@ int main(int argc, char **argv)
 		pMenuBar->textsize(18);
 		pMenuBar->about(about_cb, NULL);
 		pTerm = new Fl_Term(0, MENUHEIGHT, pWindow->w(),
-								pWindow->h()-MENUHEIGHT, "term");
+								pWindow->h()-MENUHEIGHT, "");
 		pTerm->labelsize(16);
 		pTerm->callback( term_cb );
 		pCmd = new Fl_Browser_Input( 0, pWindow->h()-1, 1, 1, "");
