@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 28436 2020-06-30 12:15:10 $"
+// "$Id: Hosts.cxx 28610 2020-07-18 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -68,10 +68,7 @@ comHost::comHost(const char *address)
 }
 void comHost::disconn()
 {
-	if ( status()==HOST_CONNECTED ) {
-		status( HOST_IDLE );
-//		if ( reader.joinable() ) reader.join();
-	}
+	if ( status()==HOST_CONNECTED ) status(HOST_IDLE);
 }
 const char STX = 0x02;
 const char EOT = 0x04;
@@ -155,16 +152,27 @@ void comHost::xmodem_recv(char op)
 				break;
 	}
 }
-void comHost::xmodem(FILE *fp)
+void comHost::send_file(char *src, char *dst)
 {
-	xmodem_fp = fp;
-	bXmodem = true;
-	xmodem_crc = false;
-	xmodem_started = false;
-	xmodem_timeout = 0;
-	xmodem_blk = 0;
-	xmodem_block();
-	do_callback("xmodem",6);
+	FILE *fp = fopen(src, "rb");
+	if ( fp!=NULL ) {
+		xmodem_fp = fp;
+		bXmodem = true;
+		xmodem_crc = false;
+		xmodem_started = false;
+		xmodem_timeout = 0;
+		xmodem_blk = 0;
+		xmodem_block();
+		do_callback("xmodem", 6);
+	}
+}
+void comHost::command(const char *cmd)
+{
+	if ( strncmp(cmd, "xmodem ", 7)==0 ) {
+		char src[256];
+		strcpy(src, cmd+7);
+		send_file(src, NULL);
+	}
 }
 #ifdef WIN32
 int comHost::read()
@@ -562,7 +570,7 @@ int pipeHost::read()
 		dup2(pty_slave, 1);
 		dup2(pty_slave, 2);
 		execl(cmdline, cmdline, (char *)NULL);
-		printf("\033[31m\terror executing shell command!");
+		printf("\033[31m\terror executing shell command!\n");
 		return false;
 	}
 	else {
