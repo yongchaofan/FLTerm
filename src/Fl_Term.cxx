@@ -751,7 +751,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					buff_clear(line[cursor_y+1]-n0, n0);
 					break;
 				case '@': //insert n0 spaces
-					for ( int i=line[cursor_y+1]-n0-1; i>=cursor_x; i-- ){
+					for ( int i=line[cursor_y+1]-n0; i>=cursor_x; i-- ){
 						buff[i+n0]=buff[i];
 						attr[i+n0]=attr[i];
 					}
