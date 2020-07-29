@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 40129 2020-07-15 11:55:10 $"
+// "$Id: ssh2.cxx 40132 2020-07-15 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -348,7 +348,7 @@ int sshHost::ssh_authentication()
 	}
 	if ( rc!=0 && strstr(authlist, "publickey")!=NULL ) {
 		struct stat buf;
-		for ( int i=0; i<sizeof(privkeys); i++ ) {
+		for ( int i=0; i<3; i++ ) {
 			if ( stat(privkeys[i], &buf)==0 ) {
 				if ( !libssh2_userauth_publickey_fromfile(session,
 						username, pubkeys[i], privkeys[i], passphrase) ) {
