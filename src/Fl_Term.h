@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4878 2020-07-18 13:08:10 $"
+// "$Id: Fl_Term.h 4862 2020-07-18 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -94,8 +94,8 @@ protected:
 	void check_cursor_y();
 	void append( const char *buf, int len );
 	void put_xml(const char *buf, int len);
-	const unsigned char *vt100_Escape( const unsigned char *buf, int cnt );
-	const unsigned char *telnet_options( const unsigned char *buf );
+	const unsigned char *vt100_Escape(const unsigned char *buf, int cnt);
+	const unsigned char *telnet_options(const unsigned char *buf, int cnt);
 
 public:
 	Fl_Term(int X,int Y,int W,int H,const char* L=0);
@@ -118,7 +118,7 @@ public:
 	void save(const char *fn);
 	void srch(const char *word);
 
-	bool live() { return host!=NULL ? host->live() : false; }
+	bool live() { return host->live(); }
 	void host_cb(const char *buf, int len);
 	char *gets(const char *prompt, int echo);
 	void disconn();
