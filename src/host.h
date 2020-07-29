@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 4458 2020-06-30 21:12:15 $"
+// "$Id: Hosts.h 5035 2020-07-18 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd
 //
@@ -39,7 +39,9 @@
 #ifndef _HOST_H_
 #define _HOST_H_
 
-enum {  HOST_PIPE=0, HOST_COM, HOST_TCP }; //HOST_FTPD, HOST_TFTPD
+enum {  HOST_NULL=0, HOST_PIPE, HOST_COM, HOST_TCP,
+		HOST_SSH, HOST_SFTP, HOST_CONF }; 
+//HOST_FTPD, HOST_TFTPD
 enum {  HOST_IDLE=0, HOST_CONNECTING, HOST_AUTHENTICATING, HOST_CONNECTED };
 typedef void ( host_callback )(void *, const char *, int);
 
@@ -63,7 +65,10 @@ public:
 	virtual	int read()							=0;
 	virtual	int write(const char *buf, int len)	=0;
 	virtual	void disconn()						=0;
+	virtual void command(const char *cmd){}
 	virtual void send_size(int sx, int sy){}
+	virtual void send_file(char *src, char *dst){}
+	virtual char *gets(const char *prompt, int echo){return NULL;}
 	virtual void set_user_pass( const char *user, const char *pass ){};
 
 	void callback(host_callback *cb, void *data)
@@ -80,7 +85,16 @@ public:
 	void status(int s) { state = s; }
 	void print(const char *fmt, ...);
 };
-
+class nullHost: public HOST {
+public:
+	nullHost(const char *address){};
+	virtual const char *name() 	{ return "null"; }
+	virtual int type() 			{ return HOST_NULL; }
+	virtual void connect()		{}
+	virtual int read()			{ return 0; }
+	virtual int write(const char *buf, int len){ return 0; }
+	virtual void disconn(){};
+};
 class comHost : public HOST {
 private:
 	char portname[64];
@@ -107,12 +121,12 @@ public:
 
 	virtual const char *name() { return portname+4; }
 	virtual int type() { return HOST_COM; }
+//	virtual void connect();
 	virtual int read();
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
-//	virtual void connect();
-
-	void xmodem(FILE *fp);
+	virtual void command(const char *cmd);
+	virtual void send_file(char *src, char *dst);
 };
 class pipeHost : public HOST {
 private:
