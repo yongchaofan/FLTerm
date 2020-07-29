@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27331 2020-07-18 10:05:10 $"
+// "$Id: tiny2.cxx 27283 2020-07-18 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -27,7 +27,7 @@ const char ABOUT_TERM2[]="\r\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tVerision 1.2.4, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.5, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -255,7 +255,6 @@ int term_command(char *cmd, char **preply)
 	}
 	else {
 		rc = pTerm->command(cmd, preply);
-		if ( rc==-1 ) rc = term_connect(cmd, preply);
 	}
 	return rc;
 }
