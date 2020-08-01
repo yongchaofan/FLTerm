@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 5035 2020-07-18 21:12:15 $"
+// "$Id: Hosts.h 3796 2020-07-18 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd
 //
@@ -59,12 +59,12 @@ public:
 		state = HOST_IDLE;
 	}
 	virtual ~HOST(){}
-	virtual const char *name()					=0;
-	virtual int type()							=0;
 	virtual	void connect();
-	virtual	int read()							=0;
-	virtual	int write(const char *buf, int len)	=0;
-	virtual	void disconn()						=0;
+	virtual const char *name()	{ return ""; }
+	virtual int type()			{ return HOST_NULL; }
+	virtual	int read()			{ return 0; }
+	virtual	int write(const char *buf, int len)	{ return 0; }
+	virtual	void disconn()		{}
 	virtual void command(const char *cmd){}
 	virtual void send_size(int sx, int sy){}
 	virtual void send_file(char *src, char *dst){}
@@ -85,16 +85,7 @@ public:
 	void status(int s) { state = s; }
 	void print(const char *fmt, ...);
 };
-class nullHost: public HOST {
-public:
-	nullHost(const char *address){};
-	virtual const char *name() 	{ return "null"; }
-	virtual int type() 			{ return HOST_NULL; }
-	virtual void connect()		{}
-	virtual int read()			{ return 0; }
-	virtual int write(const char *buf, int len){ return 0; }
-	virtual void disconn(){};
-};
+
 class comHost : public HOST {
 private:
 	char portname[64];
@@ -119,15 +110,16 @@ private:
 public:
 	comHost(const char *address);
 
+//	virtual void connect();
 	virtual const char *name() { return portname+4; }
 	virtual int type() { return HOST_COM; }
-//	virtual void connect();
 	virtual int read();
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
 	virtual void command(const char *cmd);
 	virtual void send_file(char *src, char *dst);
 };
+
 class pipeHost : public HOST {
 private:
 	char cmdline[256];
@@ -144,15 +136,13 @@ public:
 	pipeHost(const char *name);
 	~pipeHost(){}
 
+//	virtual void connect();
 	virtual const char *name(){ return cmdline; }
 	virtual int type() { return HOST_PIPE; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
-//	virtual void connect();
-#ifndef WIN32
 	virtual void send_size(int sx, int sy);
-#endif
 };
 
 class tcpHost : public HOST {
@@ -166,58 +156,11 @@ public:
 	tcpHost(const char *name);
 	~tcpHost(){}
 
+//	virtual void connect();
 	virtual const char *name(){ return hostname; }
 	virtual int type() { return HOST_TCP; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
-//	virtual void connect();
 };
-/*
-#ifdef WIN32
-class ftpdHost : public HOST {
-private:
-	int ftp_s0;
-	int ftp_s1;
-	char rootDir[1024];
-
-protected:
-	void sock_send( const char *reply );
-
-public:
-	ftpdHost(const char *name);
-	~ftpdHost(){ disconn(); }
-
-	virtual const char *name() { return "FTPD"; }
-	virtual int type() { return HOST_FTPD; }
-	virtual	int read();
-	virtual int write(const char *buf, int len);
-	virtual void disconn();
-//	virtual void connect();
-};
-
-class tftpdHost : public HOST {
-private:
-	int tftp_s0;
-	int tftp_s1;
-	char rootDir[1024];
-
-protected:
-	void tftp_Read( FILE *fp );
-	void tftp_Write( FILE *fp );
-
-public:
-	tftpdHost(const char *name);
-	~tftpdHost() { disconn(); }
-
-	virtual const char *name() { return "TFTPD"; }
-	virtual int type() { return HOST_TFTPD; }
-	virtual	int read();
-	virtual int write(const char *buf, int len);
-	virtual void send_size(int sx, int sy){}
-	virtual void disconn();
-//	virtual void connect();
-};
-#endif //WIN32
-*/
-#endif //_HOST_H_
+#endif//_HOST_H_
