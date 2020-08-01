@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 36742 2020-07-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 37136 2020-07-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -69,7 +69,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bEcho = false;
 	bScrollbar = false;
-	host = new nullHost("");
+	host = new HOST();
 
 	*sTitle = 0;
 	strcpy(sPrompt, "> ");
@@ -693,9 +693,8 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					break;
 				case 'f': //horizontal and vertical position forced
 				case 'H': //cursor to line n1, postion n0
-					if ( !bAlterScreen && n1==size_y ) { //exit of [2J
-						cursor_y = screen_y+size_y;
-						screen_y++;
+					if ( !bAlterScreen && n1>size_y ) {
+						cursor_y = (screen_y++) + size_y;
 					}
 					else {
 						cursor_y = screen_y+n1-1;
@@ -736,12 +735,12 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 				case 'M': //delete n0 lines
 					if ( n0 > screen_y+roll_bot-cursor_y )
 						n0 = screen_y+roll_bot-cursor_y;
-					for ( int i=cursor_y; i<screen_y+roll_bot-n0; i++ ) {
+					for ( int i=cursor_y; i<=screen_y+roll_bot-n0; i++ ) {
 						memcpy( buff+line[i], buff+line[i+n0], size_x);
 						memcpy( attr+line[i], attr+line[i+n0], size_x);
 					}
 					cursor_x = line[cursor_y];
-					buff_clear(line[screen_y+roll_bot-n0], size_x*n0);
+					buff_clear(line[screen_y+roll_bot-n0+1], size_x*n0);
 					break;
 				case 'P': //delete n0 characters
 					for ( int i=cursor_x; i<line[cursor_y+1]-n0; i++ ) {
@@ -751,11 +750,13 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					buff_clear(line[cursor_y+1]-n0, n0);
 					break;
 				case '@': //insert n0 spaces
-					for ( int i=line[cursor_y+1]-n0; i>=cursor_x; i-- ){
+					for ( int i=line[cursor_y+1]-n0-1; i>=cursor_x; i-- ){
 						buff[i+n0]=buff[i];
 						attr[i+n0]=attr[i];
 					}
 					line[cursor_y+1]+=n0;
+					if ( line[cursor_y+1]-line[cursor_y]>size_x )
+						line[cursor_y+1] = line[cursor_y]+size_x;
 					//fall through
 				case 'X': //erase n0 characters
 					buff_clear(cursor_x, n0);
@@ -891,35 +892,42 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 			c_attr = save_attr;
 			bEscape = false;
 			break;
-		case 'F': // cursor to lower left corner
+		case 'F': //cursor to lower left corner
 			cursor_y = screen_y+size_y-1;
 			cursor_x = line[cursor_y];
 			bEscape = false;
 			break;
-		case 'E': // move to next line
+		case 'E': //move to next line
 			cursor_x = line[++cursor_y];
 			bEscape = false;
 			break;
-		case 'D': // move/scroll up one line
-			if ( cursor_y<screen_y+roll_bot ) {// move
+		case 'D': //move/scroll up one line
+			if ( cursor_y<screen_y+roll_bot ) {	//move
 				int x = cursor_x-line[cursor_y];
 				cursor_x = line[++cursor_y]+x;
 			}
-			else {								// scroll
-				for ( int i=roll_top; i<roll_bot; i++ ) {
-					memcpy(buff+line[screen_y+i],buff+line[screen_y+i+1],size_x);
-					memcpy(attr+line[screen_y+i],attr+line[screen_y+i+1],size_x);
-				}
-				buff_clear(line[screen_y+roll_bot], size_x);
+			else {								//scroll
+				int len = line[screen_y+roll_bot+1]-line[screen_y+roll_top+1];
+				int x = cursor_x-line[cursor_y];
+				memcpy(buff+line[screen_y+roll_top], 
+						buff+line[screen_y+roll_top+1], len);
+				memcpy(attr+line[screen_y+roll_top], 
+						attr+line[screen_y+roll_top+1], len);
+				len = line[screen_y+roll_top+1]-line[screen_y+roll_top];
+				for ( int i=roll_top+1; i<=roll_bot; i++ )
+					line[screen_y+i] = line[screen_y+i+1]-len;
+				buff_clear(line[screen_y+roll_bot], 
+					line[screen_y+roll_bot+1]-line[screen_y+roll_bot]);
+				cursor_x = line[cursor_y]+x;
 			}
 			bEscape = false;
 			break;
-		case 'M': // move/scroll down one line
-			if ( cursor_y>screen_y+roll_top ) {// move
+		case 'M': //move/scroll down one line
+			if ( cursor_y>screen_y+roll_top ) {	// move
 				int x = cursor_x-line[cursor_y];
 				cursor_x = line[--cursor_y]+x;
 			}
-			else {								// scroll
+			else {								//scroll
 				for ( int i=roll_bot; i>roll_top; i-- ) {
 					memcpy(buff+line[screen_y+i],buff+line[screen_y+i-1],size_x);
 					memcpy(attr+line[screen_y+i],attr+line[screen_y+i-1],size_x);
