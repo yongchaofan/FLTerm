@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37136 2020-07-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 37422 2020-07-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -25,7 +25,7 @@ bool show_editor(int x, int y, int w, int h);
 int term_connect(const char *hostname, char **preply);
 
 #ifndef WIN32 
-#include <unistd.h>		// needed for usleep
+#include <unistd.h>		//needed for usleep
 #define Sleep(x) usleep((x)*1000)
 #endif
 
@@ -36,19 +36,19 @@ void host_cb0(void *data, const char *buf, int len)
 }
 void Fl_Term::host_cb( const char *buf, int len )
 {
-	if ( len==0 ) {//Connected, send term size
+	if ( len==0 ) {		//Connected, send term size
 		host->send_size(size_x, size_y);
 		if ( host->type()==HOST_CONF ) bEcho = true;
 		do_callback( this, (void *)sTitle );
 	}
 	else
-		if ( len>0 ) {//data from host, display
+		if ( len>0 ) {	//data from host, display
 			if ( host->type()==HOST_CONF )
 				put_xml(buf, len);
 			else
 				append(buf, len);
 		}
-		else {//len<0 Disconnected, or failure
+		else {			//len<0 Disconnected, or failure
 			if ( *buf ) {
 				disp("\033[31m\r\n");
 				disp(buf);
@@ -389,7 +389,7 @@ void Fl_Term::next_line()
 	if ( screen_y==cursor_y-size_y ) screen_y++;
 	if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
 
-	if ( cursor_x>buff_size-1024 || cursor_y>line_size-3 ) {
+	if ( cursor_x>buff_size-1024 || cursor_y>=line_size-4 ) {
 		Fl::lock();
 		if ( line_size<65536 ) {	//double buffer size till 64k lines
 			char *old_buff = buff;
@@ -691,7 +691,11 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					check_cursor_y();
 					cursor_x = line[cursor_y];
 					break;
-				case 'f': //horizontal and vertical position forced
+				case 'f': //horizontal/vertical position forced, apt install
+					for ( int i=cursor_y+1; i<screen_y+n1; i++ )
+						if ( i<line_size && line[i]<cursor_x )
+							line[i] = cursor_x;
+					//fall through
 				case 'H': //cursor to line n1, postion n0
 					if ( !bAlterScreen && n1>size_y ) {
 						cursor_y = (screen_y++) + size_y;
@@ -708,12 +712,15 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					}
 					break;
 				case 'J': //[0J kill till end, 1J begining, 2J entire screen
-					if ( isdigit(ESC_code[1]) ) {
+					if ( isdigit(ESC_code[1]) || bAlterScreen ) {
 						screen_clear(m0);
-						break;
 					}
-					//fall through to treat [J as [0K,
-					//a hack for tinyCore command editing
+					else {//clear in none alter screen, used in apt install
+						line[cursor_y+1] = cursor_x;
+						for (int i=cursor_y+2; i<=screen_y+size_y+1; i++)
+							if ( i<line_size ) line[i] = 0;
+					}
+					break;
 				case 'K': {//[K erase till line end, 1K begining, 2K entire line
 						int a=line[cursor_y];
 						int z=line[cursor_y+1];
@@ -923,7 +930,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 			bEscape = false;
 			break;
 		case 'M': //move/scroll down one line
-			if ( cursor_y>screen_y+roll_top ) {	// move
+			if ( cursor_y>screen_y+roll_top ) {	//move
 				int x = cursor_x-line[cursor_y];
 				cursor_x = line[--cursor_y]+x;
 			}
