@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37422 2020-07-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 37570 2020-08-04 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -25,7 +25,7 @@ bool show_editor(int x, int y, int w, int h);
 int term_connect(const char *hostname, char **preply);
 
 #ifndef WIN32 
-#include <unistd.h>		//needed for usleep
+#include <unistd.h>		// needed for usleep
 #define Sleep(x) usleep((x)*1000)
 #endif
 
@@ -36,19 +36,19 @@ void host_cb0(void *data, const char *buf, int len)
 }
 void Fl_Term::host_cb( const char *buf, int len )
 {
-	if ( len==0 ) {		//Connected, send term size
+	if ( len==0 ) {//Connected, send term size
 		host->send_size(size_x, size_y);
 		if ( host->type()==HOST_CONF ) bEcho = true;
 		do_callback( this, (void *)sTitle );
 	}
 	else
-		if ( len>0 ) {	//data from host, display
+		if ( len>0 ) {//data from host, display
 			if ( host->type()==HOST_CONF )
 				put_xml(buf, len);
 			else
 				append(buf, len);
 		}
-		else {			//len<0 Disconnected, or failure
+		else {//len<0 Disconnected, or failure
 			if ( *buf ) {
 				disp("\033[31m\r\n");
 				disp(buf);
@@ -389,7 +389,7 @@ void Fl_Term::next_line()
 	if ( screen_y==cursor_y-size_y ) screen_y++;
 	if ( line[cursor_y+1]<cursor_x ) line[cursor_y+1]=cursor_x;
 
-	if ( cursor_x>buff_size-1024 || cursor_y>=line_size-4 ) {
+	if ( cursor_x>buff_size-1024 || cursor_y>line_size-3 ) {
 		Fl::lock();
 		if ( line_size<65536 ) {	//double buffer size till 64k lines
 			char *old_buff = buff;
@@ -693,8 +693,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					break;
 				case 'f': //horizontal/vertical position forced, apt install
 					for ( int i=cursor_y+1; i<screen_y+n1; i++ )
-						if ( i<line_size && line[i]<cursor_x )
-							line[i] = cursor_x;
+						if ( i<line_size ) line[i] = cursor_x;
 					//fall through
 				case 'H': //cursor to line n1, postion n0
 					if ( !bAlterScreen && n1>size_y ) {
@@ -750,21 +749,27 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					buff_clear(line[screen_y+roll_bot-n0+1], size_x*n0);
 					break;
 				case 'P': //delete n0 characters
-					for ( int i=cursor_x; i<line[cursor_y+1]-n0; i++ ) {
-						buff[i]=buff[i+n0];
-						attr[i]=attr[i+n0];
+					for ( int i=cursor_x+n0; i<line[cursor_y+1]; i++ ) {
+						buff[i-n0]=buff[i];
+						attr[i-n0]=attr[i];
 					}
 					buff_clear(line[cursor_y+1]-n0, n0);
+					if ( !bAlterScreen ) {
+						line[cursor_y+1]-=n0;
+						if ( line[cursor_y+1]<line[cursor_y] )
+							line[cursor_y+1] =line[cursor_y];
+					}
 					break;
 				case '@': //insert n0 spaces
 					for ( int i=line[cursor_y+1]-n0-1; i>=cursor_x; i-- ){
 						buff[i+n0]=buff[i];
 						attr[i+n0]=attr[i];
 					}
-					line[cursor_y+1]+=n0;
-					if ( line[cursor_y+1]-line[cursor_y]>size_x )
-						line[cursor_y+1] = line[cursor_y]+size_x;
-					//fall through
+					if ( !bAlterScreen ) {
+						line[cursor_y+1]+=n0;
+						if ( line[cursor_y+1]>line[cursor_y]+size_x )
+							line[cursor_y+1] =line[cursor_y]+size_x;
+					}//fall through
 				case 'X': //erase n0 characters
 					buff_clear(cursor_x, n0);
 					break;
@@ -930,7 +935,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 			bEscape = false;
 			break;
 		case 'M': //move/scroll down one line
-			if ( cursor_y>screen_y+roll_top ) {	//move
+			if ( cursor_y>screen_y+roll_top ) {	// move
 				int x = cursor_x-line[cursor_y];
 				cursor_x = line[--cursor_y]+x;
 			}
