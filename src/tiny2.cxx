@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27283 2020-07-18 10:05:10 $"
+// "$Id: tiny2.cxx 27185 2020-08-04 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -27,7 +27,7 @@ const char ABOUT_TERM2[]="\r\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tVerision 1.2.5, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.6, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
 const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -141,8 +141,7 @@ void tab_act(Fl_Term *pt)
 		pTerm->copy_label(label);
 	}
 
-	pTabs->value(pt);
-	pTerm = pt;
+	pTabs->value(pTerm=pt);
 	pTerm->take_focus();		//add "  x" to current active tab
 	pTerm->textfont(fontnum);
 	pTerm->textsize(fontsize);
@@ -179,31 +178,22 @@ void tab_new()
 	tab_act(pt);
 	pt->resize(0, MENUHEIGHT+TABHEIGHT, pTabs->w(), pTabs->h()-TABHEIGHT);
 }
-void tab_del()
-{
-	if ( pTerm->live() ) pTerm->disconn();
-	if ( pTabs->children()>1 ) {
-		pTabs->remove(pTerm);
-		//Fl::delete_widget(pTerm);
-		pTerm = NULL;
-		tab_act((Fl_Term *)pTabs->child(0));
-	}
-	else {
-		pTerm->clear();
-	}
-}
 void tab_cb(Fl_Widget *w)
 {
-	Fl_Term *pt = (Fl_Term *)pTabs->value();
-
-	if ( pt==pTerm ) {	//clicking on active tab, delete it
-		int confirm = 0;
-		if ( pTerm->live() ) confirm =
-			fl_choice("Disconnect from %s?", "Yes", "No", 0, pTerm->label());
-		if ( confirm==0 ) tab_del();
+	if ( pTabs->value()==pTerm ) {		//clicking on active tab
+		if ( pTerm->live() )			//confirm before disconnect
+			if ( fl_choice("Disconnect from %s?", "Yes", "No", 
+							0, pTerm->label())==1 ) return;
+		pTerm->disconn();
+		pTerm->clear();
+		if ( pTabs->children()>1 ) {	//delete if there is more than one
+			pTabs->remove(pTerm);
+			pTabs->value(pTabs->child(0));
+			pTerm = NULL;
+		}
 	}
-	else
-		tab_act(pt);	//clicking on inactive tab, activate it
+	tab_act((Fl_Term *)pTabs->value());	//activate new tab
+	pTabs->redraw(); 
 }
 int term_connect(const char *hostname, char **preply)
 {
@@ -692,16 +682,18 @@ void close_cb(Fl_Widget *w, void *data)
 		}
 	}
 	else {						//multi-tabbed
-		int active = pTerm->live();
-		if ( !active ) for ( int i=0; i<pTabs->children(); i++ ) {
+		bool confirmed = false;
+		for ( int i=0; i<pTabs->children(); i++ ) {
 			Fl_Term *pt = (Fl_Term *)pTabs->child(i);
-			if ( pt->live() ) active = true;
+			if ( pt->live() ) {
+				if ( !confirmed ) {
+					if (fl_choice("Disconnect all and exit?",
+									"Yes", "No", 0)==1 ) return;
+					confirmed = true;
+				} 
+				pt->disconn();
+			}
 		}
-		if ( active ) {
-			if ( fl_choice("Disconnect all and exit?", "Yes", "No", 0)==1 )
-				return;
-		}
-		while ( pTabs->children()>1 ) tab_del();
 	}
 	pCmd->close();
 	pWindow->hide();
