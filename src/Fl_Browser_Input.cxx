@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Browser_Input.cxx 3448 2020-07-18 13:48:10 $"
+// "$Id: Fl_Browser_Input.cxx 3440 2020-07-18 13:48:10 $"
 //
 // Fl_Input widget extended with auto completion
 //
@@ -23,7 +23,7 @@
 Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L):
 														Fl_Input(X,Y,W,H,L)
 {
-	browser = new Fl_Browser(0,0,1,1);
+	browser = new Fl_Browser(0, 0, 1, 1);
 	browser->clear();
 	browser->textsize(16);
 	browser->box(FL_FLAT_BOX);
@@ -31,31 +31,31 @@ Fl_Browser_Input::Fl_Browser_Input(int X,int Y,int W,int H,const char* L):
 	browser->hide();
 	id = 0;
 }
-void Fl_Browser_Input::resize( int X, int Y, int W, int H )
+void Fl_Browser_Input::resize(int X, int Y, int W, int H)
 {
 	Fl_Input::resize(X, Y, W, H);
 	browser->resize(X, Y+((Y<104) ? h()+1 : -104), w(), 104);
 }
-int Fl_Browser_Input::add( const char *cmd )
+int Fl_Browser_Input::add(const char *cmd)
 {
 	if ( strlen(cmd)<4 ) return 0;
 	int i=0;
 	while ( ++i<=browser->size() ) {
 		int cmp = strcmp(cmd, browser->text(i));
-		if ( cmp==0 ) return id=i;
+		if ( cmp==0 ) return 0;
 		if ( cmp<0 ) break;
 	}
 	browser->insert(i, cmd);
 	return id=i;
 }
-const char * Fl_Browser_Input::first( )
+const char * Fl_Browser_Input::first()
 {
 	if ( browser->size()>0 )
 		return browser->text(id=1);
 	else
 		return NULL;
 }
-const char * Fl_Browser_Input::next( )
+const char * Fl_Browser_Input::next()
 {
 	if ( id<browser->size() )
 		return browser->text(++id);
@@ -66,7 +66,7 @@ void Fl_Browser_Input::close()
 {
 	browser->hide();
 }
-int Fl_Browser_Input::handle( int e )
+int Fl_Browser_Input::handle(int e)
 {
 	if ( e!=FL_KEYDOWN ) return Fl_Input::handle(e);
 	char cmd[2]={ 0, 0 };
