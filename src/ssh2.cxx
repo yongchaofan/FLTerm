@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 40288 2020-07-15 11:55:10 $"
+// "$Id: ssh2.cxx 40264 2020-08-04 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -173,13 +173,28 @@ sshHost::sshHost(const char *name) : tcpHost(name)
 			break;
 		}
 	}
-	if ( phost!=NULL ) strncpy(hostname, phost, 63);
-	if ( psubsys!=NULL ) strncpy(subsystem, psubsys, 63);
+	if ( phost!=NULL ) {
+		strncpy(hostname, phost, 127);
+		hostname[127]=0;
+	}
+	if ( psubsys!=NULL ) {
+		strncpy(subsystem, psubsys, 63);
+		subsystem[63]=0;
+	}
 	if ( pport!=NULL ) port = atoi(pport);
-	if ( puser!=NULL ) strncpy(username, puser, 63);
-	if ( ppass!=NULL ) strncpy(password, ppass, 63);
-	if ( pphrase!=NULL ) strncpy(passphrase, pphrase, 63);
-	if ( port==0 ) port = (*subsystem==0) ? 22 : 830;
+	if ( puser!=NULL ) {
+		strncpy(username, puser, 63);
+		puser[63]=0;
+	}
+	if ( ppass!=NULL ) {
+		strncpy(password, ppass, 63);
+		ppass[63]=0;
+	}
+	if ( pphrase!=NULL ) {
+		strncpy(passphrase, pphrase, 63);
+		pphrase[63]=0;
+	}
+	if ( port==0 ) port = (*subsystem==0)?22:830;
 }
 const char *keytypes[] = {
 	"unknown", "rsa", "dss", "ecdsa256", "ecdsa384", "ecdsa521", "ed25519"
@@ -519,10 +534,7 @@ int sshHost::write(const char *buf, int len)
 		return cch<0 ? cch : total;
 	}
 	else {
-		if ( reader.joinable() )
-			write_keys(buf, len);
-		else
-			if ( *buf=='\r' ) connect();
+		if ( reader.joinable() ) write_keys(buf, len);
 	}
 	return 0;
 }
@@ -1565,10 +1577,7 @@ TCP_Close:
 }
 int sftpHost::write(const char *buf, int len)
 {
-	if ( reader.joinable() )
-		write_keys(buf, len);
-	else
-		if ( *buf=='\r' ) connect();
+	if ( reader.joinable() ) write_keys(buf, len);
 	return 0;
 }
 void sftpHost::disconn()

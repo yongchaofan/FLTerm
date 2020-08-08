@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 3796 2020-07-18 21:12:15 $"
+// "$Id: Hosts.h 3773 2020-08-01 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd
 //
@@ -41,7 +41,6 @@
 
 enum {  HOST_NULL=0, HOST_PIPE, HOST_COM, HOST_TCP,
 		HOST_SSH, HOST_SFTP, HOST_CONF }; 
-//HOST_FTPD, HOST_TFTPD
 enum {  HOST_IDLE=0, HOST_CONNECTING, HOST_AUTHENTICATING, HOST_CONNECTED };
 typedef void ( host_callback )(void *, const char *, int);
 
@@ -147,7 +146,7 @@ public:
 
 class tcpHost : public HOST {
 protected:
-	char hostname[64];
+	char hostname[128];
 	short port;
 	int sock;
 	int tcp();

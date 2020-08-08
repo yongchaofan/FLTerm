@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 14950 2020-07-18 12:15:10 $"
+// "$Id: Hosts.cxx 15007 2020-08-07 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -35,7 +35,7 @@ using namespace std;
 
 void HOST::connect()
 {
-	if ( reader.joinable() == false ) {
+	if ( reader.joinable()==false ) {
 		std::thread new_reader(&HOST::read, this);
 		reader.swap(new_reader);
 	}
@@ -94,7 +94,7 @@ void comHost::xmodem_block()
 	xmodem_buf[0] = 0x01; //SOH
 	xmodem_buf[1] = ++xmodem_blk;
 	xmodem_buf[2] = 255-xmodem_blk;
-	int cnt = fread( xmodem_buf+3, 1, 128, xmodem_fp );
+	int cnt = fread(xmodem_buf+3, 1, 128, xmodem_fp);
 	if ( cnt <= 0 ) {
 		xmodem_buf[0] = EOT;
 		fclose(xmodem_fp);
@@ -239,12 +239,11 @@ int comHost::write(const char *buf, int len)
 {
 	DWORD dwWrite=0;
 	if ( status()==HOST_CONNECTED ) {
-		if ( !WriteFile(hCommPort, buf, len, &dwWrite, NULL) )
+		if ( !WriteFile(hCommPort, buf, len, &dwWrite, NULL) ) {
+			print("\r\n\033[31mserial port write error\r\n");
 			disconn();
+		}
 	}
-	else
-		if ( reader.joinable()==false && *buf=='\r' )
-			connect();
 	return dwWrite;
 }
 #else
@@ -307,12 +306,11 @@ shutdown:
 int comHost::write(const char *buf, int len)
 {
 	if ( status()==HOST_CONNECTED ) {
-		if ( ::write(ttySfd, buf, len) < 0 )
+		int cch = ::write(ttySfd, buf, len);
+		if ( cch<0 ) {
 			disconn();
-	}
-	else {
-		if ( live()==false && *buf=='\r' )
-			connect();
+			print("\r\n\033[31mserial port write error %d\r\n", cch);
+		}
 	}
 	return 0;
 }
@@ -321,8 +319,8 @@ int comHost::write(const char *buf, int len)
 /**********************************tcpHost******************************/
 tcpHost::tcpHost(const char *name):HOST()
 {
-	strncpy(hostname, name, 63);
-	hostname[63]=0;
+	strncpy(hostname, name, 127);
+	hostname[127]=0;
 	port = 23;
 	sock = -1;
 	char *p = strchr(hostname, ':');
@@ -398,22 +396,19 @@ int tcpHost::read()
 }
 int tcpHost::write(const char *buf, int len)
 {
+	int total=0;
 	if ( sock!=-1 ) {
-		int total=0, cch=0;
 		while ( total<len ) {
-			cch = send( sock, buf+total, len-total, 0);
+			int cch = send( sock, buf+total, len-total, 0);
 			if ( cch<0 ) {
 				disconn();
+				print("\r\n\033[31msocket write error %d\r\n", cch);
 				return cch;
 			}
 			total+=cch;
 		}
-		return total;
 	}
-	else {
-		if (  reader.joinable()==false && *buf=='\r' ) connect();
-	}
-	return 0;
+	return total;
 }
 void tcpHost::disconn()
 {
@@ -597,9 +592,13 @@ pty_close:
 }
 int pipeHost::write( const char *buf, int len )
 {
-	for ( int i=0; i<len; i++ ) 
-		if ( ::write( pty_master, buf+i, 1 )<0 ) 
+	for ( int i=0; i<len; i++ ) {
+		int cch = ::write(pty_master, buf+i, 1);
+		if ( cch<0 ) {
 			close(pty_master);
+			print("\r\n\033[31mpipe write error %d\r\n", cch);
+		}
+	}
 	return 0;
 }
 void pipeHost::send_size(int sx, int sy)
