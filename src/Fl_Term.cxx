@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37570 2020-08-04 10:08:20 $"
+// "$Id: Fl_Term.cxx 37567 2020-08-04 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -22,7 +22,7 @@ using namespace std;
 
 //defined in tiny2.cxx, returns false if editor is hiden
 bool show_editor(int x, int y, int w, int h);
-int term_connect(const char *hostname, char **preply);
+HOST *host_new(const char *hostname);
 
 #ifndef WIN32 
 #include <unistd.h>		// needed for usleep
@@ -32,14 +32,14 @@ int term_connect(const char *hostname, char **preply);
 void host_cb0(void *data, const char *buf, int len)
 {
 	Fl_Term *term = (Fl_Term *)data;
-	term->host_cb( buf, len );
+	term->host_cb(buf, len);
 }
 void Fl_Term::host_cb( const char *buf, int len )
 {
 	if ( len==0 ) {//Connected, send term size
 		host->send_size(size_x, size_y);
 		if ( host->type()==HOST_CONF ) bEcho = true;
-		do_callback( this, (void *)sTitle );
+		do_callback(this, (void *)sTitle);
 	}
 	else
 		if ( len>0 ) {//data from host, display
@@ -57,7 +57,7 @@ void Fl_Term::host_cb( const char *buf, int len )
 			}
 			if ( host->type()==HOST_CONF ) bEcho = false;
 			*sTitle = 0;
-			do_callback( this, (void *)NULL );
+			do_callback(this, (void *)NULL);
 		}
 }
 #ifdef __APPLE__
@@ -136,7 +136,8 @@ void Fl_Term::resize(int X, int Y, int W, int H)
 	size_y = h()/font_height;
 	roll_top = 0;
 	roll_bot = size_y-1;
-	if ( !bAlterScreen ) screen_y = max(0, cursor_y-size_y+1);
+	if ( screen_y< cursor_y-size_y+1 )
+		screen_y = cursor_y-size_y+1;
 	host->send_size(size_x, size_y);
 	redraw();
 }
@@ -601,6 +602,14 @@ void Fl_Term::check_cursor_y()
 			cursor_y = screen_y+roll_bot;
 	}
 }
+void Fl_Term::termsize(int cols, int rows)
+{
+	if ( size_x!=cols || size_y!=rows ) {
+		size_x=cols; size_y=rows;
+		screen_clear(2);
+		do_callback(this, (void *)sTitle);	//trigger window resizing
+	}
+}
 const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 {
 	const unsigned char *zz = sz+cnt;
@@ -693,7 +702,8 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					break;
 				case 'f': //horizontal/vertical position forced, apt install
 					for ( int i=cursor_y+1; i<screen_y+n1; i++ )
-						if ( i<line_size ) line[i] = cursor_x;
+						if ( i<line_size && line[i]<cursor_x )
+							line[i] = cursor_x;
 					//fall through
 				case 'H': //cursor to line n1, postion n0
 					if ( !bAlterScreen && n1>size_y ) {
@@ -730,21 +740,23 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					break;
 				case 'L': //insert n0 lines
 					if ( n0 > screen_y+roll_bot-cursor_y )
-						n0 = screen_y+roll_bot-cursor_y;
-					for ( int i=screen_y+roll_bot; i>=cursor_y+n0; i-- ) {
-						memcpy( buff+line[i], buff+line[i-n0], size_x );
-						memcpy( attr+line[i], attr+line[i-n0], size_x );
-					}
+						n0 = screen_y+roll_bot-cursor_y+1;
+					else
+						for ( int i=screen_y+roll_bot; i>=cursor_y+n0; i-- ) {
+							memcpy( buff+line[i], buff+line[i-n0], size_x );
+							memcpy( attr+line[i], attr+line[i-n0], size_x );
+						}
 					cursor_x = line[cursor_y];
 					buff_clear(cursor_x, size_x*n0);
 					break;
 				case 'M': //delete n0 lines
 					if ( n0 > screen_y+roll_bot-cursor_y )
-						n0 = screen_y+roll_bot-cursor_y;
-					for ( int i=cursor_y; i<=screen_y+roll_bot-n0; i++ ) {
-						memcpy( buff+line[i], buff+line[i+n0], size_x);
-						memcpy( attr+line[i], attr+line[i+n0], size_x);
-					}
+						n0 = screen_y+roll_bot-cursor_y+1;
+					else
+						for ( int i=cursor_y; i<=screen_y+roll_bot-n0; i++ ) {
+							memcpy( buff+line[i], buff+line[i+n0], size_x);
+							memcpy( attr+line[i], attr+line[i+n0], size_x);
+						}
 					cursor_x = line[cursor_y];
 					buff_clear(line[screen_y+roll_bot-n0+1], size_x*n0);
 					break;
@@ -811,11 +823,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					if ( ESC_code[1]=='?' ) {
 						switch( atoi(ESC_code+2) ) {
 						case 1: bAppCursor = true; 	break;
-						case 3:	if ( size_x!=132 || size_y!=25 ) {
-									size_x=132; size_y=25;
-									screen_clear(2);
-								}
-								break;
+						case 3:	termsize(132, 25);  break;
 						case 6: bOriginMode = true; break;
 						case 7: bWraparound = true; break;
 						case 25:	bCursor = true; break;
@@ -830,11 +838,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					if ( ESC_code[1]=='?' ) {
 						switch( atoi(ESC_code+2) ) {
 						case 1: bAppCursor = false; break;
-						case 3:	if ( size_x!=80 || size_y!=25 ) {
-									size_x=80; size_y=25;
-									screen_clear(2);
-								}
-								break;
+						case 3:	termsize(80, 25);   break;
 						case 6: bOriginMode= false; break;
 						case 7: bWraparound= false; break;
 						case 25:	bCursor= false; break;
@@ -1056,26 +1060,16 @@ int Fl_Term::waitfor_prompt()
 	bPrompt = true;
 	return cursor_x - recv0;
 }
-void Fl_Term::disp(const char *buf)
-{
-	append(buf, strlen(buf));
-}
-void Fl_Term::send(const char *buf)
-{
-	write(buf, strlen(buf));
-}
-int Fl_Term::connect(HOST *newhost, char **preply )
+int Fl_Term::connect(HOST *newhost, const char **preply )
 {
 	int rc = 0;
 	if ( host->live() ) return rc;
 	delete host;
 
 	host = newhost;
-	char label[32];
-	strncpy(label, host->name(), 29);
-	label[29]=0;
-	strcat(label, "  x");
-	copy_label(label);
+	strncpy(sTitle, host->name(), 40);
+	sTitle[40]=0;
+	copy_label(sTitle);
 	host->callback(host_cb0, this);
 
 	mark_prompt();
@@ -1086,15 +1080,24 @@ int Fl_Term::connect(HOST *newhost, char **preply )
 	}
 	return rc;
 }
-void Fl_Term::disconn()
-{
-	if ( host->live() ) host->disconn();
-}
 char *Fl_Term::gets(const char *prompt, int echo)
 {
 	return host->gets(prompt, echo);
 }
-int Fl_Term::command(const char *cmd, char **preply)
+void Fl_Term::write(const char *buf, int len) { 
+	if ( bEcho ) append(buf, len);
+	if ( host->live() ) 
+		host->write(buf, len);
+	else {
+		if ( *buf=='\r' ) host->connect();
+	}
+}
+void Fl_Term::disconn()
+{
+	if ( host->live() ) host->disconn();
+}
+
+int Fl_Term::command(const char *cmd, const char **preply)
 {
 	int rc = 0;
 	if ( *cmd!='!' ) {
@@ -1117,7 +1120,6 @@ int Fl_Term::command(const char *cmd, char **preply)
 		
 		if ( strncmp(cmd,"Clear",5)==0 ) clear();
 		else if ( strncmp(cmd,"Log",3)==0 ) logg( p );
-		else if ( strncmp(cmd,"Find",4)==0 ) srch(p);
 		else if ( strncmp(cmd,"Wait",4)==0 ) Sleep(atoi(p)*1000);
 		else if ( strncmp(cmd,"Disp",4)==0 ) {
 			mark_prompt();
@@ -1137,7 +1139,7 @@ int Fl_Term::command(const char *cmd, char **preply)
 		}
 		else if ( strncmp(cmd,"Hostname",8)==0 ) {
 			if ( preply!=NULL && live() ) {
-				*preply = (char *)label();
+				*preply = (char *)host->name();
 				rc = strlen(*preply);
 			}
 		}
@@ -1158,10 +1160,6 @@ int Fl_Term::command(const char *cmd, char **preply)
 			if ( preply!=NULL ) *preply = sPrompt;
 			rc = iPrompt;
 		}
-		else if ( strncmp(cmd,"Title",5)==0) {
-			if ( preply!=NULL ) *preply = sTitle;
-			rc = strlen(sTitle); 
-		}
 		else if ( strncmp(cmd,"scp",3)==0
 				||strncmp(cmd,"tun",3)==0 
 				||strncmp(cmd,"xmodem",6)==0 ) {
@@ -1173,7 +1171,9 @@ int Fl_Term::command(const char *cmd, char **preply)
 			}
 		}
 		else {
-			rc = term_connect(cmd, preply);
+			HOST *host = host_new(cmd);
+			if ( host!=NULL )
+				rc = connect(host, preply);
 		}
 	}
 	return rc;
@@ -1237,7 +1237,7 @@ void Fl_Term::copier(char *files)
 	bScriptRun = true;
 	char dst[256]="";
 	if ( host->type()==HOST_SSH ) {
-		char *p1, *p2;
+		const char *p1, *p2;
 		command("pwd", &p2);
 		p1 = strchr(p2, 0x0a);
 		if ( p1!=NULL ) {
@@ -1263,7 +1263,8 @@ void Fl_Term::copier(char *files)
 }
 void Fl_Term::scripter(char *cmds)
 {
-	char *p1=cmds, *p0, *reply;
+	char *p1=cmds, *p0;
+	const char *reply;
 	bScriptRun = true; bScriptPause = false;
 	while ( bScriptRun && p1!=NULL ) {
 		if ( bScriptPause ) {

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4862 2020-07-18 13:08:10 $"
+// "$Id: Fl_Term.h 4920 2020-07-18 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -38,12 +38,12 @@ class Fl_Term : public Fl_Widget {
 	int save_y;			//previous cursor_y when switch to alternate screen
 	int screen_y;		//the line at top of screen
 	int roll_top;
-	int roll_bot;		//the range of lines that will scroll in vi
+	int roll_bot;		//the range of lines that will scroll in alterscreen
 	int sel_left;
-	int sel_right;		//begin and end of selection on screen
-	float font_width;	//current font width in pixels
-	int font_height;	//current font height in pixels
-	int font_size;		//current font weight
+	int sel_right;		//begin and end of selection in scroll buffer
+	float font_width;	//current font width
+	int font_height;	//current font height
+	int font_size;		//current font size, should equal to height
 	int font_face;		//current font face
 	std::atomic<bool> redraw_pending;
 	std::mutex append_mtx;
@@ -90,6 +90,7 @@ protected:
 	void draw();
 	void next_line();
 	void buff_clear(int offset, int len);
+	void termsize(int cols, int rows);
 	void screen_clear(int m0);
 	void check_cursor_y();
 	void append( const char *buf, int len );
@@ -108,11 +109,12 @@ public:
 	bool pending(){ return redraw_pending; }
 	void pending(bool p) { redraw_pending=p; }
 	const char *title() { return sTitle; }
+	const char *hostname() { return host->name(); }
 
 	int logg() { return fpLogFile!=NULL; }
 	int echo() { return bEcho; }
-	int sizeX() { return size_x*font_width; }
-	int sizeY() { return size_y*font_height+font_height/2; }
+	int sizeX() { return size_x; }
+	int sizeY() { return size_y; }
 	void echo(int e) { bEcho = e; }
 	void logg(const char *fn);
 	void save(const char *fn);
@@ -121,22 +123,17 @@ public:
 	bool live() { return host->live(); }
 	void host_cb(const char *buf, int len);
 	char *gets(const char *prompt, int echo);
+	void write(const char *buf, int len);
 	void disconn();
-
-
-	void write(const char *buf, int len) { 
-		if ( bEcho ) append(buf, len);
-		if ( host ) host->write(buf, len);
-	}
 
 	void learn_prompt();
 	int  mark_prompt();
 	int  waitfor_prompt();
 
-	void disp(const char *buf);
-	void send(const char *buf);
-	int command(const char *cmd, char **preply);
-	int connect(HOST *newhost, char **preply);
+	void disp(const char *buf) { append(buf, strlen(buf)); }
+	void send(const char *buf) { write(buf, strlen(buf)); }
+	int command(const char *cmd, const char **preply);
+	int connect(HOST *newhost, const char **preply);
 
 	void copier(char *files);
 	void scripter(char *cmds);
