@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 40264 2020-08-04 11:55:10 $"
+// "$Id: ssh2.cxx 38793 2020-08-09 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -123,7 +123,7 @@ static const char *errmsgs[] = {
 "Channel failure", "pty failure", "Shell failure", "Subsystem failure"
 };
 
-const char *kb_gets(const char *prompt, int echo);
+const char *kb_gets(const char *prompt, int echo);	//define in tiny2.cxx
 sshHost::sshHost(const char *name) : tcpHost(name)
 {
 	port = 0;
@@ -242,9 +242,9 @@ int sshHost::ssh_knownhost()
 		if ( type==((host->typemask&LIBSSH2_KNOWNHOST_KEY_MASK)
 								  >>LIBSSH2_KNOWNHOST_KEY_SHIFT) ) {
 			print("%s\r\n\033[31m!!!host key changed!!!\r\n", keybuf);
-			p = gets("Update hostkey and continue?(Yes/No) ", true);
+			p = term_gets("Update hostkey and continue?(Yes/No) ", true);
 			if ( p==NULL ) {
-				do_callback("\r\n", 2);
+				term_puts("\r\n", 2);
 				break;
 			}
 			if ( *p!='y' && *p!='Y' ) break;
@@ -255,10 +255,10 @@ int sshHost::ssh_knownhost()
 	case LIBSSH2_KNOWNHOST_CHECK_NOTFOUND:
 		if ( p==NULL ) {
 			print("%s\r\n\033[33mhostkey unknown!\r\n", keybuf);
-			p = gets("Add to .ssh/known_hosts?(Yes/No)", true);
+			p = term_gets("Add to .ssh/known_hosts?(Yes/No)", true);
 		}
 		if ( p==NULL ) {
-			do_callback("\r\n", 2);
+			term_puts("\r\n", 2);
 			break;
 		}
 		if ( *p!='y' && *p!='Y' ) break;
@@ -288,58 +288,12 @@ static void kbd_callback(const char *name, int name_len,
 						 void **abstract)
 {
 	for ( int i=0; i<num_prompts; i++) {
-		char *prompt = strdup(prompts[i].text);
-		prompt[prompts[i].length] = 0;
-		const char *p = kb_gets(prompt, prompts[i].echo);
-		free(prompt);
+		const char *p = kb_gets(prompts[i].text, prompts[i].echo);
 		if ( p!=NULL ) {
 			responses[i].text = strdup(p);
 			responses[i].length = strlen(p);
 		}
 	}
-}
-void sshHost::write_keys(const char *buf, int len)
-{
-	for ( int i=0; i<len&&bGets; i++ ) {
-		if ( buf[i]=='\015' ) {
-			keys[cursor++]=0;
-			bReturn=true;
-		}
-		else if ( buf[i]=='\177' || buf[i]=='\b' ) {
-			if ( cursor>0 ) {
-				cursor--;
-				if ( !bPassword )
-					do_callback("\010 \010", 3);
-			}
-		}
-		else {
-			keys[cursor++]=buf[i];
-			if ( cursor>63 ) cursor=63;
-			if ( !bPassword ) do_callback(buf+i, 1);
-		}
-	}
-}
-char* sshHost::gets(const char *prompt, int echo)
-{
-	do_callback(prompt, strlen(prompt));
-	cursor=0;
-	bGets = true;
-	bReturn = false;
-	bPassword = !echo;
-	int old_cursor = cursor;
-	for ( int i=0; i<600&&bGets&&(!bReturn); i++ ) {
-		if ( cursor>old_cursor ) { 
-			old_cursor=cursor;
-			i=0;
-		}
-		Sleep(100);
-	}
-	if ( bReturn ) {
-		do_callback("\r\n", 2);
-		return keys;
-	}
-	else
-		return NULL;
 }
 const char *pubkeys[] = {".ssh/id_ed25519.pub", ".ssh/id_ecdsa.pub",
 						".ssh/id_rsa.pub" };
@@ -348,7 +302,7 @@ int sshHost::ssh_authentication()
 {
 	int rc = -5;
 	if ( *username==0 ) {
-		const char *p = gets("\r\nusername: ", true);
+		const char *p = term_gets("\r\nusername: ", true);
 		if ( p==NULL ) return rc;
 		if ( *p==0 ) return rc;
 		strncpy(username, p, 31);
@@ -378,7 +332,7 @@ int sshHost::ssh_authentication()
 	if ( rc!=0 && strstr(authlist, "password")!=NULL ) {
 		//password was not set, get it interactively
 		for ( int i=0; i<3; i++ ) {
-			const char *p = gets("password: ", false);
+			const char *p = term_gets("password: ", false);
 			if ( p!=NULL ) {
 				strncpy(password, p, 31);
 				if (!libssh2_userauth_password(session,username,password)) {
@@ -387,7 +341,7 @@ int sshHost::ssh_authentication()
 				}
 			}
 			else
-				do_callback("\r\n", 2);
+				term_puts("\r\n", 2);
 		}
 	}
 	else if ( rc!=0 && strstr(authlist, "keyboard-interactive")!=NULL ) {
@@ -427,7 +381,7 @@ int sshHost::read()
 	channel = NULL;
 	session = libssh2_session_init();
 	if ( libssh2_session_handshake(session, sock)!=0 ) {
-		do_callback(errmsgs[2], -2);
+		term_puts(errmsgs[2], -2);
 		goto Session_Close;
 	}
 	const char *banner;
@@ -436,30 +390,30 @@ int sshHost::read()
 
 	status(HOST_AUTHENTICATING);
 	if ( ssh_knownhost()!=0 ) {
-		do_callback(errmsgs[3], -3);
+		term_puts(errmsgs[3], -3);
 		goto Session_Close;
 	}
 	if ( ssh_authentication()!=0 ) {
-		do_callback(errmsgs[4], -4);
+		term_puts(errmsgs[4], -4);
 		goto Session_Close;
 	}
 	if ( !(channel=libssh2_channel_open_session(session)) ) {
-		do_callback(errmsgs[5], -5);
+		term_puts(errmsgs[5], -5);
 		goto Session_Close;
 	}
 	if ( *subsystem==0 ) {
 		if (libssh2_channel_request_pty(channel, "xterm")) {
-			do_callback(errmsgs[6], -6);
+			term_puts(errmsgs[6], -6);
 			goto Channel_Close;
 		}
 		if ( libssh2_channel_shell(channel)) {
-			do_callback(errmsgs[7], -7);
+			term_puts(errmsgs[7], -7);
 			goto Channel_Close;
 		}
 	}
 	else {
 		if (libssh2_channel_subsystem(channel, subsystem)) {
-			do_callback(errmsgs[8], -8);
+			term_puts(errmsgs[8], -8);
 			goto Channel_Close;
 		}
 		libssh2_channel_write(channel, IETF_HELLO, strlen(IETF_HELLO));
@@ -467,26 +421,20 @@ int sshHost::read()
 	libssh2_session_set_blocking(session, 0);
 
 	status(HOST_CONNECTED);
-	do_callback("Connected", 0);
+	term_puts("Connected", 0);
 	while ( true ) {
-		int len;
 		char buf[32768];
 		mtx.lock();
-		len=libssh2_channel_read(channel, buf, 32767);
+		int len=libssh2_channel_read(channel, buf, 32768);
 		mtx.unlock();
 		if ( len>0 ) {
-			buf[len] = 0;
-			do_callback(buf, len);
+			term_puts(buf, len);
 		}
-		else {
-			if ( len==LIBSSH2_ERROR_EAGAIN )
-				if ( wait_socket()>0 ) continue;
-			if ( len==0 )
-				if ( !libssh2_channel_eof(channel) ) continue;
-			break;
+		else {//len<=0
+			if ( len!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) break;
 		}
 	}
-	do_callback("Disconnected", -1);
+	term_puts("Disconnected", -1);
 	tun_closeall();
 	*username = 0;
 	*password = 0;
@@ -513,30 +461,19 @@ TCP_Close:
 }
 int sshHost::write(const char *buf, int len)
 {
-	if ( channel!=NULL ) {
-		int total=0, cch=0;
-		while ( total<len ) {
-			mtx.lock();
-			if ( channel!=NULL )
-				cch=libssh2_channel_write(channel, buf+total, len-total);
-			else
-				cch = 0;
-			mtx.unlock();
-			if ( cch>0 )
-				total += cch;
-			else  {
-				if ( cch==LIBSSH2_ERROR_EAGAIN )
-					if ( wait_socket()>0 ) continue;
-				disconn();
-				break;
-			}
+	int total=0, cch=0;
+	while ( total<len && channel!=NULL ) {
+		mtx.lock();
+		cch=libssh2_channel_write(channel, buf+total, len-total);
+		mtx.unlock();
+		if ( cch>0 ) {
+			total += cch;
 		}
-		return cch<0 ? cch : total;
+		else  {
+			if ( cch!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) break;
+		}
 	}
-	else {
-		if ( reader.joinable() ) write_keys(buf, len);
-	}
-	return 0;
+	return cch<0 ? cch : total;
 }
 void sshHost::send_size(int sx, int sy)
 {
@@ -546,16 +483,16 @@ void sshHost::send_size(int sx, int sy)
 	mtx.unlock();
 }
 void sshHost::keepalive(int interval)
-{
-	mtx.lock();
-	if ( session!=NULL ) //some host will close connection when interval!=0
+{//some host will close connection when interval!=0
+	if ( session!=NULL ) {
+		mtx.lock();
 		libssh2_keepalive_config(session, false, interval);
-	mtx.unlock();
+		mtx.unlock();
+	}
 }
 void sshHost::disconn()
 {
 	if ( reader.joinable() ) {
-		bGets = false;
 		if ( channel!=NULL ) {
 			mtx.lock();
 			libssh2_channel_eof(channel);
@@ -566,7 +503,6 @@ void sshHost::disconn()
 			libssh2_session_disconnect(session, "close");
 			mtx.unlock();
 		}
-//		reader.join();//cause crash when compiled with visual studio or xcode
 	}
 }
 void sshHost::print_total(time_t start, long long total)
@@ -579,7 +515,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 {
 	LIBSSH2_CHANNEL *scp_channel;
 	libssh2_struct_stat fileinfo;
-	print("\r\n\033[32mscp: %s\t\t", lpath);
+	print("\r\n\033[32mscp: %s\t\t\t", lpath);
 	int err_no=0;
 	do {
 		mtx.lock();
@@ -589,7 +525,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 		if (!scp_channel) {
 			if ( err_no==LIBSSH2_ERROR_EAGAIN)
 				if ( wait_socket()>0 ) continue;
-			print("\033[31mcouldn't open remote file %s",rpath);
+			print("\033[31mcouldn't open remote file");
 			return -1;
 		}
 	} while (!scp_channel);
@@ -601,7 +537,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 		libssh2_struct_stat_size fsize = fileinfo.st_size;
 		while  ( total<fsize ) {
 			char mem[1024*32];
-			int amount=sizeof(mem);
+			int amount=1024*32;
 			if ( (fsize-total) < amount) {
 				amount = (int)(fsize-total);
 			}
@@ -613,7 +549,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 				if ( nwrite>0 ) {
 					total += nwrite;
 					if ( (total&0xfffff)==0 )
-						print("\033[12D% 10lldKB", total);
+						print("\033[12D% 10lldKB", total>>10);
 				}
 				if ( nwrite!=rc ) {
 					print("\033[31merror writing to file");
@@ -621,10 +557,10 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 				}
 			}
 			else {
-				if ( rc==LIBSSH2_ERROR_EAGAIN )
-					if ( wait_socket()>0 ) continue;
-				print("\033[31merror reading from host");
-				break;
+				if ( rc!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) {
+					print("\033[31merror reading from host");
+					break;
+				}
 			}
 		}
 		fclose(fp);
@@ -643,7 +579,7 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 {
 	LIBSSH2_CHANNEL *scp_channel;
 	struct stat fileinfo;
-	print("\r\n\033[32mscp: %s\t\t", rpath);
+	print("\r\n\033[32mscp: %s\t\t\t", rpath);
 	FILE *fp =fopen(lpath, "rb");
 	if ( fp==NULL ) {
 		print("\033[31mcouldn't read local file %s", lpath);
@@ -654,25 +590,24 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 	int err_no = 0;
 	do {
 		mtx.lock();
-		scp_channel = libssh2_scp_send(session, rpath, fileinfo.st_mode & 0777,
+		scp_channel = libssh2_scp_send(session, rpath, fileinfo.st_mode&0777,
 						   (unsigned long)fileinfo.st_size);
 		if ( !scp_channel ) err_no = libssh2_session_last_errno(session);
 		mtx.unlock();
 		if ( !scp_channel ) {
-			if ( err_no==LIBSSH2_ERROR_EAGAIN )
-				if ( wait_socket()>0 ) continue;
-			print("\033[31mcouldn't open remote file %s",rpath);
-			fclose(fp);
-			return -2;
+			if ( err_no!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) {
+				print("\033[31mcouldn't open remote file");
+				fclose(fp);
+				return -2;
+			}
 		}
 	} while ( !scp_channel );
 
 	int rc;
 	time_t start = time(NULL);
 	size_t nread = 0, total = 0;
-	print("            ");
 	char mem[1024*32];
-	while ( (nread=fread(mem, 1, sizeof(mem), fp)) >0 ) {
+	while ( (nread=fread(mem, 1, 1024*32, fp)) >0 ) {
 		char *ptr = mem;
 		while ( nread>0 ) {
 			mtx.lock();
@@ -684,9 +619,7 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 				total += rc;
 			}
 			else {
-				if ( rc==LIBSSH2_ERROR_EAGAIN )
-					if ( wait_socket()>0 ) continue;
-				break;
+				if ( rc!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) break;
 			}
 		}
 		if ( rc>0 ) {
@@ -698,9 +631,7 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 			break;
 		}
 	}
-	if ( nread==0 ) {//end of file
-		print_total(start, total);
-	}
+	if ( nread==0 ) print_total(start, total);	//file completed
 	fclose(fp);
 
 	do {
@@ -865,7 +796,7 @@ TUNNEL *sshHost::tun_add(int tun_sock, LIBSSH2_CHANNEL *tun_channel,
 		tunnel_list = tun;
 		mtx.unlock();
 		print("\r\n\033[32mtunnel %d %s:%d %s:%d\r\n", tun_sock,
-							localip, localport, remoteip, remoteport);
+						localip, localport, remoteip, remoteport);
 	}
 	return tun;
 }
@@ -1129,29 +1060,18 @@ void sshHost::tun(const char *cmd)
 	write("\r", 1);
 }
 /*******************sftpHost*******************************/
-int sftpHost::sftp_lcd(char *cmd)
+void sftpHost::sftp_lcd(char *cmd)
 {
-	if ( cmd==NULL || *cmd==0 ) {
-		char buf[4096];
-		if ( getcwd(buf, 4096)!=NULL ) {
-			print("\033[32m%s \033[37mis current local directory\r\n", cmd);
-		}
-		else {
-			print("\033[31mCouldn't get current local directory\r\n");
-		}
-	}
-	else {
-		while ( *cmd==' ' ) cmd++;
-		if ( chdir(cmd)==0 ) {
-			print("\033[32m%s\033[37m is now local directory!\r\n", cmd);
-		}
-		else {
+	char buf[4096];
+	if ( cmd!=NULL && *cmd!=0 ) {
+		if ( chdir(cmd)!=0 ) 
 			print("\033[31mCouldn't change local dir to \033[32m%s\r\n", cmd);
-		}
 	}
-	return 0;
+	if ( getcwd(buf, 4096)!=NULL ) {
+		print("\033[32m%s \033[37mis current local directory\r\n", buf);
+	}
 }
-int sftpHost::sftp_cd(char *path)
+void sftpHost::sftp_cd(char *path)
 {
 	char newpath[1024];
 	if ( path!=NULL ) {
@@ -1159,25 +1079,24 @@ int sftpHost::sftp_cd(char *path)
 		sftp_handle = libssh2_sftp_opendir(sftp_session, path);
 		if (!sftp_handle) {
 			print("\033[31mCouldn't change dir to \033[32m%s\r\n", path);
-			return 0;
+			return;
 		}
 		libssh2_sftp_closedir(sftp_handle);
 		int rc = libssh2_sftp_realpath(sftp_session, path, newpath, 1024);
-		if ( rc>0 ) strcpy( realpath, newpath );
+		if ( rc>0 ) strcpy(realpath, newpath);
 	}
 	print("%s\r\n", realpath);
-	return 0;
 }
-int sftpHost::sftp_ls(char *path, int ll)
+void sftpHost::sftp_ls(char *path, bool ll)
 {
 	char *pattern = NULL;
 	char mem[512], longentry[512];
 	LIBSSH2_SFTP_ATTRIBUTES attrs;
-	LIBSSH2_SFTP_HANDLE *sftp_handle = libssh2_sftp_opendir(sftp_session, path);
+	LIBSSH2_SFTP_HANDLE *sftp_handle=libssh2_sftp_opendir(sftp_session, path);
 	if (!sftp_handle) {
 		if ( strchr(path, '*')==NULL && strchr(path, '?')==NULL ) {
 			print("\033[31mUnable to open dir\033[32m%s\r\n", path);
-			return 0;
+			return;
 		}
 		pattern = strrchr(path, '/');
 		if ( pattern!=path ) {
@@ -1190,7 +1109,7 @@ int sftpHost::sftp_ls(char *path, int ll)
 		}
 		if ( !sftp_handle ) {
 			print("\033[31munable to open dir\033[32m%s\r\n", path);
-			return 0;
+			return;
 		}
 	}
 
@@ -1200,14 +1119,13 @@ int sftpHost::sftp_ls(char *path, int ll)
 			print("%s\r\n", ll ? longentry : mem);
 	}
 	libssh2_sftp_closedir(sftp_handle);
-	return 0;
 }
-int sftpHost::sftp_rm(char *path)
+void sftpHost::sftp_rm(char *path)
 {
 	if ( strchr(path, '*')==NULL && strchr(path, '?')==NULL ) {
 		if ( libssh2_sftp_unlink(sftp_session, path) )
 			print("\033[31mcouldn't delete file\033[32m%s\r\n", path);
-		return 0;
+		return;
 	}
 	char mem[512], rfile[1024];
 	LIBSSH2_SFTP_ATTRIBUTES attrs;
@@ -1217,7 +1135,7 @@ int sftpHost::sftp_rm(char *path)
 	sftp_handle = libssh2_sftp_opendir(sftp_session, path);
 	if ( !sftp_handle ) {
 		print("\033[31munable to open dir\033[32m%s\r\n", path);
-		return 0;
+		return;
 	}
 
 	while ( libssh2_sftp_readdir(sftp_handle, mem, sizeof(mem), &attrs)>0 ) {
@@ -1230,60 +1148,53 @@ int sftpHost::sftp_rm(char *path)
 		}
 	}
 	libssh2_sftp_closedir(sftp_handle);
-	return 0;
 }
-int sftpHost::sftp_md(char *path)
+void sftpHost::sftp_md(char *path)
 {
 	int rc = libssh2_sftp_mkdir(sftp_session, path,
 							LIBSSH2_SFTP_S_IRWXU|
 							LIBSSH2_SFTP_S_IRGRP|LIBSSH2_SFTP_S_IXGRP|
 							LIBSSH2_SFTP_S_IROTH|LIBSSH2_SFTP_S_IXOTH);
-	if ( rc ) {
-		print("\033[31mcouldn't create directory\033[32m%s\r\n", path);
-	}
-	return 0;
-}
-int sftpHost::sftp_rd(char *path)
-{
-	int rc = libssh2_sftp_rmdir(sftp_session, path);
-	if ( rc ) {
-		print("\033[31mcouldn't remove directory\033[32m%s\r\n", path);
-	}
-	return 0;
-}
-int sftpHost::sftp_ren(char *src, char *dst)
-{
-	int rc = libssh2_sftp_rename(sftp_session, src, dst);
 	if ( rc )
-		print("\033[31mcouldn't rename file\033[32m%s\r\n", src);
-	return 0;
+		print("\033[31mcouldn't create directory\033[32m%s\r\n", path);
 }
-int sftpHost::sftp_get_one(char *src, char *dst)
+void sftpHost::sftp_rd(char *path)
 {
-	print("\033[32mget %s\t\t", dst);
+	if ( libssh2_sftp_rmdir(sftp_session, path) )
+		print("\033[31mcouldn't remove directory\033[32m%s\r\n", path);
+}
+void sftpHost::sftp_ren(char *src, char *dst)
+{
+	if ( libssh2_sftp_rename(sftp_session, src, dst) )
+		print("\033[31mcouldn't rename file\033[32m%s\r\n", src);
+}
+void sftpHost::sftp_get_one(char *src, char *dst)
+{
+	print("get %s\t\t\t", dst);
 	LIBSSH2_SFTP_HANDLE *sftp_handle=libssh2_sftp_open(sftp_session,
 											src, LIBSSH2_FXF_READ, 0);
 
 	if (!sftp_handle) {
-		print("\033[31mfailed to open remote file\r\n");
-		return 0;
+		print("\033[31mcouldn't open remote file\r\n");
+		return;
 	}
 	FILE *fp = fopen(dst, "wb");
 	if ( fp==NULL ) {
-		print("\033[31mfailed to open local file\r\n");
+		print("\033[31mcouldn't open local file\r\n");
 		libssh2_sftp_close(sftp_handle);
-		return 0;
+		return;
 	}
-	char mem[1024*64];
-	unsigned int rc;
+
+	int rc, blocks=0;
 	long total=0;
+	char mem[1024*32];
 	time_t start = time(NULL);
-	print("            ");
-	while ( (rc=libssh2_sftp_read(sftp_handle, mem, sizeof(mem)))>0 ) {
+	while ( (rc=libssh2_sftp_read(sftp_handle, mem, 1024*32))>0 ) {
 		int nwrite = fwrite(mem, 1, rc, fp);
 		if ( nwrite>0 ) {
 			total += nwrite;
-			if ( (total&0xfffff)==0 ) {
+			if ( ++blocks==32 ) {
+				blocks = 0;
 				print("\033[12D% 10ldKB", total>>10);
 			}
 		}
@@ -1296,31 +1207,30 @@ int sftpHost::sftp_get_one(char *src, char *dst)
 	libssh2_sftp_close(sftp_handle);
 	if ( rc==0 ) print_total(start, total);
 	print("\r\n");
-	return 0;
 }
-int sftpHost::sftp_put_one(char *src, char *dst)
+void sftpHost::sftp_put_one(char *src, char *dst)
 {
-	print("\033[32mput %s\t\t", dst);
+	print("put %s\t\t\t", dst);
 	LIBSSH2_SFTP_HANDLE *sftp_handle = libssh2_sftp_open(sftp_session, dst,
 					  LIBSSH2_FXF_WRITE|LIBSSH2_FXF_CREAT|LIBSSH2_FXF_TRUNC,
 					  LIBSSH2_SFTP_S_IRUSR|LIBSSH2_SFTP_S_IWUSR|
 					  LIBSSH2_SFTP_S_IRGRP|LIBSSH2_SFTP_S_IROTH);
 	if (!sftp_handle) {
-		print("\033[31mfailed to open remote file\r\n");
-		return 0;
+		print("\033[31mcouldn't open remote file\r\n");
+		return;
 	}
 	FILE *fp = fopen(src, "rb");
 	if ( fp==NULL ) {
-		print("\033[31mfailed to open local file\r\n");
+		print("\033[31mcouldn't open local file\r\n");
 		libssh2_sftp_close(sftp_handle);
-		return 0;
+		return;
 	}
-	char mem[1024*64];
+
 	int nread;
 	long total=0;
+	char mem[1024*32];
 	time_t start = time(NULL);
-	print("            ");
-	while ( (nread=fread(mem, 1, sizeof(mem), fp))>0 ) {
+	while ( (nread=fread(mem, 1, 1024*32, fp))>0 ) {
 		int rc=0;
 		for ( int nwrite=0; nwrite<nread && rc>=0; ) {
 			rc=libssh2_sftp_write(sftp_handle, mem+nwrite, nread-nwrite);
@@ -1342,9 +1252,8 @@ int sftpHost::sftp_put_one(char *src, char *dst)
 	libssh2_sftp_close(sftp_handle);
 	if ( nread==0 ) print_total(start, total);
 	print("\r\n");
-	return 0;
 }
-int sftpHost::sftp_get(char *src, char *dst)
+void sftpHost::sftp_get(char *src, char *dst)
 {
 	char mem[512];
 	LIBSSH2_SFTP_ATTRIBUTES attrs;
@@ -1369,7 +1278,7 @@ int sftpHost::sftp_get(char *src, char *dst)
 		sftp_handle = libssh2_sftp_opendir(sftp_session, src);
 		if ( !sftp_handle ) {
 			print("\033[31mcould't open remote dir \033[32m%s\r\n", src);
-			return 0;
+			return;
 		}
 
 		char rfile[1024], lfile[1024];
@@ -1386,9 +1295,8 @@ int sftpHost::sftp_get(char *src, char *dst)
 			}
 		}
 	}
-	return 0;
 }
-int sftpHost::sftp_put(char *src, char *dst)
+void sftpHost::sftp_put(char *src, char *dst)
 {
 	DIR *dir;
 	struct dirent *dp;
@@ -1419,7 +1327,7 @@ int sftpHost::sftp_put(char *src, char *dst)
 
 		if ( (dir=opendir(lfile) ) == NULL ){
 			print("\033[31mcouldn't open local dir \033[32m%s\r\n",lfile);
-			return 0;
+			return;
 		}
 		strcat(lfile, "/");
 		int llen = strlen(lfile);
@@ -1434,12 +1342,10 @@ int sftpHost::sftp_put(char *src, char *dst)
 			}
 		}
 	}
-	return 0;
 }
 int sftpHost::sftp(char *cmd)
 {
-	for ( char *p=cmd; *p; p++ ) 
-		if ( *p=='\\' && p[1]!=' ' ) *p='/';
+	for ( char *p=cmd; *p; p++ ) if ( *p=='\\' && p[1]!=' ' ) *p='/';
 	char *p1 = strchr(cmd, ' ');
 	if ( p1==NULL ) p1 = cmd+strlen(cmd);
 	while ( *p1==' ' ) p1++;
@@ -1503,7 +1409,7 @@ int sftpHost::sftp(char *cmd)
 	else if ( strncmp(cmd, "get",3)==0 ) sftp_get(src, p2);
 	else if ( strncmp(cmd, "put",3)==0 ) sftp_put(p1, dst);
 	else if ( strncmp(cmd, "bye",3)==0 ) {
-		do_callback("Logout!", 8);
+		term_puts("Logout!", 8);
 		return -1;
 	}
 	else if ( *cmd )
@@ -1520,7 +1426,7 @@ int sftpHost::read()
 	channel = NULL;
 	session = libssh2_session_init();
 	if ( libssh2_session_handshake(session, sock)!=0 ) {
-		do_callback(errmsgs[2], -2);
+		term_puts(errmsgs[2], -2);
 		goto Sftp_Close;
 	}
 	const char *banner;
@@ -1529,15 +1435,15 @@ int sftpHost::read()
 
 	status( HOST_AUTHENTICATING );
 	if ( ssh_knownhost()!=0 ) {
-		do_callback(errmsgs[3], -3);
+		term_puts(errmsgs[3], -3);
 		goto Sftp_Close;
 	}
 	if ( ssh_authentication()!=0 ) {
-		do_callback(errmsgs[4], -4);
+		term_puts(errmsgs[4], -4);
 		goto Sftp_Close;
 	}
 	if ( !(sftp_session=libssh2_sftp_init(session)) ) {
-		do_callback(errmsgs[6], -6);
+		term_puts(errmsgs[6], -6);
 		goto Sftp_Close;
 	}
 	if ( libssh2_sftp_realpath(sftp_session, ".", realpath, 1024)<0 )
@@ -1545,20 +1451,23 @@ int sftpHost::read()
 	strcpy( homepath, realpath );
 
 	status( HOST_CONNECTED );
-	do_callback("Connected", 0);
+	term_puts("Connected", 0);
 	bRunning = true;
 	for ( int i=0; i<10&&bRunning; i++ ) {
-		const char *cmd = gets("\r\033[32msftp> \033[37m", true);
+		const char *cmd = term_gets("\r\033[32msftp> \033[37m", true);
 		if ( cmd!=NULL ) {
-			if ( sftp((char *)cmd)==-1 ) break;
 			i = 0;
+			mtx.lock();
+			int rc = sftp((char *)cmd);
+			mtx.unlock();
+			if ( rc==-1 ) break;
 		}
 		else { 
-			if ( i==9 ) do_callback("TimeOut!", 8);
+			if ( i==9 ) term_puts("TimeOut!", 8);
 		} 
 	}
 	libssh2_sftp_shutdown(sftp_session);
-	do_callback("Disonnected", -1);
+	term_puts("Disonnected", -1);
 
 	*username = 0;
 	*password = 0;
@@ -1577,17 +1486,18 @@ TCP_Close:
 }
 int sftpHost::write(const char *buf, int len)
 {
-	if ( reader.joinable() ) write_keys(buf, len);
+	if ( *buf=='\r' ) term_puts("\r\033[32msftp> \033[37m", 17);//after files dropped
 	return 0;
-}
-void sftpHost::disconn()
-{
-	if ( reader.joinable() ) {
-		bGets = false;
-		bRunning = false;
-	}
 }
 void sftpHost::send_file(char *src, char *dst)
 {
+	for ( char *p=src; *p; p++ ) if ( *p=='\\' && p[1]!=' ' ) *p='/';
+	mtx.lock();
+	term_puts("\r\n", 2);
 	sftp_put(src, realpath);
+	mtx.unlock();
+}
+void sftpHost::disconn()
+{
+	bRunning = false;
 }

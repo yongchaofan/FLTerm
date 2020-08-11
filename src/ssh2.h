@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 3410 2020-07-12 13:48:10 $"
+// "$Id: ssh2.h 3161 2020-07-12 13:48:10 $"
 //
 //  sshHost sftpHost
 //
@@ -44,11 +44,6 @@ protected:
 	char passphrase[64];
 	char subsystem[64];
 	char homedir[MAX_PATH];
-	std::atomic<bool> bGets;//gets() function is waiting for return bing pressed
-	std::atomic<bool> bReturn;//true if during gets() return has been pressed
-	int bPassword;
-	int cursor;
-	char keys[64];
 
 	std::mutex mtx;
 	LIBSSH2_SESSION *session;
@@ -80,15 +75,14 @@ public:
 	sshHost(const char *name);
 
 //	virtual const char *name();
+//	virtual void connect();
 	virtual int type() { return *subsystem&&channel ? HOST_CONF : HOST_SSH; }
 	virtual	int read();
 	virtual int write(const char *buf, int len);
-	virtual void send_file(char *src, char *dst);
-	virtual void command(const char *cmd);
-	virtual void send_size(int sx, int sy);
-	virtual char *gets(const char *prompt, int echo);
 	virtual void disconn();
-//	virtual void connect();
+	virtual void command(const char *cmd);
+	virtual void send_file(char *src, char *dst);
+	virtual void send_size(int sx, int sy);
 	void keepalive(int interval);
 };
 
@@ -100,28 +94,27 @@ private:
 	std::atomic<bool> bRunning;
 
 protected:
-	int sftp_lcd(char *path);
-	int sftp_cd(char *path);
-	int sftp_md(char *path);
-	int sftp_rd(char *path);
-	int sftp_ls(char *path, int ll=false);
-	int sftp_rm(char *path);
-	int sftp_ren(char *src, char *dst);
-	int sftp_get_one(char *src, char *dst);
-	int sftp_put_one(char *src, char *dst);
-	int sftp_get(char *src, char *dst);
-	int sftp_put(char *src, char *dst);
+	void sftp_lcd(char *path);
+	void sftp_cd(char *path);
+	void sftp_md(char *path);
+	void sftp_rd(char *path);
+	void sftp_ls(char *path, bool ll=false);
+	void sftp_rm(char *path);
+	void sftp_ren(char *src, char *dst);
+	void sftp_get_one(char *src, char *dst);
+	void sftp_put_one(char *src, char *dst);
+	void sftp_get(char *src, char *dst);
+	void sftp_put(char *src, char *dst);
 
 public:
 	sftpHost(const char *name) : sshHost(name) {}
 //	virtual const char *name();
-	virtual int type() { return HOST_SFTP; }
 //	virtual void connect();					//from sshHost
+	virtual int type() { return HOST_SFTP; }
 	virtual int read();
 	virtual int write(const char *buf, int len);
 	virtual void disconn();
 	virtual void send_file(char *src, char *dst);
-//	virtual void send_size(int sx, int sy)	//from sshHost
 	int sftp(char *p);
 };
 #endif //_SSH2_H_
