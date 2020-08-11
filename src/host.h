@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.h 3773 2020-08-01 21:12:15 $"
+// "$Id: Hosts.h 3902 2020-08-01 21:12:15 $"
 //
 // HOST pipeHost comHost tcpHost ftpd tftpd
 //
@@ -43,18 +43,22 @@ enum {  HOST_NULL=0, HOST_PIPE, HOST_COM, HOST_TCP,
 		HOST_SSH, HOST_SFTP, HOST_CONF }; 
 enum {  HOST_IDLE=0, HOST_CONNECTING, HOST_AUTHENTICATING, HOST_CONNECTED };
 typedef void ( host_callback )(void *, const char *, int);
+typedef char *(host_callback1)(void *, const char *, bool);
 
 class HOST {
 protected:
 	int state;
 	void *host_data_;
-	host_callback* host_cb;
+	host_callback *host_cb;
+	host_callback1 *host_cb1;
 	std::thread reader;
 
 public:
 	HOST()
 	{
 		host_cb = NULL;
+		host_cb1 = NULL;
+		host_data_ = NULL;
 		state = HOST_IDLE;
 	}
 	virtual ~HOST(){}
@@ -62,22 +66,25 @@ public:
 	virtual const char *name()	{ return ""; }
 	virtual int type()			{ return HOST_NULL; }
 	virtual	int read()			{ return 0; }
-	virtual	int write(const char *buf, int len)	{ return 0; }
-	virtual	void disconn()		{}
-	virtual void command(const char *cmd){}
+	virtual	int write(const char *buf, int len){ return 0; }
+	virtual	void disconn(){}
 	virtual void send_size(int sx, int sy){}
 	virtual void send_file(char *src, char *dst){}
-	virtual char *gets(const char *prompt, int echo){return NULL;}
-	virtual void set_user_pass( const char *user, const char *pass ){};
+	virtual void command(const char *cmd){}
 
-	void callback(host_callback *cb, void *data)
+	void callback(host_callback *cb, host_callback1 *cb1, void *data)
 	{
 		host_cb = cb;
+		host_cb1 = cb1;
 		host_data_ = data;
 	}
-	void do_callback(const char *buf, int len)
+	void term_puts(const char *buf, int len)
 	{
 		host_cb(host_data_, buf, len);
+	}
+	char *term_gets(const char *prompt, int echo)
+	{
+		return host_cb1(host_data_, prompt, echo);
 	}
 	int live() { return reader.joinable(); }
 	int status() { return state; }

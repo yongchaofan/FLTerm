@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27733 2020-08-04 10:05:10 $"
+// "$Id: tiny2.cxx 27742 2020-08-04 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -290,7 +290,8 @@ const char *ports[]=
 void protocol_cb(Fl_Widget *w)
 {
 	static int proto = 3;
-	if ( proto==0 ) pHostname->menubutton()->clear();
+	if ( proto==0 || proto==1 )
+		pHostname->value("192.168.1.1");
 	proto = pProtocol->value();
 	pPort->value(ports[proto]);
 	pPort->label(proto==0?"Shell:":" Port:");
@@ -307,7 +308,7 @@ void protocol_cb(Fl_Widget *w)
 	}
 	else {
 		pHostname->label("      Host:");
-		pHostname->value(proto==0?"":"192.168.1.1");
+		if ( proto==0 ) pHostname->value("");
 	}
 }
 void menu_host_cb(Fl_Widget *w, void *data)
@@ -753,12 +754,14 @@ void load_dict()
 		}
 	}
 	if ( fp!=NULL ) {
+		int iScript=pMenuBar->find_index("Script");
 		char line[256];
 		while ( fgets(line, 256, fp)!=NULL ) {
-			line[strcspn(line, "\n")] = 0;
+			line[strcspn(line, "\r\n")] = 0;
 			if ( *line=='~' ) {
 				if ( strncmp(line+1, "FontFace ", 9)==0 ) {
 					strncpy(fontname, line+10, 255);
+					fontname[255]=0;
 				}
 				else if ( strncmp(line+1, "FontSize ", 9)==0 ) {
 					fontsize = atoi(line+10);
@@ -779,14 +782,12 @@ void load_dict()
 						strncmp(line+1, "telnet ",7)==0 ||
 						strncmp(line+1, "serial ",7)==0 ||
 						strncmp(line+1, "netconf ",8)==0 ) {
-						pMenuBar->insert(pMenuBar->find_index("Script")-1,
-											line+1, 0, menu_host_cb);
+						pMenuBar->insert(iScript-1,line+1,0,menu_host_cb);
 						pHostname->add(strchr(line+1, ' ')+1);
 					}
 					else if (strncmp(line+1, "script ", 7)==0 ) {
-						pMenuBar->insert(pMenuBar->find_index("Options")-1,
-											fl_filename_name(line+8), 0,
-											script_cb, strdup(line+8));
+						pMenuBar->insert(iScript+3, fl_filename_name(line+8),
+										0, script_cb, strdup(line+8));
 					}
 					else if ( strncmp(line+1, "Boot ", 5)==0 ) {
 						script_open(line+6);
@@ -818,8 +819,10 @@ void save_dict()
 void redraw_cb(void *)
 {
 static char title[256]="tinyTerm2      ";
-	if ( pTerm->pending() ) pTerm->redraw();
-	if ( pCmd->visible() ) pCmd->redraw();
+	if ( pTerm->pending() ) {
+		pTerm->redraw();
+		if ( pCmd->visible() ) pCmd->redraw();
+	}
 	if ( title_changed ) {
 		strncpy(title+15, pTerm->title(), 240);
 		pWindow->label(title);
@@ -830,7 +833,7 @@ static char title[256]="tinyTerm2      ";
 			resize_window(termcols, termrows);
 		}
 	}
-	Fl::repeat_timeout(0.033, redraw_cb);
+	Fl::repeat_timeout(0.02, redraw_cb);
 }
 int main(int argc, char **argv)
 {
@@ -881,7 +884,7 @@ int main(int argc, char **argv)
 	resize_window(termcols, termrows);
 
 	pWindow->show();
-	Fl::add_timeout(0.033, redraw_cb);
+	Fl::add_timeout(0.02, redraw_cb);
 	if ( !local_edit ) connect_dlg(NULL, NULL);
 	Fl::run();
 

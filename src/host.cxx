@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 15007 2020-08-07 12:15:10 $"
+// "$Id: Hosts.cxx 14432 2020-08-07 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -35,7 +35,7 @@ using namespace std;
 
 void HOST::connect()
 {
-	if ( reader.joinable()==false ) {
+	if ( !reader.joinable() ) {
 		std::thread new_reader(&HOST::read, this);
 		reader.swap(new_reader);
 	}
@@ -47,8 +47,8 @@ void HOST::print(const char *fmt, ...)
 	va_start(args, fmt);
 	int len = vsnprintf(buff, 4096, fmt, args);
 	va_end(args);
-	do_callback(buff, len);
-	do_callback("\033[37m",5);
+	term_puts(buff, len);
+	term_puts("\033[37m",5);
 }
 /**********************************comHost******************************/
 comHost::comHost(const char *address)
@@ -124,28 +124,28 @@ void comHost::xmodem_recv(char op)
 	case 0:		//nothing received,resend every 10 seconds
 				if ( ++xmodem_timeout%10000==0 && xmodem_started ) {
 					xmodem_send();
-					do_callback("R",1);
+					term_puts("R",1);
 				}
 				if ( xmodem_timeout>60000 ) {//timeout after 60 seconds
 					bXmodem = false;
 					fclose(xmodem_fp);
-					do_callback("Aborted\r\n", 9);
+					term_puts("Aborted\r\n", 9);
 				}
 				break;
 	case 0x06:	xmodem_timeout = 0;			//ACK
 				if ( xmodem_buf[0] == EOT ) {
-					do_callback("Completed\r\n",10);
+					term_puts("Completed\r\n",10);
 					bXmodem = false;
 					return;
 				}
 				xmodem_block();
 				xmodem_send();
-				if ( xmodem_blk==0 ) do_callback(".",1);
+				if ( xmodem_blk==0 ) term_puts(".",1);
 				break;
-	case 0x15:	do_callback("N",1);			//NAK
+	case 0x15:	term_puts("N",1);			//NAK
 				xmodem_send();
 				break;
-	case 'C':	do_callback("CRC",3);		//start CRC
+	case 'C':	term_puts("CRC",3);		//start CRC
 				xmodem_crc = true;
 				block_crc();
 				xmodem_send();
@@ -163,7 +163,7 @@ void comHost::send_file(char *src, char *dst)
 		xmodem_timeout = 0;
 		xmodem_blk = 0;
 		xmodem_block();
-		do_callback("xmodem", 6);
+		term_puts("xmodem", 6);
 	}
 }
 void comHost::command(const char *cmd)
@@ -186,12 +186,12 @@ int comHost::read()
 	hCommPort = CreateFileA( portname, GENERIC_READ|GENERIC_WRITE, 0, NULL,
 													OPEN_EXISTING, 0, NULL);
 	if ( hCommPort==INVALID_HANDLE_VALUE) {
-		do_callback("Connection", -1);
+		term_puts("Connection", -1);
 		goto shutdown;
 	}
 
 	if ( SetCommTimeouts(hCommPort,&timeouts)==0) {
-		do_callback("Set timeout failure", -2);
+		term_puts("Set timeout failure", -2);
 		CloseHandle(hCommPort);
 		goto shutdown;
 	}
@@ -202,12 +202,12 @@ int comHost::read()
 	dcb.DCBlength = sizeof(dcb);
 	BuildCommDCBA(settings, &dcb);
 	if ( SetCommState(hCommPort, &dcb)==0 ) {
-		do_callback("Settings failure", -3);
+		term_puts("Settings failure", -3);
 		CloseHandle(hCommPort);
 		goto shutdown;
 	}
 
-	do_callback("Connected", 0);
+	term_puts("Connected", 0);
 	status( HOST_CONNECTED );
 	while ( status()==HOST_CONNECTED ) {
 		DWORD cch;
@@ -220,7 +220,7 @@ int comHost::read()
 				continue;
 			}
 			if ( cch > 0 )
-				do_callback(buf, cch);
+				term_puts(buf, cch);
 			else
 				Sleep(1);
 		}
@@ -229,7 +229,7 @@ int comHost::read()
 	}
 	CloseHandle(hCommPort);
 	status( HOST_IDLE );
-	do_callback("Disconnected", -1);
+	term_puts("Disconnected", -1);
 
 shutdown:
 	reader.detach();
@@ -240,8 +240,8 @@ int comHost::write(const char *buf, int len)
 	DWORD dwWrite=0;
 	if ( status()==HOST_CONNECTED ) {
 		if ( !WriteFile(hCommPort, buf, len, &dwWrite, NULL) ) {
-			print("\r\n\033[31mserial port write error\r\n");
 			disconn();
+			return -1;
 		}
 	}
 	return dwWrite;
@@ -252,7 +252,7 @@ int comHost::read()
 	speed_t baud = B9600;
 	ttySfd = open(portname, O_RDWR|O_NDELAY);
 	if ( ttySfd<0 ) {
-		do_callback("Port openning", -1);
+		term_puts("Port openning", -1);
 		goto shutdown;
 	}
 	tcflush(ttySfd, TCIOFLUSH);
@@ -280,7 +280,7 @@ int comHost::read()
 	tcsetattr(ttySfd,TCSANOW,&SerialPortSettings);
 
 	status( HOST_CONNECTED );
-	do_callback("Connected", 0);
+	term_puts("Connected", 0);
 	while ( status()==HOST_CONNECTED ) {
 		char buf[4096];
 		int len = ::read(ttySfd, buf, 4096);
@@ -291,13 +291,13 @@ int comHost::read()
 			continue;
 		}
 		if ( len>0 )
-			do_callback(buf, len);
+			term_puts(buf, len);
 		else
 			if ( len<0 && errno!=EAGAIN ) break;
 	}
 	close(ttySfd);
 	status( HOST_IDLE );
-	do_callback("Disconnected", -1);
+	term_puts("Disconnected", -1);
 
 shutdown:
 	reader.detach();
@@ -309,7 +309,7 @@ int comHost::write(const char *buf, int len)
 		int cch = ::write(ttySfd, buf, len);
 		if ( cch<0 ) {
 			disconn();
-			print("\r\n\033[31mserial port write error %d\r\n", cch);
+			return -1;
 		}
 	}
 	return 0;
@@ -336,7 +336,7 @@ int tcpHost::tcp()
 {
 	struct addrinfo *ainfo;
 	if ( getaddrinfo(hostname, NULL, NULL, &ainfo)!=0 ) {
-		do_callback("invalid hostname or ip address", -1);
+		term_puts("invalid hostname or ip address", -1);
 		return -1;
 	}
 	((struct sockaddr_in *)(ainfo->ai_addr))->sin_port = htons(port);
@@ -352,23 +352,24 @@ int tcpHost::tcp()
 		const char *errmsg = "";
 #ifdef WIN32
 		switch( WSAGetLastError() ) {
-		case WSAEHOSTUNREACH:
-		case WSAENETUNREACH: errmsg ="unreachable"; break;
-		case WSAECONNRESET:  errmsg ="reset"; break;
-		case WSAETIMEDOUT:   errmsg ="timeout"; break;
-		case WSAECONNREFUSED:errmsg ="refused"; break;
+			case WSAEHOSTUNREACH:
+			case WSAENETUNREACH: errmsg ="unreachable"; break;
+			case WSAECONNRESET:  errmsg ="reset"; break;
+			case WSAETIMEDOUT:   errmsg ="timeout"; break;
+			case WSAECONNREFUSED:errmsg ="refused"; break;
 		}
 #else
 		switch( errno ) {
-		case EHOSTUNREACH:
-		case ENETUNREACH: errmsg ="unreachable"; break;
-		case ECONNRESET:  errmsg ="reset"; break;
-		case ETIMEDOUT:   errmsg ="timeout"; break;
-		case ECONNREFUSED:errmsg ="refused"; break;
+			case EHOSTUNREACH:
+			case ENETUNREACH: errmsg ="unreachable"; break;
+			case ECONNRESET:  errmsg ="reset"; break;
+			case ETIMEDOUT:   errmsg ="timeout"; break;
+			case ECONNREFUSED:errmsg ="refused"; break;
 		}
 #endif
-		do_callback( errmsg, -1 );
+		term_puts( errmsg, -1 );
 		closesocket(sock);
+		sock = -1;
 	}
 	return rc;
 }
@@ -376,46 +377,33 @@ int tcpHost::read()
 {
 	status( HOST_CONNECTING );
 	if ( tcp()==0 ) {
-		status( HOST_CONNECTED );
-		do_callback("Connected", 0);
 		int cch;
-		char buf[1536];
-		while ( (cch=recv(sock, buf, 1536, 0))>0 ) {
-			do_callback(buf, cch);
-		}
-		do_callback("Disconnected", -1);
-	}
-
-	if ( sock!=-1 ) {
+		char buf[4096];
+		status( HOST_CONNECTED );
+		term_puts("Connected", 0);
+		while ( (cch=recv(sock, buf, 4096, 0))>0 ) term_puts(buf, cch);
 		closesocket(sock);
 		sock = -1;
+		term_puts("Disconnected", -1);
 	}
-	reader.detach();
+
 	status(HOST_IDLE);
+	reader.detach();
 	return 0;
 }
 int tcpHost::write(const char *buf, int len)
 {
 	int total=0;
-	if ( sock!=-1 ) {
-		while ( total<len ) {
-			int cch = send( sock, buf+total, len-total, 0);
-			if ( cch<0 ) {
-				disconn();
-				print("\r\n\033[31msocket write error %d\r\n", cch);
-				return cch;
-			}
-			total+=cch;
-		}
+	while ( total<len && sock!=-1 ) {
+		int cch = send(sock, buf+total, len-total, 0);
+		if ( cch<0 ) break;
+		total+=cch;
 	}
 	return total;
 }
 void tcpHost::disconn()
 {
-	if ( reader.joinable() ) {
-		shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
-//		reader.join();//cause crash when compiled with visual studio or xcode
-	}
+	if ( sock!=-1 ) shutdown(sock, 1);	//SD_SEND=1 on Win32, SHUT_WR=1 on posix
 }
 pipeHost::pipeHost(const char *name):HOST()
 {
@@ -485,11 +473,10 @@ int pipeHost::read()
 		status( HOST_CONNECTED );
 		while ( true ) {
 			DWORD dwCCH;
-			char buf[1536];
-			if ( ReadFile( hStdioRead, buf, 1500, &dwCCH, NULL) > 0 ) {
+			char buf[4096];
+			if ( ReadFile( hStdioRead, buf, 4096, &dwCCH, NULL) > 0 ) {
 				if ( dwCCH > 0 ) {
-					buf[dwCCH] = 0;
-					do_callback( buf, dwCCH );
+					term_puts( buf, dwCCH );
 				}
 				else
 					Sleep(1);
@@ -500,9 +487,9 @@ int pipeHost::read()
 		status( HOST_IDLE );
 	}
 	else
-		do_callback( "\033[31m\tunsupported!", 18);
+		term_puts( "\033[31m\tunsupported!", 18);
 	
-	do_callback( "", -1 );
+	term_puts( "", -1 );
 	CloseHandle( hStdioRead );
 	CloseHandle( hStdioWrite );
 	reader.detach();
@@ -514,15 +501,15 @@ int pipeHost::write( const char *buf, int len )
 		disconn();
 	return 0;
 }
+void pipeHost::send_size(int sx, int sy)
+{
+}
 void pipeHost::disconn()
 {
 	if ( WaitForSingleObject(piStd.hProcess, 100)==WAIT_TIMEOUT )
 		TerminateProcess(piStd.hProcess,0);
 	CloseHandle(piStd.hThread);
 	CloseHandle(piStd.hProcess);
-}
-void pipeHost::send_size(int sx, int sy)
-{
 }
 //end of pipeHost WIN32 definition
 #else
@@ -531,32 +518,32 @@ int pipeHost::read()
 	char *slave_name;
 	pty_master = posix_openpt(O_RDWR|O_NOCTTY);
 	if ( pty_master==-1 ) {
-		do_callback("possix_openpt", -1);
+		term_puts("possix_openpt", -1);
 		return -1;
 	}
 	if ( grantpt(pty_master)==-1 ) {
-		do_callback("grantpt", -2);
+		term_puts("grantpt", -2);
 		goto pty_close;
 	}
 	if ( unlockpt(pty_master)==-1 ) {
-		do_callback("unlockpt", -3);
+		term_puts("unlockpt", -3);
 		goto pty_close;
 	}
 
 	slave_name = ptsname(pty_master);
 	if ( slave_name==NULL ) {
-		do_callback("slave name", -4);
+		term_puts("slave name", -4);
 		goto pty_close;
 	}
 	pty_slave = open(slave_name, O_RDWR|O_NOCTTY);
 	if ( pty_slave==-1 ) {
-		do_callback("slave open", -5);
+		term_puts("slave open", -5);
 		goto pty_close;
 	}
 	
 	shell_pid = fork();
 	if ( shell_pid<0 ) {
-		do_callback("fork", -6);
+		term_puts("fork", -6);
 	}
 	else if ( shell_pid==0 ) {//child process for shell
 		close(pty_master);
@@ -574,16 +561,15 @@ int pipeHost::read()
 	}
 	else {
 		close(pty_slave);
-		do_callback("shell started", 0);
+		term_puts("shell started", 0);
 		status( HOST_CONNECTED );
 		char buf[4096];
-		int len = 0;
-		while ( (len=::read(pty_master, buf, 4095))>0 ) {
-			buf[len] = 0;
-			do_callback(buf, len);
+		int len;
+		while ( (len=::read(pty_master, buf, 4096))>0 ) {
+			term_puts(buf, len);
 		}
 		status( HOST_IDLE );
-		do_callback("", -1);
+		term_puts("", -1);
 	}
 pty_close:
 	close(pty_master);
@@ -592,13 +578,8 @@ pty_close:
 }
 int pipeHost::write( const char *buf, int len )
 {
-	for ( int i=0; i<len; i++ ) {
-		int cch = ::write(pty_master, buf+i, 1);
-		if ( cch<0 ) {
-			close(pty_master);
-			print("\r\n\033[31mpipe write error %d\r\n", cch);
-		}
-	}
+	int cch = ::write(pty_master, buf, len);
+	if ( cch<0 ) close(pty_master);
 	return 0;
 }
 void pipeHost::send_size(int sx, int sy)
@@ -606,9 +587,7 @@ void pipeHost::send_size(int sx, int sy)
 	struct winsize ws; 
 	ws.ws_col = (unsigned short)sx; 
 	ws.ws_row = (unsigned short)sy;
-
-	if ( ioctl(pty_master, TIOCSWINSZ, &ws)==-1 ) 
-		do_callback("\r\nerror setting window size\r\n", 29);
+	ioctl(pty_master, TIOCSWINSZ, &ws);
 }
 void pipeHost::disconn()
 {

@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 4920 2020-07-18 13:08:10 $"
+// "$Id: Fl_Term.h 5222 2020-07-18 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -83,6 +83,12 @@ class Fl_Term : public Fl_Widget {
 	bool bScriptRun;
 	bool bScriptPause;
 
+	std::atomic<bool> bGets;//gets() function is waiting for return bing pressed
+	std::atomic<bool> bReturn;//true if return has been pressed during gets()
+	int cursor;			//gets receive buffer index
+	char keys[64];		//gets receive buffer
+	bool bPassword;		//if gets() is wating for password, no echo if yes
+
 	FILE *fpLogFile;
 	HOST *host;
 
@@ -120,20 +126,20 @@ public:
 	void save(const char *fn);
 	void srch(const char *word);
 
+	int connect(HOST *newhost, const char **preply);
 	bool live() { return host->live(); }
-	void host_cb(const char *buf, int len);
-	char *gets(const char *prompt, int echo);
+	void puts(const char *buf, int len);
 	void write(const char *buf, int len);
+	char *gets(const char *prompt, int echo);
 	void disconn();
+	void disp(const char *buf) { append(buf, strlen(buf)); }
+	void send(const char *buf) { write(buf, strlen(buf)); }
 
 	void learn_prompt();
 	int  mark_prompt();
 	int  waitfor_prompt();
-
-	void disp(const char *buf) { append(buf, strlen(buf)); }
-	void send(const char *buf) { write(buf, strlen(buf)); }
 	int command(const char *cmd, const char **preply);
-	int connect(HOST *newhost, const char **preply);
+
 
 	void copier(char *files);
 	void scripter(char *cmds);

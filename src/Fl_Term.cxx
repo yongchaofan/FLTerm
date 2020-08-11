@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37567 2020-08-04 10:08:20 $"
+// "$Id: Fl_Term.cxx 38502 2020-08-04 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -28,13 +28,44 @@ HOST *host_new(const char *hostname);
 #include <unistd.h>		// needed for usleep
 #define Sleep(x) usleep((x)*1000)
 #endif
+#ifdef __APPLE__
+#define FL_CMD FL_META
+#else
+#define FL_CMD FL_ALT
+#endif
 
-void host_cb0(void *data, const char *buf, int len)
+void host_cb(void *data, const char *buf, int len)
 {
 	Fl_Term *term = (Fl_Term *)data;
-	term->host_cb(buf, len);
+	term->puts(buf, len);
 }
-void Fl_Term::host_cb( const char *buf, int len )
+char *host_cb1(void *data, const char *prompt, bool echo)
+{
+	Fl_Term *term = (Fl_Term *)data;
+	return term->gets(prompt, echo);
+}
+int Fl_Term::connect(HOST *newhost, const char **preply )
+{
+	int rc = 0;
+	if ( host->live() ) return rc;
+	delete host;
+
+	host = newhost;
+	strncpy(sTitle, host->name(), 40);
+	sTitle[40]=0;
+	copy_label(sTitle);
+	host->callback(host_cb, host_cb1, this);
+
+	bGets = false;
+	mark_prompt();
+	host->connect();
+	if ( preply!=NULL ) {	//waitfor prompt if called from script
+		*preply = buff+recv0;	//no wait if called from edit line
+		rc = waitfor_prompt();
+	}
+	return rc;
+}
+void Fl_Term::puts( const char *buf, int len )	//parse text received from host
 {
 	if ( len==0 ) {//Connected, send term size
 		host->send_size(size_x, size_y);
@@ -60,11 +91,64 @@ void Fl_Term::host_cb( const char *buf, int len )
 			do_callback(this, (void *)NULL);
 		}
 }
-#ifdef __APPLE__
-#define FL_CMD FL_META
-#else
-#define FL_CMD FL_ALT
-#endif
+void Fl_Term::write(const char *buf, int len) //send text to host
+{ 
+	if ( host->live() ) {
+		if ( !bGets ) {
+			if ( bEcho ) append(buf, len);
+			host->write(buf, len);
+			return;
+		}
+		for ( int i=0; i<len&&bGets; i++ ) {
+			switch(buf[i]) {
+				case '\177':
+				case '\b':
+					if ( cursor>0 ) {
+						cursor--;
+						if ( !bPassword ) append("\010 \010", 3);
+					}
+					break;
+				case '\r': 
+					keys[cursor++]=0;
+					append("\r\n", 2);
+					bReturn=true;
+				case '\t':
+					break;
+				default:
+					keys[cursor]=buf[i];
+					if ( ++cursor>63 ) cursor=63;
+					if ( !bPassword ) append(buf+i, 1);
+			}
+		}
+	}
+	else {
+		if ( *buf=='\r' ) host->connect();
+	}
+}
+char *Fl_Term::gets(const char *prompt, int echo)	//get user input for host
+{
+	disp(prompt);
+	cursor=0;
+	bGets = true;
+	bReturn = false;
+	bPassword = !echo;
+	int old_cursor = cursor;
+	for ( int i=0; i<600&&bGets&&(!bReturn); i++ ) {
+		if ( cursor>old_cursor ) { 
+			old_cursor=cursor;
+			i=0;
+		}
+		Sleep(100);
+	}
+	bGets = false;
+	return bReturn?keys:NULL;
+}
+void Fl_Term::disconn()
+{
+	bGets = false;
+	host->disconn();
+}
+
 Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 {
 	bEcho = false;
@@ -332,9 +416,9 @@ int Fl_Term::handle(int e)
 				run_script(Fl::event_text());
 			}
 			else {				//or paste to send to host
-				if ( bBracket ) write( "\033[200~", 6 );
+				if ( bBracket ) host->write( "\033[200~", 6 );
 				write(Fl::event_text(),Fl::event_length());
-				if ( bBracket ) write( "\033[201~", 6 );
+				if ( bBracket ) host->write( "\033[201~", 6 );
 			}
 			bDND = false;
 			return 1;
@@ -368,10 +452,10 @@ int Fl_Term::handle(int e)
 					redraw();
 				}
 				break;
-			case FL_Up:	  write(bAppCursor?"\033OA":"\033[A",3); break;
-			case FL_Down: write(bAppCursor?"\033OB":"\033[B",3); break;
-			case FL_Right:write(bAppCursor?"\033OC":"\033[C",3); break;
-			case FL_Left: write(bAppCursor?"\033OD":"\033[D",3); break;
+			case FL_Up:	  host->write(bAppCursor?"\033OA":"\033[A",3); break;
+			case FL_Down: host->write(bAppCursor?"\033OB":"\033[B",3); break;
+			case FL_Right:host->write(bAppCursor?"\033OC":"\033[C",3); break;
+			case FL_Left: host->write(bAppCursor?"\033OD":"\033[D",3); break;
 			case FL_BackSpace: write("\177", 1); break;
 			case FL_Pause: pause_script(); break;
 			case FL_Enter:
@@ -1060,43 +1144,6 @@ int Fl_Term::waitfor_prompt()
 	bPrompt = true;
 	return cursor_x - recv0;
 }
-int Fl_Term::connect(HOST *newhost, const char **preply )
-{
-	int rc = 0;
-	if ( host->live() ) return rc;
-	delete host;
-
-	host = newhost;
-	strncpy(sTitle, host->name(), 40);
-	sTitle[40]=0;
-	copy_label(sTitle);
-	host->callback(host_cb0, this);
-
-	mark_prompt();
-	host->connect();
-	if ( preply!=NULL ) {	//waitfor prompt if called from script
-		*preply = buff+recv0;	//no wait if called from edit line
-		rc = waitfor_prompt();
-	}
-	return rc;
-}
-char *Fl_Term::gets(const char *prompt, int echo)
-{
-	return host->gets(prompt, echo);
-}
-void Fl_Term::write(const char *buf, int len) { 
-	if ( bEcho ) append(buf, len);
-	if ( host->live() ) 
-		host->write(buf, len);
-	else {
-		if ( *buf=='\r' ) host->connect();
-	}
-}
-void Fl_Term::disconn()
-{
-	if ( host->live() ) host->disconn();
-}
-
 int Fl_Term::command(const char *cmd, const char **preply)
 {
 	int rc = 0;
@@ -1302,7 +1349,7 @@ void Fl_Term::run_script(const char *s)	//called on drag&drop
 	}
 	else {						//script dropped
 		if ( host->type()==HOST_CONF ) {
-			write(script, strlen(script));
+			host->write(script, strlen(script));
 			if ( bEcho ) append(script, strlen(script));
 			free(script);
 		}
@@ -1332,6 +1379,7 @@ void Fl_Term::quit_script()
 #define TNO_ECHO	0x01
 #define TNO_AHEAD	0x03
 #define TNO_STATUS	0x05
+#define TNO_LOGOUT	0x12
 #define TNO_WNDSIZE 0x1f
 #define TNO_TERMTYPE 0x18
 #define TNO_NEWENV	0x27
@@ -1355,7 +1403,7 @@ const unsigned char *Fl_Term::telnet_options(const unsigned char *p, int cnt)
 					negoreq[1]=TNO_WILL;
 					if ( *p==TNO_ECHO ) bEcho = true;
 				}
-				write((const char *)negoreq, 3);
+				host->write((const char *)negoreq, 3);
 				p+=3;
 				break;
 			case TNO_WILL:
@@ -1364,16 +1412,16 @@ const unsigned char *Fl_Term::telnet_options(const unsigned char *p, int cnt)
 					negoreq[1]=TNO_DO;
 					if ( p[2]==TNO_ECHO ) bEcho = false;
 				}
-				write((const char *)negoreq, 3);
+				host->write((const char *)negoreq, 3);
 				p+=3;
 				break;
 			case TNO_SUB:
 				negoreq[1]=TNO_SUB; negoreq[2]=p[2];
 				if ( p[2]==TNO_TERMTYPE ) {
-					write((const char *)TERMTYPE, sizeof(TERMTYPE));
+					host->write((const char *)TERMTYPE, sizeof(TERMTYPE));
 				}
 				if ( p[2]==TNO_NEWENV ) {
-					write((const char *)negoreq, 6);
+					host->write((const char *)negoreq, 6);
 				}
 				while (*p!=0xff && p<q ) p++;
 				break;
