@@ -11,12 +11,12 @@ tinyTerm2 is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) usi
 		</video>
 	    </td>
 	    <td>
-		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm2">1.2.5</a></h4>
+		<h4>Stable release: <a href="https://github.com/yongchaofan/tinyterm2">1.2.6</a></h4>
 		<h4>Appx package:<br/><a href="https://www.microsoft.com/store/apps/9NXGN9LJTL05">Microsoft Store</a></h4>
-		<h4>MacOS package:<br/><a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.5/tinyTerm2.pkg">tinyTerm2.pkg</a></h4>
+		<h4>MacOS package:<br/><a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.pkg">tinyTerm2.pkg</a></h4>
 		<h4>Windows portable exe:<br/>
-		<a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.5/tinyTerm2_x86.exe">tinyTerm2_x86.exe</a><br/>
-		<a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.5/tinyTerm2_x64.exe">tinyTerm2_x64.exe</a></h4>
+		<a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2_x86.exe">tinyTerm2_x86.exe</a><br/>
+		<a href="https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2_x64.exe">tinyTerm2_x64.exe</a></h4>
 		<h4>License: <a href="https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE">GPL 3.0</a></h4>
 	    </td>
 	</tr>
