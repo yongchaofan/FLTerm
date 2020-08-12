@@ -754,7 +754,6 @@ void load_dict()
 		}
 	}
 	if ( fp!=NULL ) {
-		int iScript=pMenuBar->find_index("Script");
 		char line[256];
 		while ( fgets(line, 256, fp)!=NULL ) {
 			line[strcspn(line, "\r\n")] = 0;
@@ -782,12 +781,14 @@ void load_dict()
 						strncmp(line+1, "telnet ",7)==0 ||
 						strncmp(line+1, "serial ",7)==0 ||
 						strncmp(line+1, "netconf ",8)==0 ) {
-						pMenuBar->insert(iScript-1,line+1,0,menu_host_cb);
+						pMenuBar->insert(pMenuBar->find_index("Script")-1,
+												line+1, 0, menu_host_cb);
 						pHostname->add(strchr(line+1, ' ')+1);
 					}
 					else if (strncmp(line+1, "script ", 7)==0 ) {
-						pMenuBar->insert(iScript+3, fl_filename_name(line+8),
-										0, script_cb, strdup(line+8));
+						pMenuBar->insert(pMenuBar->find_index("Options")-1,
+											fl_filename_name(line+8), 0,
+											script_cb, strdup(line+8));
 					}
 					else if ( strncmp(line+1, "Boot ", 5)==0 ) {
 						script_open(line+6);
