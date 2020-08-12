@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 38502 2020-08-04 10:08:20 $"
+// "$Id: Fl_Term.cxx 38680 2020-08-12 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -1238,7 +1238,13 @@ void Fl_Term::put_xml(const char *buf, int len)
 	if ( p>buf ) append(buf, p-buf);
 	while ( *p!=0 && p<buf+len ) {
 		while (*p==0x0d || *p==0x0a || *p=='\t' || *p==' ') p++;
-		if ( *p=='<' ) { //tag
+		if ( *p==']' && p+6<=buf+len) {//end of message
+			if ( strncmp(p, "]]>]]>", 6)==0 ) {
+				append("]]>]]>\n\033[37m", 12);
+				p+=6;
+			}
+		}
+		else if ( *p=='<' ) { //tag
 			if ( p[1]=='/' ) {
 				if ( !xmlTagIsOpen ) {
 					xmlIndent -= 2;
@@ -1269,7 +1275,7 @@ void Fl_Term::put_xml(const char *buf, int len)
 				if ( q[-1]=='/' ) xmlTagIsOpen = false;
 			}
 		}
-		else {			//data
+		else {		//data
 			append("\033[33m",5);
 			q = strchr(p, '<');
 			if ( q==NULL ) q = p+strlen(p);
@@ -1277,7 +1283,6 @@ void Fl_Term::put_xml(const char *buf, int len)
 			p = q;
 		}
 	}
-	if ( strncmp(p-6, "]]>]]>", 6)==0 ) append("\n\033[37m", 6);
 }
 void Fl_Term::copier(char *files)
 {
