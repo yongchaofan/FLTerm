@@ -41,10 +41,11 @@ Windows: [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05)
 > ### Sending Files
 >
 > Simple drag and drop files to the terminal window will cause the files to be transfered to remote host, remote files will be placed in the current working directory
-    on ssh connection files are copied via scp; 
-    on sftp connection files are copied via sftp put
-    on netconf connection the files content will be sent as xml
-    on serial connection first file will be sent using xmodem protocol
+>
+	on ssh connection files are copied via scp; 
+	on sftp connection files are copied via sftp put
+	on netconf connection the files content will be sent as xml
+	on serial connection first file will be sent using xmodem protocol
     
 >only send function of the original xmodem protocol is supported, CRC optional. This is added to support bootstraping of MCUs on embeded system like Ardiuno
 > 
@@ -56,23 +57,22 @@ Windows: [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05)
 >
 > A few local command like "Wait", "Clear", "Log" etc to enance the automation, the example below automate the task of connecting to a host, list some files, run top and log everthing to a file
 >
->!Prompt $%20
->!Log top.log
->!ssh pi@192.168.12.8
->ls -alR
->!Wait 3
->top -b -n 3
->exit
->
+	!Prompt $%20
+	!Log top.log
+	!ssh pi@192.168.12.8
+	ls -alR
+	!Wait 3
+	top -b -n 3
+	exit
 
 ## Scripting interface
 > More complex automation is facilited through the xmlhttp interface, a built in HTTPd listens at 127.0.0.1:8080, and will accept GET request from local machine, which means any program running on the same machine, be it a browser or a javascript or any program, can connect to tinyTerm and request either a file or the result of a command, 
 
 for example:
 
-	- http://127.0.0.1:8080/tinyTerm.html	return tinyTerm.html from current working folder
-	- http://127.0.0.1:8080/?ls%20-al	return the result of "ls -al" from remote host
-	- http://127.0.0.1:8080/?!Selection 	return current selected text from scroll back buffer
+	http://127.0.0.1:8080/tinyTerm.html	return tinyTerm.html from current working folder
+	http://127.0.0.1:8080/?ls -al		return the result of "ls -al" from remote host
+	http://127.0.0.1:8080/?!Selection 	return current selected text from scroll back buffer
 	
 Notice the "!" just before "Selection" in the last example, when a command is started with "!", it's being executed by tinyTerm instead of sent to remote host, There are about 30 tinyTerm commands supported for the purpose of making connections, setting options, sending commands, scp files, turning up ssh2 tunnels, see appendix for the list.
 
