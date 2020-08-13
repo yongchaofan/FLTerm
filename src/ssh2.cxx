@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38793 2020-08-09 11:55:10 $"
+// "$Id: ssh2.cxx 38637 2020-08-09 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -532,6 +532,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 
 	FILE *fp = fopen(lpath, "wb");
 	if ( fp!=NULL ) {
+		int blocks = 0;
 		time_t start = time(NULL);
 		libssh2_struct_stat_size total = 0;
 		libssh2_struct_stat_size fsize = fileinfo.st_size;
@@ -548,8 +549,10 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 				int nwrite = fwrite(mem, 1,rc,fp);
 				if ( nwrite>0 ) {
 					total += nwrite;
-					if ( (total&0xfffff)==0 )
+					if ( ++blocks==32 ) {
+						blocks = 0;
 						print("\033[12D% 10lldKB", total>>10);
+					}
 				}
 				if ( nwrite!=rc ) {
 					print("\033[31merror writing to file");
