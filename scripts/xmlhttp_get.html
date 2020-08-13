@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+var xhr, cmd, result;
+function run() {
+	xhr.open('GET', "/?"+cmd.value, false);
+	xhr.send(null);
+	result.innerText = xhr.responseText;
+	cmd.select();
+}
+function setup() {
+	xhr = new XMLHttpRequest();
+	cmd = document.getElementById("cmd");
+	result = document.getElementById("result");
+	cmd.addEventListener("keyup", function(event) { 
+		if (event.keyCode===13) run(); 
+	});
+}
+</script>
+<script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+</head>
+<body onload="setup()">
+tinyTerm2 scripting interface via xmlhttp<br/>
+&nbsp;<br/>
+command: <input id="cmd" type="text" size="40" autofocus/>
+<pre><div id="result">
+<code class="prettyprint">
+&lt;input id="cmd" type="text" size="40" autofocus/&gt;
+&lt;div id="result" &gt;
+</code>
+<code class="prettyprint">
+var xhr, cmd, result;
+function run() {
+    xhr.open('GET', "/?"+cmd.value, false);
+    xhr.send(null);
+    result.innerText = xhr.responseText;
+    cmd.select();
+}
+function setup() {
+    xhr = new XMLHttpRequest();
+    cmd = document.getElementById("cmd");
+    result = document.getElementById("result");
+    cmd.addEventListener("keyup", function(event) { 
+        if (event.keyCode===13) run(); 
+    });
+}
+</code>
+</div></pre>
+</body>
+</html>
