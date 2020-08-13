@@ -1,6 +1,6 @@
 ## Introduction
 
-tinyTerm2 is a simple small and scriptable terminal emulator, open source, cross platforma and with unique features. It is rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). At release 1.2.6, the win32 exectuable is 656KB, win64 executable 824KB, macOS and Linux x86_64 executable 1MB. 
+tinyTerm2 is a simple small and scriptable terminal emulator, it is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). Which is now cross platform with the same unique features and still very small, at release 1.2.6, the win64 executable is 824KB. 
 	
 <table>
 	<tr><td>Stable release:</td><td><A href=https://github.com/yongchaofan/tinyterm2>1.2.6</A></td>
