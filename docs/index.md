@@ -2,13 +2,14 @@
 
 tinyTerm2 is a simple small and scriptable terminal emulator, open source, cross platforma and with unique features. It is rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). At release 1.2.6, the win32 exectuable is 656KB, win64 executable 824KB, macOS and Linux x86_64 executable 1MB. 
 	
-Stable release: [1.2.6](https://github.com/yongchaofan/tinyterm2)
-
-MacOS: Apple store, [tinyTerm2.pkg](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.pkg)
-
-Windows: [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05)
-[tinyTerm2_x86.exe](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.exe)
-[tinyTerm2_x64.exe](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2_x64.exe)
+<table>
+	<tr><td>Stable release:</td><td>[1.2.6](https://github.com/yongchaofan/tinyterm2)</td></tr>
+	<tr><td>MacOS:</td><td>Apple store</td>
+<td>[tinyTerm2.pkg](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.pkg)</td><tr>
+	<tr><td>Windows:</td><td>[Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05)</td>
+<td>[tinyTerm2_x86.exe](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.exe)</td>
+<td>[tinyTerm2_x64.exe](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2_x64.exe)</td></tr>
+</table>
 
 <video width="960" height="540" controls>
 	<source src="tinyTerm2.mp4" type="video/mp4">
