@@ -34,9 +34,7 @@ Windows: [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05)
 >
 > When local edit mode is enabled, key presses are not sent to remote host until "Enter", "Tab" or "?" key is pressed, and the input is auto completed using command history, user can also press "up" or "down" key to bring up the command history list, then select command from the list to send to host. Every command typed in local edit mode is added to command history, which saved to tinyTerm.hist at exit, then loaded into memory at the next start of tinyTerm. 
 >  
-> One more option about local edit is "Send to all", when enabled locally edited command will be sent to all open tabs when "Enter" is pressed, this is useful when multiple host is contorlled at the same time.
->
-> Additionally when disconnected with local edit mode enabled, user is presented with a "tinyTerm >" prompt, simply type commands like "telnet 192.168.1.1" or "ssh admin@172.16.1.1" to make connection
+> Additionally when disconnected with local edit mode enabled, user is presented with a "tinyTerm >" prompt, simply type commands like "telnet 192.168.1.1" or "ssh admin@172.16.1.1" to make conection
 > 
 > ### Sending Files
 >
@@ -148,3 +146,6 @@ The following commands can be used programatically for scripting
     ~FontFace Consolas  set font face to “Consolas”
     ~FontSize 18        set font size to 18
     ~LocalEdit		Enable local edit
+>
+> One more option about local edit is "Send to all", when enabled locally edited command will be sent to all open tabs when "Enter" is pressed, this is useful when multiple host is contorlled at the same time.
+>
