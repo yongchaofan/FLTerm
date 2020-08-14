@@ -55,10 +55,11 @@ Your browser does not support the video tag.
 	!Prompt $%20
 	!Log top.log
 	!ssh pi@192.168.12.8
-	ls -alR
+	ls -l
 	!Wait 3
 	top -b -n 3
 	exit
+	!Log
 
 ## Scripting interface
 > More complex automation is facilited through the xmlhttp interface, a built in HTTPd listens at 127.0.0.1:8080, and will accept GET request from local machine, which means any program running on the same machine, be it a browser or a javascript or any program that supports xmlhttp interface, can connect to tinyTerm and request either a file or the result of a command, 
@@ -71,27 +72,17 @@ for example:
 	
 Notice the "!" just before "Selection" in the last example, when a command is started with "!", it's being executed by tinyTerm instead of sent to remote host, There are about 30 tinyTerm commands supported for the purpose of making connections, setting options, sending commands, scp files, turning up ssh2 tunnels, see appendix for the list.
 
-The javascript snippet from xml_get.html in the github/tinyTerm2/scripts directory, is a perfect example of scripting tinyTerm, whcih takes a command from input field of a webpage, send it through tinyTerm2, and present the result on the webpage
+The snippet below shows how to call the xmlhttp interfaces from javascript. An example in github/tinyTerm2/scripts, xmlhttp_get.html, demostrates a simple webpage, which takes a command from input field, send it through tinyTerm2, and present the result in browser
 
 ```js
-var xhr, cmd, result;
-function run() {
-	xhr.open('GET', "/?"+cmd.value, false);
+var xhr = new XMLHttpRequest();
+function xmlhttp(cmd) {
+	xhr.open('GET', "/?"+cmd, false);
 	xhr.send(null);
-	result.innerText = xhr.responseText;
-	cmd.select();
-}
-function setup() {
-	xhr = new XMLHttpRequest();
-	cmd = document.getElementById("cmd");
-	result = document.getElementById("result");
-	cmd.addEventListener("keyup", function(event) { 
-		if (event.keyCode===13) run(); 
-	});
+	return xhr.responseText;
 }
 ```
 > 
-
 The following commands can be used programatically for scripting
 
     !/bin/bash          start local shell, on Windows try "ping 192.168.1.1"
