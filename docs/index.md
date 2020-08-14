@@ -25,7 +25,7 @@ Your browser does not support the video tag.
 >
 > Scroll back buffer holds 64K lines of text, scrollbar is hidden by default, which will appear when scrolled back, use page up/page down key or mouse wheel to scroll. The buffer can be saved to a text file at any time, or turn logging function to write all terminal output to a text file. 
 >
-> ### Local Edit Mode
+> ### Command history and autocompletion
 > 
 > Local Edit Mode was a feature on physical terminals used to save time on slow connections. On tinyTerm2 local edit mode is used to implement command history and command auto-completion, which is useful to help users remember long commands and save time on typing.
 >
@@ -33,20 +33,20 @@ Your browser does not support the video tag.
 >  
 > Additionally when disconnected with local edit mode enabled, user is presented with a "tinyTerm >" prompt, simply type commands like "telnet 192.168.1.1" or "ssh admin@172.16.1.1" to make conection
 > 
-> ### Sending Files
+> ### Transfer files to remote host
 >
-> Simple drag and drop files to the terminal window will cause the files to be transfered to remote host, remote files will be placed in the current working directory
+> Drag and drop files to the terminal window will get the files transfered to remote host, placed in the current working directory
 >
-	on ssh connection files are copied via scp; 
+	on ssh connection files are copied via scp
 	on sftp connection files are copied via sftp put
 	on netconf connection the files content will be sent as xml
 	on serial connection first file will be sent using xmodem protocol
     
 >only send function of the original xmodem protocol is supported, CRC optional. This is added to support bootstraping of MCUs on embeded system like Ardiuno
 > 
-> ### Batch Automation
+> ### Task Automation with batch commands
 >
-> To automate the execution of commands, simply drag and drop a list of commands to the terminal, tinyTerm send one command at a time, wait for prompt string before sending the next command, to avoid overflowing the receive buffer of the remote host or network device. 
+> To automate tasks, simply drag and drop a list of commands to the terminal, tinyTerm send one command at a time, wait for prompt string before sending the next command, to avoid overflowing the receive buffer of the remote host or network device. 
 > 
 > Most command line interface system uses a prompt string to tell user it’s ready for the next command, for example "> " or "$ " used by Cisco routers. tinyTerm will auto detect the prompt string used by remote host when a batch is dropped. Additionally, prompt string can be set in the script using command "!Prompt {str}", refer to appendix A for details and other special commands supported for scripting.
 >
@@ -61,7 +61,7 @@ Your browser does not support the video tag.
 	exit
 
 ## Scripting interface
-> More complex automation is facilited through the xmlhttp interface, a built in HTTPd listens at 127.0.0.1:8080, and will accept GET request from local machine, which means any program running on the same machine, be it a browser or a javascript or any program, can connect to tinyTerm and request either a file or the result of a command, 
+> More complex automation is facilited through the xmlhttp interface, a built in HTTPd listens at 127.0.0.1:8080, and will accept GET request from local machine, which means any program running on the same machine, be it a browser or a javascript or any program that supports xmlhttp interface, can connect to tinyTerm and request either a file or the result of a command, 
 
 for example:
 
