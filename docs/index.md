@@ -123,10 +123,9 @@ The following commands can be used programatically for scripting
 > Command history file is saved as %USERPROFILE%\.tinyTerm\tinyTerm.hist on Windows, $HOME/.tinyTerm/tinyTerm.hist on MacOS/Linux by default, copy tinyTerm.hist to the same folder as tinyTerm2 executable for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary. In addition to command history, the following lines in the .hist file are used to save settings between sessions
 
     ~TermSize 100x40    set terminal size to 100 cols x 40 rows
-    ~Transparency 192   set window transparency level to 192/255(only tinyTerm, not tinyTerm2)
     ~FontFace Consolas  set font face to “Consolas”
     ~FontSize 18        set font size to 18
-    ~LocalEdit		Enable local edit
+    ~LocalEdit	        Enable local edit
 
 > One more option about local edit is "Send to all", when enabled locally edited command will be sent to all open tabs when "Enter" is pressed, this is useful when multiple host is contorlled at the same time.
 >
