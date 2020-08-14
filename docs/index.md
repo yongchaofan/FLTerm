@@ -3,18 +3,18 @@
 tinyTerm2 is a simple small and scriptable terminal emulator, it is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). Which is now cross platform with the same unique features and still very small, at release 1.2.6, the win64 executable is 824KB. 
 	
 <table>
-	<tr><td>Stable release:</td><td><A href=https://github.com/yongchaofan/tinyterm2>1.2.6</A></td>
-		<td>License:</td><td><A href=https://github.com/yongchaofan/tinyTerm2/LICENSE>GPL 3.0</td></tr>
-	<tr><td>Windows:</td><td><A href=https://www.microsoft.com/store/apps/9NXGN9LJTL05>Microsoft Store</A></td>
+<tr><td>Stable release:</td><td><A href=https://github.com/yongchaofan/tinyterm2>1.2.6</A></td>
+<td>License:</td><td><A href=https://github.com/yongchaofan/tinyTerm2/LICENSE>GPL 3.0</td></tr>
+<tr><td>Windows:</td><td><A href=https://www.microsoft.com/store/apps/9NXGN9LJTL05>Microsoft Store</A></td>
 <td><A href=https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.exe>32bit EXE</A></td>
 <td><A href=https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2_x64.exe>64bit EXE</A></td></tr>
-	<tr><td>MacOS:</td><td>Apple store</td>
+<tr><td>MacOS:</td><td>Apple store</td>
 <td><A href=https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.pkg>tinyTerm2.pkg</A></td><tr>
 </table>
 
 <video width="960" height="540" controls>
-	<source src="tinyTerm2.mp4" type="video/mp4">
-	Your browser does not support the video tag.
+<source src="tinyTerm2.mp4" type="video/mp4">
+Your browser does not support the video tag.
 </video>
 
 ---
@@ -79,7 +79,6 @@ Notice the "!" just before "Selection" in the last example, when a command is st
 The javascript snippet from xml_get.html in the github/tinyTerm2/scripts directory, is a perfect example of scripting tinyTerm, whcih takes a command from input field of a webpage, send it through tinyTerm2, and present the result on the webpage
 
 ```js
-<script>
 var xhr, cmd, result;
 function run() {
 	xhr.open('GET', "/?"+cmd.value, false);
@@ -95,12 +94,6 @@ function setup() {
 		if (event.keyCode===13) run(); 
 	});
 }
-</script>
-<body onload="setup()">
-tinyTerm2 scripting interface via xmlhttp<br/> &nbsp;<br/>
-command: <input id="cmd" type="text" size="40" autofocus/>
-<pre><div id="result">
-</body>
 ```
 > 
 
