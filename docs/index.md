@@ -123,7 +123,7 @@ The following commands can be used programatically for scripting
 > scp and tunnling funciton is integrated to the terminal, when a ssh connection is active, enable local edit mode and try the following commands:
 
     !scp tt.txt :t1.txt secure copy local file tt.txt to remote host as t1.txt
-    !scp :*.txt d:/     secure copy remote files *.txt to local d:/
+    !scp :t1.txt d:/     secure copy remote files *.txt to local d:/
     !tun 127.0.0.1:2222 127.0.0.1:22 
                         start ssh2 tunnel from localhost port 2222 to remote host port 22
     !tun                list all ssh2 tunnels 
