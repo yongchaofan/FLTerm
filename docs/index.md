@@ -118,7 +118,7 @@ The following commands can be used programatically for scripting
 
 ## Top secrets
 
-> SSH know_hosts file is stored at %USERPROFILE%\.ssh on Windows, $HOME/.ssh on MacOS/Linux, public/private key pairs if used should be copied to the same directory. id_rsa is supported on all platforms, id_ecdsa and id_ed25512 is supported on MacOS store app, which was compiled with openssl crypto, Linux version will support the same when compiled with openssl crypto backend
+> SSH know_hosts file is stored at %USERPROFILE%\.ssh on Windows, $HOME/.ssh on MacOS/Linux. Password, keyboard interactive and public key are the three ways of authentication supported, when public key is used, key pairs should be copied to the same .ssh directory. id_rsa is supported by the Microsoft store version, which was compiled with winCNG crypto backend, id_rsa, id_ecdsa and id_ed25512 are supported on the apple app store version, which was compiled with openssl crypto.
 
 > scp and tunnling funciton is integrated to the terminal, when a ssh connection is active, enable local edit mode and try the following commands:
 
