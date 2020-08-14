@@ -58,8 +58,8 @@ Your browser does not support the video tag.
 	ls -l
 	!Wait 3
 	top -b -n 3
-	exit
 	!Log
+	exit	
 
 ## Scripting interface
 > More complex automation is facilited through the xmlhttp interface, a built in HTTPd listens at 127.0.0.1:8080, and will accept GET request from local machine, which means any program running on the same machine, be it a browser or a javascript or any program that supports xmlhttp interface, can connect to tinyTerm and request either a file or the result of a command, 
@@ -127,6 +127,6 @@ The following commands can be used programatically for scripting
     ~FontFace Consolas  set font face to “Consolas”
     ~FontSize 18        set font size to 18
     ~LocalEdit		Enable local edit
->
+
 > One more option about local edit is "Send to all", when enabled locally edited command will be sent to all open tabs when "Enter" is pressed, this is useful when multiple host is contorlled at the same time.
 >
