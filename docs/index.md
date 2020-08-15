@@ -131,4 +131,4 @@ The following commands can be used programatically for scripting
 >
 > **Apple store app is sandboxed**, which means the home directory is isolated to "Library/Containers/com.github.tinyTerm2/Data", both .ssh and .tinyTerm are there, and any file transfered without specifying local dir are copied to there. Note that even if a path is specified, access is most likely denied by the sandbox, even /tmp is not accessible.
 >
-> To access the sandboxed home directory, the easies way is to type "!script $HOME" in local edit mode, which will open the dir in Finder, the press "CMD+Shift+." to show .ssh and .tinyTerm
+> To access the sandboxed home directory, the easies way is to type "!script $HOME" in local edit mode, which will open the dir in Finder, press "CMD+Shift+." to show .ssh and .tinyTerm
