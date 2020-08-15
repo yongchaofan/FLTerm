@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38637 2020-08-09 11:55:10 $"
+// "$Id: ssh2.cxx 38775 2020-08-09 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -29,6 +29,7 @@
 	#include <fnmatch.h>
 	#define Sleep(x) usleep((x)*1000);
 #else
+	#define getcwd _getcwd
 	#include <shlwapi.h>
 int wchar_to_utf8(WCHAR *wbuf, int wcnt, char *buf, int cnt)
 {
@@ -505,10 +506,10 @@ void sshHost::disconn()
 		}
 	}
 }
-void sshHost::print_total(time_t start, long long total)
+void sshHost::print_total(time_t start, long total)
 {
 	double duration = difftime(time(NULL), start);
-	print("\033[12D%lld bytes", total);
+	print("\033[12D%ld bytes", total);
 	if ( duration>0 ) print(", %dMB/s", (int)((total>>20)/duration));
 }
 int sshHost::scp_read_one(const char *rpath, const char *lpath)
@@ -606,9 +607,10 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 		}
 	} while ( !scp_channel );
 
-	int rc;
+	int rc, blocks = 0;
 	time_t start = time(NULL);
-	size_t nread = 0, total = 0;
+	size_t nread = 0;
+	long total = 0;
 	char mem[1024*32];
 	while ( (nread=fread(mem, 1, 1024*32, fp)) >0 ) {
 		char *ptr = mem;
@@ -626,8 +628,10 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 			}
 		}
 		if ( rc>0 ) {
-			if ( (total&0xfffff)==0 )
-				print("\033[12D% 10lldKB", total>>10);
+			if ( ++blocks==32 ) {
+				blocks = 0;
+				print("\033[12D% 10ldKB", total>>10);
+			}
 		}
 		else {
 			print(", \033[31minterrupted");
@@ -1229,7 +1233,7 @@ void sftpHost::sftp_put_one(char *src, char *dst)
 		return;
 	}
 
-	int nread;
+	int nread, blocks=0;
 	long total=0;
 	char mem[1024*32];
 	time_t start = time(NULL);
@@ -1243,8 +1247,10 @@ void sftpHost::sftp_put_one(char *src, char *dst)
 			}
 		}
 		if ( rc>0 ) {
-			if ( (total&0xfffff)==0 ) 
+			if ( ++blocks==32 ) {
+				blocks = 0;
 				print("\033[12D% 10ldKB", total>>10);
+			}
 		}
 		else{
 			print("error writing to host\r\n");
@@ -1423,7 +1429,7 @@ int sftpHost::sftp(char *cmd)
 }
 int sftpHost::read()
 {
-	status( HOST_CONNECTING );
+	status(HOST_CONNECTING);
 	if ( tcp()==-1 ) goto TCP_Close;
 
 	channel = NULL;
@@ -1436,7 +1442,7 @@ int sftpHost::read()
 	banner=libssh2_session_banner_get(session);
 	if ( banner!=NULL ) print("%s\r\n", banner);
 
-	status( HOST_AUTHENTICATING );
+	status(HOST_AUTHENTICATING);
 	if ( ssh_knownhost()!=0 ) {
 		term_puts(errmsgs[3], -3);
 		goto Sftp_Close;
@@ -1451,22 +1457,24 @@ int sftpHost::read()
 	}
 	if ( libssh2_sftp_realpath(sftp_session, ".", realpath, 1024)<0 )
 		*realpath=0;
-	strcpy( homepath, realpath );
+	strcpy(homepath, realpath);
 
-	status( HOST_CONNECTED );
+	status(HOST_CONNECTED);
 	term_puts("Connected", 0);
 	bRunning = true;
-	for ( int i=0; i<10&&bRunning; i++ ) {
-		const char *cmd = term_gets("\r\033[32msftp> \033[37m", true);
+	while ( bRunning ) {
+		const char *cmd = term_gets("\033[32msftp> \033[37m", true);
+		for ( int i=0; i<10 && cmd==NULL && bRunning; i++ )
+			cmd=term_gets("", true);
 		if ( cmd!=NULL ) {
-			i = 0;
 			mtx.lock();
 			int rc = sftp((char *)cmd);
 			mtx.unlock();
 			if ( rc==-1 ) break;
 		}
 		else { 
-			if ( i==9 ) term_puts("TimeOut!", 8);
+			term_puts("TimeOut!", 8);
+			break;
 		} 
 	}
 	libssh2_sftp_shutdown(sftp_session);
@@ -1489,14 +1497,14 @@ TCP_Close:
 }
 int sftpHost::write(const char *buf, int len)
 {
-	if ( *buf=='\r' ) term_puts("\r\033[32msftp> \033[37m", 17);//after files dropped
+	if ( *buf=='\r' )//after files dropped
+		term_puts("\r\033[32msftp> \033[37m", 17);
 	return 0;
 }
 void sftpHost::send_file(char *src, char *dst)
 {
 	for ( char *p=src; *p; p++ ) if ( *p=='\\' && p[1]!=' ' ) *p='/';
 	mtx.lock();
-	term_puts("\r\n", 2);
 	sftp_put(src, realpath);
 	mtx.unlock();
 }

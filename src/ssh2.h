@@ -55,7 +55,7 @@ protected:
 	int ssh_authentication();
 	void write_keys(const char *buf, int len);
 
-	void print_total(time_t start, long long total);
+	void print_total(time_t start, long total);
 	int scp_read_one(const char *rpath, const char *lpath);
 	int scp_write_one(const char *lpath, const char *rpath);
 	int scp_read(char *rpath, char *lpath);
