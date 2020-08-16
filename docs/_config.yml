@@ -1,6 +1,7 @@
 theme: jekyll-theme-cayman
 show_downloads: true
 github:
-  store_url: https://www.microsoft.com/store/apps/9NXGN9LJTL05
+  apple_url: https://tinyterm2.us.to
+  microsoft_url: https://www.microsoft.com/store/apps/9NXGN9LJTL05
   zip_url: https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2-1.2.6.zip
   description: simple, small and scriptable terminal emulator with tabs
