@@ -107,7 +107,14 @@ The following commands can be used programatically for scripting
     !Selection          get current selected text
 
 
-## Top secrets
+## Under The Hood
+
+> **Command history** is saved in %USERPROFILE%\.tinyTerm\tinyTerm.hist on Windows, $HOME/.tinyTerm/tinyTerm.hist on MacOS/Linux by default, copy tinyTerm.hist to the same folder as tinyTerm2 executable for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary. In addition to command history, the following lines in the .hist file are used to save settings between sessions
+
+    ~TermSize 100x40    set terminal size to 100 cols x 40 rows
+    ~FontFace Consolas  set font face to “Consolas”
+    ~FontSize 18        set font size to 18
+    ~LocalEdit	        Enable local edit
 
 > **SSH know_hosts** file is stored at %USERPROFILE%\.ssh on Windows, $HOME/.ssh on MacOS/Linux. Password, keyboard interactive and public key are the three ways of authentication supported, when public key is used, key pairs should be copied to the same .ssh directory. id_rsa is supported by the Microsoft store version, which was compiled with winCNG crypto backend, id_rsa, id_ecdsa and id_ed25512 are supported on the apple app store version, which was compiled with openssl crypto.
 
@@ -120,15 +127,6 @@ The following commands can be used programatically for scripting
     !tun                list all ssh2 tunnels 
     !tun 3256           close ssh2 tunnel number 3256
 
-> **Command history** is saved in %USERPROFILE%\.tinyTerm\tinyTerm.hist on Windows, $HOME/.tinyTerm/tinyTerm.hist on MacOS/Linux by default, copy tinyTerm.hist to the same folder as tinyTerm2 executable for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary. In addition to command history, the following lines in the .hist file are used to save settings between sessions
+> **Apple store app is sandboxed**, which means the home directory is isolated to "Library/Containers/com.github.tinyTerm2/Data", both .ssh and .tinyTerm are there, any file transfered without specifying local dir are copied to there. Note that even if a path is specified, access is most likely denied by the sandbox, even /tmp is not accessible.
 
-    ~TermSize 100x40    set terminal size to 100 cols x 40 rows
-    ~FontFace Consolas  set font face to “Consolas”
-    ~FontSize 18        set font size to 18
-    ~LocalEdit	        Enable local edit
-
-> One more option about local edit is **"Send to all"**, when enabled locally edited command will be sent to all open tabs when "Enter" is pressed, this is useful when multiple host is contorlled at the same time.
->
-> **Apple store app is sandboxed**, which means the home directory is isolated to "Library/Containers/com.github.tinyTerm2/Data", both .ssh and .tinyTerm are there, and any file transfered without specifying local dir are copied to there. Note that even if a path is specified, access is most likely denied by the sandbox, even /tmp is not accessible.
->
-> To access the sandboxed home directory, the easies way is to type "!script $HOME" in local edit mode, which will open the dir in Finder, press "CMD+Shift+." to show .ssh and .tinyTerm
+> To access the sandboxed home directory, the easies way is to type "!script $HOME" in local edit mode, which will open the sandboxed home dir in Finder, press "CMD+Shift+." to see .ssh and .tinyTerm
