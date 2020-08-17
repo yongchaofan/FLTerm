@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38775 2020-08-09 11:55:10 $"
+// "$Id: ssh2.cxx 38996 2020-08-09 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -362,13 +362,14 @@ int sshHost::ssh_authentication()
 }
 int sshHost::wait_socket()
 {
+	timeval tv = {0, 10000};	//tv=NULL works on Windows but not MacOS
 	fd_set fds, *rfd=NULL, *wfd=NULL;
 	FD_ZERO(&fds); FD_SET(sock, &fds);
 	int dir = libssh2_session_block_directions(session);
 	if ( dir==0 ) return 1;
 	if ( dir & LIBSSH2_SESSION_BLOCK_INBOUND ) rfd = &fds;
 	if ( dir & LIBSSH2_SESSION_BLOCK_OUTBOUND ) wfd = &fds;
-	return select(sock+1, rfd, wfd, NULL, NULL );
+	return select(sock+1, rfd, wfd, NULL, &tv);
 }
 const char *IETF_HELLO="<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
 <hello xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\
@@ -381,7 +382,10 @@ int sshHost::read()
 
 	channel = NULL;
 	session = libssh2_session_init();
-	if ( libssh2_session_handshake(session, sock)!=0 ) {
+	int rc;
+	while ((rc=libssh2_session_handshake(session,sock))==LIBSSH2_ERROR_EAGAIN)
+		if ( wait_socket()<0 ) break;
+	if ( rc!=0 ) {
 		term_puts(errmsgs[2], -2);
 		goto Session_Close;
 	}
@@ -432,7 +436,7 @@ int sshHost::read()
 			term_puts(buf, len);
 		}
 		else {//len<=0
-			if ( len!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) break;
+			if ( len!=LIBSSH2_ERROR_EAGAIN || wait_socket()<0 ) break;
 		}
 	}
 	term_puts("Disconnected", -1);
@@ -471,7 +475,7 @@ int sshHost::write(const char *buf, int len)
 			total += cch;
 		}
 		else  {
-			if ( cch!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) break;
+			if ( cch!=LIBSSH2_ERROR_EAGAIN || wait_socket()<0 ) break;
 		}
 	}
 	return cch<0 ? cch : total;
@@ -525,7 +529,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 		mtx.unlock();
 		if (!scp_channel) {
 			if ( err_no==LIBSSH2_ERROR_EAGAIN)
-				if ( wait_socket()>0 ) continue;
+				if ( wait_socket()>=0 ) continue;
 			print("\033[31mcouldn't open remote file");
 			return -1;
 		}
@@ -561,7 +565,7 @@ int sshHost::scp_read_one(const char *rpath, const char *lpath)
 				}
 			}
 			else {
-				if ( rc!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) {
+				if ( rc!=LIBSSH2_ERROR_EAGAIN || wait_socket()<0 ) {
 					print("\033[31merror reading from host");
 					break;
 				}
@@ -599,14 +603,13 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 		if ( !scp_channel ) err_no = libssh2_session_last_errno(session);
 		mtx.unlock();
 		if ( !scp_channel ) {
-			if ( err_no!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) {
+			if ( err_no!=LIBSSH2_ERROR_EAGAIN || wait_socket()<0 ) {
 				print("\033[31mcouldn't open remote file");
 				fclose(fp);
 				return -2;
 			}
 		}
 	} while ( !scp_channel );
-
 	int rc, blocks = 0;
 	time_t start = time(NULL);
 	size_t nread = 0;
@@ -624,7 +627,7 @@ int sshHost::scp_write_one(const char *lpath, const char *rpath)
 				total += rc;
 			}
 			else {
-				if ( rc!=LIBSSH2_ERROR_EAGAIN || wait_socket()<=0 ) break;
+				if ( rc!=LIBSSH2_ERROR_EAGAIN || wait_socket()<0 ) break;
 			}
 		}
 		if ( rc>0 ) {
@@ -938,7 +941,7 @@ int sshHost::tun_local(char *parameters)
 			mtx.unlock();
 			if ( !tun_channel ) {
 				if ( rc==LIBSSH2_ERROR_EAGAIN )
-					if ( wait_socket()>0 ) continue;
+					if ( wait_socket()>=0 ) continue;
 				print("\033[31mCouldn't establish tunnel, is it supported?\r\n");
 				closesocket(tun_sock);
 				goto shutdown;
@@ -981,7 +984,7 @@ int sshHost::tun_remote(char *parameters)
 		mtx.unlock();
 		if (!listener) {
 			if ( err_no==LIBSSH2_ERROR_EAGAIN )
-				if ( wait_socket()>0 ) continue;
+				if ( wait_socket()>=0 ) continue;
 			print("\033[31mCouldn't listen for tunnel, is it supported?\r\n");
 			return -1;
 		}
@@ -996,7 +999,7 @@ again:
 		mtx.unlock();
 		if (!tun_channel) {
 			if ( err_no==LIBSSH2_ERROR_EAGAIN )
-				if ( wait_socket()>0 ) continue;
+				if ( wait_socket()>=0 ) continue;
 			print("\033[31mCouldn't accept tunnel connection!\r\n");
 			return -1;
 		}
@@ -1434,7 +1437,10 @@ int sftpHost::read()
 
 	channel = NULL;
 	session = libssh2_session_init();
-	if ( libssh2_session_handshake(session, sock)!=0 ) {
+	int rc;
+	while ((rc=libssh2_session_handshake(session,sock))==LIBSSH2_ERROR_EAGAIN)
+		if ( wait_socket()<0 ) break;
+	if ( rc!=0 ) {
 		term_puts(errmsgs[2], -2);
 		goto Sftp_Close;
 	}
