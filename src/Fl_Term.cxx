@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 38680 2020-08-12 10:08:20 $"
+// "$Id: Fl_Term.cxx 37550 2020-08-12 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -69,7 +69,6 @@ void Fl_Term::puts( const char *buf, int len )	//parse text received from host
 {
 	if ( len==0 ) {//Connected, send term size
 		host->send_size(size_x, size_y);
-		if ( host->type()==HOST_CONF ) bEcho = true;
 		do_callback(this, (void *)sTitle);
 	}
 	else
@@ -86,7 +85,6 @@ void Fl_Term::puts( const char *buf, int len )	//parse text received from host
 				disp("\033[37m, Press \033[33mEnter");
 				disp("\033[37m to reconnect\r\n");
 			}
-			if ( host->type()==HOST_CONF ) bEcho = false;
 			*sTitle = 0;
 			do_callback(this, (void *)NULL);
 		}
@@ -636,8 +634,8 @@ void Fl_Term::append( const char *newtext, int len )
 		char *p=buff+cursor_x-iPrompt;
 		if ( strncmp(p, sPrompt, iPrompt)==0 ) bPrompt=true;
 	}
-	append_mtx.unlock();
 	pending(true);
+	append_mtx.unlock();
 }
 void Fl_Term::buff_clear(int offset, int len)
 {
@@ -1298,7 +1296,10 @@ void Fl_Term::copier(char *files)
 			if ( p1!=NULL ) {
 				strncpy(dst, p2, p1-p2);
 				dst[p1-p2]='/';
-				dst[255]=0;
+				if ( p1-p2<255 ) 
+					dst[p1-p2+1]=0;
+				else
+					dst[255]=0;
 			}
 		}
 	}
@@ -1340,22 +1341,24 @@ void Fl_Term::run_script(const char *s)	//called on drag&drop
 	}
 
 	char *script = strdup(s);
-	learn_prompt();
-	char *p0 = script;
-	char *p1=strchr(p0, 0x0a);
-	if ( p1!=NULL ) *p1=0;
-	struct stat sb;				//is this a list of files?
-	int rc = fl_stat(p0, &sb);
-	if ( p1!=NULL ) *p1=0x0a;
-
-	if ( rc!=-1 ) {				//files dropped
+	int rc = -1;
+	if ( live() ) {
+		learn_prompt();
+		char *p0 = script;
+		char *p1=strchr(p0, 0x0a);
+		if ( p1!=NULL ) *p1=0;
+		struct stat sb;			//is this a list of files?
+		rc = fl_stat(p0, &sb);
+		if ( p1!=NULL ) *p1=0x0a;
+	}
+	if ( rc!=-1 ) {				//connected and files dropped
 		std::thread scripterThread(&Fl_Term::copier, this, script);
 		scripterThread.detach();
 	}
-	else {						//script dropped
+	else {						//disconnected or script dropped
 		if ( host->type()==HOST_CONF ) {
 			host->write(script, strlen(script));
-			if ( bEcho ) append(script, strlen(script));
+			append(script, strlen(script));
 			free(script);
 		}
 		else {
@@ -1436,53 +1439,3 @@ const unsigned char *Fl_Term::telnet_options(const unsigned char *p, int cnt)
 	}
 	return p+1;
 }
-/*
-int Fl_Term::scp(const char *cmd0, char **preply)
-{
-	char *cmd = strdup(cmd0);
-	learn_prompt();
-	int reply0 = mark_prompt();
-	char *p = strchr(cmd, ' ');
-	if ( p!=NULL ) {
-		*p++ = 0;
-		char *local, *remote, *rpath, rlist[1024];
-		if ( *cmd==':' ) {			//scp_read
-			local = p; remote = cmd+1;
-			strcpy(rlist, "ls -1  ");
-		}
-		else {						//scp_write
-			local = cmd; remote = p+1;
-			strcpy(rlist, "ls -ld ");
-		}
-		if ( *remote=='/') 			//get remote dir
-			strcpy(rlist+7, remote);
-		else {
-			term_pwd(rlist+7);
-			if ( *remote ) {
-				strcat(rlist, "/");
-				strcat(rlist, remote);
-			}
-		}
-		if ( command(rlist, &rpath)>0 ) {
-			reply0 = mark_prompt();
-			char *p = strchr(rpath, 0x0a);
-			if ( p!=NULL ) {
-				if ( *cmd==':' ) {	//scp_read
-					remote = strdup(p+1);
-					((sshHost *)host)->scp_read(local, remote);
-				}
-				else {				//scp_write
-					if ( p[1]=='d' ) strcat(rlist, "/");
-					remote = strdup(rlist+7);
-					((sshHost *)host)->scp_write(local, remote);
-				}
-				free(remote);
-			}
-		}
-	}
-	free(cmd);
-	host->write("\r", 1);
-	int rc = waitfor_prompt();
-	if ( preply!=NULL ) *preply = buff+reply0;
-	return rc;
-}*/
