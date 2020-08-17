@@ -5,7 +5,7 @@ tinyTerm2 is a simple small and scriptable terminal emulator, with unique featur
 Stable release: |[1.2.6](https://github.com/yongchaofan/tinyterm2) | License: | [GPL 3.0](https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE)
 --- |:---:|:---:|:---:
 **PC install:** | [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05) | [32bit EXE](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.exe) | [64bit EXE](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2_x64.exe)
-**Mac install:** | [Apple store](http://tinyterm2.us.to) | [tinyTerm2.pkg](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.pkg)
+**Mac install:** | [Apple store](https://apps.apple.com/us/app/id1522389053) | [tinyTerm2.pkg](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.6/tinyTerm2.pkg)
 
 <video width="960" height="540" controls>
 <source src="tinyTerm2.mp4" type="video/mp4">
