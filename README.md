@@ -9,7 +9,7 @@
 
 ## Project philosophy
 
-tinyTerm2 is a rewrite of tinyTerm in C++ with FLTK and libssh2+mbedtls, resulting a cross platform terminal emulator, with multi-tab support, and continues to be small, simple and scriptable. Win32 executable is only 654KB, win64 executable is 831KB, macOS and linux executables are just above 1MB.
+tinyTerm2 is a rewrite of tinyTerm in C++ with FLTK and libssh2+mbedtls, resulting a cross platform terminal emulator, with multi-tab support, and continues to be small, simple and scriptable. win64 executable is 824KB, macOS and linux executables are just above 1MB.
 
 User interface design is minimal, program starts with no tabs, tabs are enabled automatically when second connection is made; scrollbar hidden until user trys to scroll back, only one dialog for makeing connections, 
     
@@ -27,16 +27,15 @@ User interface design is minimal, program starts with no tabs, tabs are enabled 
             
 ### source files included:
 
-    Fl_Browser_Input.h and Fl_Browser_Input.cxx extends Fl_Input with autocompletion
+    ssh2.h and ssh2.cxx implements ssh/netconf and sftp hosts
 
+    host.h and host.cxx implements telnet, serial and shell host
+    
     Fl_Term.h and Fl_Term.cxx implements a vt100 terminal widget using FLTK
 
-    ssh2.h and ssh2.cxx implements ssh, sftp and netconf hosts
+    Fl_Browser_Input.h and Fl_Browser_Input.cxx extends Fl_Input with autocompletion
 
-    host.h and host.cxx implements telnet and serial hosts, plus ftp and tftp daemon for win32
-
-    tiny2.cxx combines Fl_Term, host and ssh2 to create the simple terminal application
-  
+    tiny2.cxx combines Fl_Term, host and ssh2 to create the simple terminal application  
 
 
 ## Building
