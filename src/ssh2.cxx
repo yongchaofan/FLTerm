@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 38996 2020-08-09 11:55:10 $"
+// "$Id: ssh2.cxx 39785 2020-08-09 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include "ssh2.h"
+#include <list>
 
 #ifndef WIN32
 	#include <pwd.h>
@@ -1123,10 +1124,40 @@ void sftpHost::sftp_ls(char *path, bool ll)
 		}
 	}
 
+	std::list<char *> shortlist, longlist;
+	auto its = shortlist.begin();
+	auto itl = longlist.begin();
 	while ( libssh2_sftp_readdir_ex(sftp_handle, mem, sizeof(mem),
 							longentry, sizeof(longentry), &attrs)>0 ) {
-		if ( pattern==NULL || fnmatch(pattern, mem, 0)==0 )
-			print("%s\r\n", ll ? longentry : mem);
+		if ( pattern==NULL || fnmatch(pattern, mem, 0)==0 ) {
+			if ( shortlist.begin()==shortlist.end() ) {
+				shortlist.insert(its, strdup(mem));
+				longlist.insert(itl, strdup(longentry));
+			}
+			else {
+				its = shortlist.begin();
+				itl = longlist.begin();
+				while ( its!=shortlist.end() ) {
+					if ( strcmp(mem, *its)<0 ) {
+						its = shortlist.insert(its, strdup(mem));
+						itl = longlist.insert(itl, strdup(longentry));
+						break;
+					}
+					its++; itl++;
+				}
+				if ( its==shortlist.end() ) {
+					shortlist.insert(its, strdup(mem));
+					longlist.insert(itl, strdup(longentry));
+				}
+			}
+		}
+	}
+
+	its = shortlist.begin();
+	itl = longlist.begin();
+	while ( its!=shortlist.end() ) {
+		print("%s\r\n", ll? *itl : *its);
+		free(*its++); free(*itl++);
 	}
 	libssh2_sftp_closedir(sftp_handle);
 }
