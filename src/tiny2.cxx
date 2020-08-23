@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27742 2020-08-04 10:05:10 $"
+// "$Id: tiny2.cxx 27875 2020-08-23 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -27,7 +27,7 @@ const char ABOUT_TERM2[]="\r\n\
 \t    * drag and drop to transfer files via scp\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
 \thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tVerision 1.2.6, ©2018-2020 Yongchao Fan, All rights reserved\r\n";
+\tVerision 1.2.7 ©2018-2020 Yongchao Fan\r\n";
 const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -884,11 +884,15 @@ int main(int argc, char **argv)
 	pCmd->textsize(fontsize);
 	resize_window(termcols, termrows);
 
+	char cwd[4096];
+	fl_getcwd(cwd, 4096);	//save cwd set by load_dict()
+
 	pWindow->show();
 	Fl::add_timeout(0.02, redraw_cb);
 	if ( !local_edit ) connect_dlg(NULL, NULL);
 	Fl::run();
 
+	fl_chdir(cwd);			//in case cwd was changed in sftp_lcd
 	save_dict();
 	libssh2_exit();
 	httpd_exit();
