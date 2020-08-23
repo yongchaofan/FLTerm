@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.h 3161 2020-07-12 13:48:10 $"
+// "$Id: ssh2.h 3196 2020-08-21 13:48:10 $"
 //
 //  sshHost sftpHost
 //
@@ -21,8 +21,8 @@
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 #include <atomic>
-#include <thread>
 #include <mutex>
+#include <list>
 
 #ifndef _SSH2_H_
 #define _SSH2_H_
@@ -34,7 +34,6 @@ struct TUNNEL
 	unsigned short localport;
 	unsigned short remoteport;
 	LIBSSH2_CHANNEL *channel;
-	TUNNEL *next;
 };
 
 class sshHost : public tcpHost {
@@ -45,10 +44,11 @@ protected:
 	char subsystem[64];
 	char homedir[MAX_PATH];
 
-	std::mutex mtx;
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
-	TUNNEL *tunnel_list;
+	std::mutex mtx;			//to protect ssh session access
+	std::mutex tunnel_mtx;	//to protect tunnel_list access
+	std::list<TUNNEL *> tunnel_list;
 
 	int wait_socket();
 	int ssh_knownhost();

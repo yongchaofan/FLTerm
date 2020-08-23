@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 39785 2020-08-09 11:55:10 $"
+// "$Id: ssh2.cxx 39364 2020-08-21 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -22,7 +22,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include "ssh2.h"
-#include <list>
+#include <thread>
 
 #ifndef WIN32
 	#include <pwd.h>
@@ -135,7 +135,6 @@ sshHost::sshHost(const char *name) : tcpHost(name)
 	*subsystem = 0;
 	session = NULL;
 	channel = NULL;
-	tunnel_list = NULL;
 
 	char options[256];
 	strncpy(options, name, 255);
@@ -501,7 +500,7 @@ void sshHost::disconn()
 	if ( reader.joinable() ) {
 		if ( channel!=NULL ) {
 			mtx.lock();
-			libssh2_channel_eof(channel);
+			libssh2_channel_send_eof(channel);
 			mtx.unlock();
 		}
 		if ( session!=NULL ) {
@@ -794,7 +793,7 @@ TUNNEL *sshHost::tun_add(int tun_sock, LIBSSH2_CHANNEL *tun_channel,
 							char *localip, unsigned short localport,
 							char *remoteip, unsigned short remoteport)
 {
-	TUNNEL *tun = (TUNNEL *)malloc(sizeof(TUNNEL));
+	TUNNEL *tun = new TUNNEL;
 	if ( tun!=NULL ) {
 		tun->socket = tun_sock;
 		tun->channel = tun_channel;
@@ -802,10 +801,9 @@ TUNNEL *sshHost::tun_add(int tun_sock, LIBSSH2_CHANNEL *tun_channel,
 		tun->localport = localport;
 		tun->remoteip = strdup(remoteip);
 		tun->remoteport = remoteport;
-		mtx.lock();
-		tun->next = tunnel_list;
-		tunnel_list = tun;
-		mtx.unlock();
+		tunnel_mtx.lock();
+		tunnel_list.insert(tunnel_list.end(), tun);
+		tunnel_mtx.unlock();
 		print("\r\n\033[32mtunnel %d %s:%d %s:%d\r\n", tun_sock,
 						localip, localport, remoteip, remoteport);
 	}
@@ -813,35 +811,25 @@ TUNNEL *sshHost::tun_add(int tun_sock, LIBSSH2_CHANNEL *tun_channel,
 }
 void sshHost::tun_del(int tun_sock)
 {
-	mtx.lock();
-	TUNNEL *tun_pre = NULL;
-	TUNNEL *tun = tunnel_list;
-	while ( tun!=NULL ) {
+	tunnel_mtx.lock();
+	for ( auto it=tunnel_list.begin(); it!=tunnel_list.end(); it++ ) {
+		TUNNEL *tun = *it;
 		if ( tun->socket==tun_sock ) {
 			free(tun->localip);
 			free(tun->remoteip);
-			if ( tun_pre!=NULL )
-				tun_pre->next = tun->next;
-			else
-				tunnel_list = tun->next;
-			free(tun);
+			delete(tun);
+			tunnel_list.erase(it);
 			print("\r\n\033[32mtunnel %d closed\r\n", tun_sock);
 			break;
 		}
-		tun_pre = tun;
-		tun = tun->next;
 	}
-	mtx.unlock();
+	tunnel_mtx.unlock();
 }
 void sshHost::tun_closeall()
 {
-	mtx.lock();
-	TUNNEL *tun = tunnel_list;
-	while ( tun!=NULL ) {
-		closesocket(tun->socket);
-		tun = tun->next;
-	}
-	mtx.unlock();
+	tunnel_mtx.lock();
+	for ( auto &tun : tunnel_list ) closesocket(tun->socket);
+	tunnel_mtx.unlock();
 }
 
 void sshHost::tun_worker(int tun_sock, LIBSSH2_CHANNEL *tun_channel)
@@ -1044,18 +1032,17 @@ void sshHost::tun(const char *cmd)
 		}
 		else {							//close existing tunnel
 			int sock = atoi(cmd);
-			TUNNEL *tun = tunnel_list;
-			while ( tun!=NULL ) {
+			tunnel_mtx.lock();
+			for ( auto &tun : tunnel_list ) 
 				if ( tun->socket==sock ) closesocket(sock);
-				tun = tun->next;
-			}
+			tunnel_mtx.unlock();
 		}
 	}
-	else {							//list all tunnels
-		TUNNEL *tun = tunnel_list;
+	else {								//list all tunnels
 		int listen_cnt = 0, active_cnt = 0;
 		print("\r\nTunnels:\r\n");
-		while ( tun!=NULL ) {
+		tunnel_mtx.lock();
+		for ( auto &tun : tunnel_list ) {
 			print(tun->channel==NULL?"listen":"active");
 			print(" socket %d\t%s:%d\t%s:%d\r\n", tun->socket,
 						tun->localip, tun->localport,
@@ -1064,8 +1051,8 @@ void sshHost::tun(const char *cmd)
 				active_cnt++;
 			else
 				listen_cnt++;
-			tun = tun->next;
 		}
+		tunnel_mtx.unlock();
 		print("\t%d listenning, %d active\r\n", listen_cnt, active_cnt);
 	}
 	write("\r", 1);
@@ -1087,77 +1074,63 @@ void sftpHost::sftp_cd(char *path)
 	char newpath[1024];
 	if ( path!=NULL ) {
 		LIBSSH2_SFTP_HANDLE *sftp_handle;
-		sftp_handle = libssh2_sftp_opendir(sftp_session, path);
-		if (!sftp_handle) {
-			print("\033[31mCouldn't change dir to \033[32m%s\r\n", path);
-			return;
+		if ((sftp_handle=libssh2_sftp_opendir(sftp_session, path))!=NULL ) {
+			libssh2_sftp_closedir(sftp_handle);
+			if ( libssh2_sftp_realpath(sftp_session, path, newpath, 1024)>0 )
+				strcpy(realpath, newpath);
 		}
-		libssh2_sftp_closedir(sftp_handle);
-		int rc = libssh2_sftp_realpath(sftp_session, path, newpath, 1024);
-		if ( rc>0 ) strcpy(realpath, newpath);
+		else {
+			print("\033[31mCouldn't change dir to \033[32m%s\r\n", path);
+		}
 	}
 	print("%s\r\n", realpath);
 }
+struct direntry{
+	char shortentry[512];
+	char longentry[512];
+};
 void sftpHost::sftp_ls(char *path, bool ll)
 {
 	char *pattern = NULL;
-	char mem[512], longentry[512];
-	LIBSSH2_SFTP_ATTRIBUTES attrs;
-	LIBSSH2_SFTP_HANDLE *sftp_handle=libssh2_sftp_opendir(sftp_session, path);
-	if (!sftp_handle) {
-		if ( strchr(path, '*')==NULL && strchr(path, '?')==NULL ) {
-			print("\033[31mUnable to open dir\033[32m%s\r\n", path);
-			return;
-		}
+	char root[2] = "/";
+	LIBSSH2_SFTP_HANDLE *sftp_handle;
+	if ( (sftp_handle=libssh2_sftp_opendir(sftp_session, path))==NULL ) {
 		pattern = strrchr(path, '/');
-		if ( pattern!=path ) {
-			*pattern++ = 0;
-			sftp_handle = libssh2_sftp_opendir(sftp_session, path);
-		}
-		else {
-			pattern++;
-			sftp_handle = libssh2_sftp_opendir(sftp_session, "/");
-		}
-		if ( !sftp_handle ) {
-			print("\033[31munable to open dir\033[32m%s\r\n", path);
-			return;
-		}
+		if ( pattern!=path )
+			*pattern = 0;
+		else
+			path = root;
+		pattern++;
+		sftp_handle=libssh2_sftp_opendir(sftp_session, path);
 	}
 
-	std::list<char *> shortlist, longlist;
-	auto its = shortlist.begin();
-	auto itl = longlist.begin();
+	if ( sftp_handle==NULL ) {
+		print("\033[31munable to open dir\033[32m%s\r\n", path);
+		return;
+	}
+	LIBSSH2_SFTP_ATTRIBUTES attrs;
+	char mem[512], longentry[512];
+	std::list<direntry *> dirlist;
+	auto it = dirlist.begin();
 	while ( libssh2_sftp_readdir_ex(sftp_handle, mem, sizeof(mem),
 							longentry, sizeof(longentry), &attrs)>0 ) {
 		if ( pattern==NULL || fnmatch(pattern, mem, 0)==0 ) {
-			if ( shortlist.begin()==shortlist.end() ) {
-				shortlist.insert(its, strdup(mem));
-				longlist.insert(itl, strdup(longentry));
-			}
-			else {
-				its = shortlist.begin();
-				itl = longlist.begin();
-				while ( its!=shortlist.end() ) {
-					if ( strcmp(mem, *its)<0 ) {
-						its = shortlist.insert(its, strdup(mem));
-						itl = longlist.insert(itl, strdup(longentry));
-						break;
-					}
-					its++; itl++;
-				}
-				if ( its==shortlist.end() ) {
-					shortlist.insert(its, strdup(mem));
-					longlist.insert(itl, strdup(longentry));
+			direntry *newentry = new direntry;
+			strcpy(newentry->shortentry, mem);
+			strcpy(newentry->longentry, longentry);
+			for ( it=dirlist.begin(); it!=dirlist.end(); it++ ) {
+				if ( strcmp(mem, (*it)->shortentry)<0 ) {
+					it = dirlist.insert(it, newentry);
+					break;
 				}
 			}
+			if ( it==dirlist.end() ) dirlist.insert(it, newentry);
 		}
 	}
 
-	its = shortlist.begin();
-	itl = longlist.begin();
-	while ( its!=shortlist.end() ) {
-		print("%s\r\n", ll? *itl : *its);
-		free(*its++); free(*itl++);
+	for ( it=dirlist.begin(); it!=dirlist.end(); it++ ) {
+		print("%s\r\n", ll? (*it)->longentry : (*it)->shortentry);
+		delete(*it);
 	}
 	libssh2_sftp_closedir(sftp_handle);
 }
@@ -1175,7 +1148,7 @@ void sftpHost::sftp_rm(char *path)
 	if ( pattern!=path ) *pattern++ = 0;
 	sftp_handle = libssh2_sftp_opendir(sftp_session, path);
 	if ( !sftp_handle ) {
-		print("\033[31munable to open dir\033[32m%s\r\n", path);
+		print("\033[31munable to open dir \033[32m%s\r\n", path);
 		return;
 	}
 
@@ -1185,7 +1158,7 @@ void sftpHost::sftp_rm(char *path)
 			strcat(rfile, "/");
 			strcat(rfile, mem);
 			if ( libssh2_sftp_unlink(sftp_session, rfile) )
-				print("\033[31mcouldn't delete file\033[32m%s\r\n", rfile);
+				print("\033[31mcouldn't delete \033[32m%s\r\n", rfile);
 		}
 	}
 	libssh2_sftp_closedir(sftp_handle);
@@ -1202,12 +1175,12 @@ void sftpHost::sftp_md(char *path)
 void sftpHost::sftp_rd(char *path)
 {
 	if ( libssh2_sftp_rmdir(sftp_session, path) )
-		print("\033[31mcouldn't remove directory\033[32m%s\r\n", path);
+		print("\033[31mcouldn't remove dir \033[32m%s, is it empty?\r\n",path);
 }
 void sftpHost::sftp_ren(char *src, char *dst)
 {
 	if ( libssh2_sftp_rename(sftp_session, src, dst) )
-		print("\033[31mcouldn't rename file\033[32m%s\r\n", src);
+		print("\033[31mcouldn't rename file \033[32m%s\r\n", src);
 }
 void sftpHost::sftp_get_one(char *src, char *dst)
 {
@@ -1317,25 +1290,25 @@ void sftpHost::sftp_get(char *src, char *dst)
 	}
 	else {
 		char *pattern = strrchr(src, '/');
-		*pattern++ = 0;
-		sftp_handle = libssh2_sftp_opendir(sftp_session, src);
-		if ( !sftp_handle ) {
-			print("\033[31mcould't open remote dir \033[32m%s\r\n", src);
-			return;
-		}
-
-		char rfile[1024], lfile[1024];
-		strcpy(rfile, src); strcat(rfile, "/");
-		int rlen = strlen(rfile);
-		strcpy(lfile, dst); if ( *lfile ) strcat(lfile, "/");
-		int llen = strlen(lfile);
-		while ( libssh2_sftp_readdir(sftp_handle, mem,
-								sizeof(mem), &attrs)>0 ) {
-			if ( fnmatch(pattern, mem, 0)==0 ) {
-				strcpy(rfile+rlen, mem);
-				strcpy(lfile+llen, mem);
-				sftp_get_one(rfile, lfile);
+		if ( pattern!=NULL ) *pattern++ = 0;
+		if ( (sftp_handle=libssh2_sftp_opendir(sftp_session, src))!=NULL ) {
+			char rfile[1024], lfile[1024];
+			strcpy(rfile, src); strcat(rfile, "/");
+			int rlen = strlen(rfile);
+			strcpy(lfile, dst); if ( *lfile ) strcat(lfile, "/");
+			int llen = strlen(lfile);
+			while ( libssh2_sftp_readdir(sftp_handle, mem,
+									sizeof(mem), &attrs)>0 ) {
+				if ( fnmatch(pattern, mem, 0)==0 ) {
+					strcpy(rfile+rlen, mem);
+					strcpy(lfile+llen, mem);
+					sftp_get_one(rfile, lfile);
+				}
 			}
+			libssh2_sftp_closedir(sftp_handle);
+		}
+		else {
+			print("\033[31mcould't open remote dir \033[32m%s\r\n", src);
 		}
 	}
 }
@@ -1368,21 +1341,22 @@ void sftpHost::sftp_put(char *src, char *dst)
 			strcpy(lfile, src);
 		}
 
-		if ( (dir=opendir(lfile) ) == NULL ){
-			print("\033[31mcouldn't open local dir \033[32m%s\r\n",lfile);
-			return;
-		}
-		strcat(lfile, "/");
-		int llen = strlen(lfile);
-		strcpy(rfile, dst);
-		if ( *rfile!='/' || strlen(rfile)>1 ) strcat(rfile, "/");
-		int rlen = strlen(rfile);
-		while ( (dp=readdir(dir)) != NULL ) {
-			if ( fnmatch(pattern, dp->d_name, 0)==0 ) {
-				strcpy(lfile+llen, dp->d_name);
-				strcpy(rfile+rlen, dp->d_name);
-				sftp_put_one(lfile, rfile);
+		if ( (dir=opendir(lfile) )!=NULL ) {
+			strcat(lfile, "/");
+			int llen = strlen(lfile);
+			strcpy(rfile, dst);
+			if ( *rfile!='/' || strlen(rfile)>1 ) strcat(rfile, "/");
+			int rlen = strlen(rfile);
+			while ( (dp=readdir(dir)) != NULL ) {
+				if ( fnmatch(pattern, dp->d_name, 0)==0 ) {
+					strcpy(lfile+llen, dp->d_name);
+					strcpy(rfile+rlen, dp->d_name);
+					sftp_put_one(lfile, rfile);
+				}
 			}
+		}
+		else {
+			print("\033[31mcouldn't open local dir \033[32m%s\r\n",lfile);
 		}
 	}
 }
