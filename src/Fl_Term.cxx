@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37550 2020-08-12 10:08:20 $"
+// "$Id: Fl_Term.cxx 37643 2020-08-31 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -18,7 +18,6 @@
 #include "Fl_Term.h"
 #include <FL/fl_ask.H>
 #include <FL/filename.H>
-using namespace std;
 
 //defined in tiny2.cxx, returns false if editor is hiden
 bool show_editor(int x, int y, int w, int h);
@@ -198,7 +197,7 @@ void Fl_Term::clear()
 	recv0 = 0;
 	ESC_idx = 0;
 	bInsert = bEscape = bGraphic = bTitle = false;
-	bBracket = bAlterScreen = bAppCursor = bOriginMode = false;
+	bBracket = bAltScreen = bAppCursor = bOriginMode = false;
 	bWraparound = true;
 	bScrollbar = false;
 	bCursor = true;
@@ -292,7 +291,7 @@ void Fl_Term::draw()
 	dx = x()+fl_width(buff+line[cursor_y], cursor_x-line[cursor_y]);
 	dy = y()+(cursor_y-screen_y)*font_height;
 	bool editor = bCursor;
-	if ( bAlterScreen) editor=false;
+	if ( bAltScreen) editor=false;
 	if ( host->status()==HOST_AUTHENTICATING ) editor=false;
 	if ( !show_editor(editor?dx:-1, dy+4, w()-dx-8, font_height) ) {
 		if ( bCursor ) {
@@ -319,7 +318,7 @@ int Fl_Term::handle(int e)
 		case FL_ENTER: return 1;
 		case FL_FOCUS: redraw(); return 1;
 		case FL_MOUSEWHEEL:
-			if ( !bAlterScreen ) {
+			if ( !bAltScreen ) {
 				screen_y += Fl::event_dy();
 				if ( screen_y<0 ) screen_y = 0;
 				if ( screen_y>cursor_y ) screen_y = cursor_y;
@@ -380,7 +379,7 @@ int Fl_Term::handle(int e)
 					}
 					y = y/font_height + screen_y;
 					if ( y<0 ) y=0;
-					if ( !bAlterScreen && y>cursor_y ) y = cursor_y;
+					if ( !bAltScreen && y>cursor_y ) y = cursor_y;
 					//cursor_y may not be the last line in AlterScreen mode
 					sel_right = line[y]+x;
 					if ( sel_right>line[y+1] ) sel_right=line[y+1];
@@ -435,7 +434,7 @@ int Fl_Term::handle(int e)
 			int key = Fl::event_key();
 			switch (key) {
 			case FL_Page_Up:
-				if ( !bAlterScreen ) {
+				if ( !bAltScreen ) {
 					bScrollbar = true;
 					screen_y -= size_y-1;
 					if ( screen_y<0 ) screen_y = 0;
@@ -443,7 +442,7 @@ int Fl_Term::handle(int e)
 				}
 				break;
 			case FL_Page_Down:
-				if ( !bAlterScreen ) {
+				if ( !bAltScreen ) {
 					screen_y += size_y-1;
 					if ( screen_y>cursor_y-size_y ) bScrollbar = false;
 					if ( screen_y>cursor_y ) screen_y = cursor_y;
@@ -557,7 +556,7 @@ void Fl_Term::append( const char *newtext, int len )
 			case 0x0a:
 			case 0x0b:
 			case 0x0c:
-				if ( bAlterScreen || line[cursor_y+2]!=0 ) { //IND to next line
+				if ( bAltScreen || line[cursor_y+2]!=0 ) { //IND to next line
 						vt100_Escape((unsigned char *)"D", 1);
 				}
 				else {	//LF and newline
@@ -580,7 +579,7 @@ void Fl_Term::append( const char *newtext, int len )
 				p = telnet_options(p-1, zz-p+1);
 				break;
 		case 0xe2:
-			if ( bAlterScreen ) {//utf8 box drawing hack
+			if ( bAltScreen ) {//utf8 box drawing hack
 				c = ' ';
 				if ( *p++==0x94 ) {
 					switch ( *p ) {
@@ -788,7 +787,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 							line[i] = cursor_x;
 					//fall through
 				case 'H': //cursor to line n1, postion n0
-					if ( !bAlterScreen && n1>size_y ) {
+					if ( !bAltScreen && n1>size_y ) {
 						cursor_y = (screen_y++) + size_y;
 					}
 					else {
@@ -803,7 +802,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 					}
 					break;
 				case 'J': //[0J kill till end, 1J begining, 2J entire screen
-					if ( isdigit(ESC_code[1]) || bAlterScreen ) {
+					if ( isdigit(ESC_code[1]) || bAltScreen ) {
 						screen_clear(m0);
 					}
 					else {//clear in none alter screen, used in apt install
@@ -848,7 +847,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 						attr[i-n0]=attr[i];
 					}
 					buff_clear(line[cursor_y+1]-n0, n0);
-					if ( !bAlterScreen ) {
+					if ( !bAltScreen ) {
 						line[cursor_y+1]-=n0;
 						if ( line[cursor_y+1]<line[cursor_y] )
 							line[cursor_y+1] =line[cursor_y];
@@ -859,7 +858,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 						buff[i+n0]=buff[i];
 						attr[i+n0]=attr[i];
 					}
-					if ( !bAlterScreen ) {
+					if ( !bAltScreen ) {
 						line[cursor_y+1]+=n0;
 						if ( line[cursor_y+1]>line[cursor_y]+size_x )
 							line[cursor_y+1] =line[cursor_y]+size_x;
@@ -910,7 +909,7 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 						case 7: bWraparound = true; break;
 						case 25:	bCursor = true; break;
 						case 2004: bBracket = true; break;
-						case 1049: bAlterScreen = true;//?1049h alternate screen
+						case 1049: bAltScreen = true;//?1049h alternate screen
 								screen_clear(2);
 						}
 					}
@@ -925,12 +924,13 @@ const unsigned char *Fl_Term::vt100_Escape(const unsigned char *sz, int cnt)
 						case 7: bWraparound= false; break;
 						case 25:	bCursor= false; break;
 						case 2004: bBracket= false; break;
-						case 1049: bAlterScreen= false;//?1049l alternate screen
+						case 1049: bAltScreen= false;//?1049l alternate screen
 								cursor_y = screen_y;
 								cursor_x = line[cursor_y];
 								for ( int i=1; i<=size_y+1; i++ )
 									line[cursor_y+i] = 0;
-								screen_y = max(0, cursor_y-size_y+1);
+								screen_y = cursor_y-size_y+1;
+								if ( screen_y<0 ) screen_y = 0;
 						}
 					}
 					break;
@@ -1284,7 +1284,7 @@ void Fl_Term::put_xml(const char *buf, int len)
 }
 void Fl_Term::copier(char *files)
 {
-	bScriptRun = true;
+	bScriptRun = true; bScriptPause = false;
 	char dst[256]="";
 	if ( host->type()==HOST_SSH ) {
 		const char *p1, *p2;
@@ -1304,14 +1304,19 @@ void Fl_Term::copier(char *files)
 		}
 	}
 	char *p = files;
-	while ( p!=NULL ) {
-		char *p1 = strchr(p, 0x0a);
-		if ( p1!=NULL ) *p1++ = 0;
-		host->send_file(p, dst);
-		p = p1;
+	while ( bScriptRun && p!=NULL ) {
+		if ( bScriptPause ){
+			Sleep(100);
+		}
+		else {
+			char *p1 = strchr(p, 0x0a);
+			if ( p1!=NULL ) *p1++ = 0;
+			host->send_file(p, dst);
+			p = p1;
+		}
 	}
 	free(files);
-	bScriptRun = false;
+	bScriptRun = bScriptPause = false;
 	host->write("\r",1);
 }
 void Fl_Term::scripter(char *cmds)

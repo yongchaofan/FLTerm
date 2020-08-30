@@ -57,7 +57,7 @@ class Fl_Term : public Fl_Widget {
 	bool bGraphic;		//graphic character mode, for text mode drawing
 	bool bCursor;		//display cursor or not
 	bool bAppCursor;	//app cursor mode for vi
-	bool bAlterScreen;	//alternative screen for vi
+	bool bAltScreen;	//alternative screen for vi
 	bool bScrollbar;	//show scrollbar when true
 	bool bDragSelect;	//mouse dragged to select text, instead of scroll text
 	bool bBracket;		//bracketed paste mode

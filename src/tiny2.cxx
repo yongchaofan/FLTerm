@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27875 2020-08-23 10:05:10 $"
+// "$Id: tiny2.cxx 27867 2020-08-31 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -17,17 +17,16 @@
 //     https://github.com/yongchaofan/tinyTerm2/issues/new
 //
 
-const char ABOUT_TERM2[]="\r\n\
-\ttinyTerm2 is a simple, small and scriptable terminal emulator,\r\n\n\
-\ta serial/telnet/ssh/sftp/netconf client with unique features:\r\n\n\n\
-\t    * cross platform, Windows, macOS and Linux\r\n\n\
-\t    * small executable runs on minimum resource\r\n\n\
+const char ABOUT_TERM2[]="\r\n\n\
+\ttinyTerm2 is a simple, small, scriptable terminal emulator,\r\n\n\
+\ta serial/telnet/ssh/sftp/netconf client that features:\r\n\n\n\
+\t    * cross platform and open source\r\n\n\
+\t    * lightweight and minimalist design\r\n\n\
 \t    * command history and autocompletion\r\n\n\
-\t    * text based batch command automation\r\n\n\
-\t    * drag and drop to transfer files via scp\r\n\n\
+\t    * drag&drop text to run commands in batch\r\n\n\
+\t    * drag&drop files to transfer to remote host\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
-\thomepage: https://yongchaofan.github.io/tinyTerm2\r\n\n\
-\tVerision 1.2.7 ©2018-2020 Yongchao Fan\r\n";
+\tVersion 1.2.7 ©2018-2020 Yongchao Fan http://tinyTerm2.us.to\r\n";
 const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -497,8 +496,18 @@ void quit_cb(Fl_Widget *w)
 }
 void pause_cb(Fl_Widget *w)
 {
-	bool pause = pTerm->pause_script();
-	pauseBtn->label( pause?"Resume":"Pause");
+	if ( pTerm->script_running() )
+		pauseBtn->label(pTerm->pause_script()?"Resume":"Pause");
+	else
+		w->parent()->hide();
+}
+void script_dlg(Fl_Widget *w, void *data)
+{
+	if ( pTerm->script_running() ) {
+		pScriptDlg->resize(pWindow->x()+400, pWindow->y()+40, 220, 72);
+		pScriptDlg->show();
+		pause_cb(NULL);
+	}
 }
 void script_dlg_build()
 {
@@ -513,14 +522,6 @@ void script_dlg_build()
 	}
 	pScriptDlg->end();
 	pScriptDlg->set_modal();
-}
-void script_dlg(Fl_Widget *w, void *data)
-{
-	if ( pTerm->script_running() ) {
-		pScriptDlg->resize(pWindow->x()+400, pWindow->y()+40, 220, 72);
-		pScriptDlg->show();
-		pause_cb(NULL);
-	}
 }
 void script_open( const char *fn )
 {
@@ -719,7 +720,7 @@ Fl_Menu_Item menubar[] = {
 {0},
 {"Script",		FL_CMD+'s',	0,		0,	FL_SUBMENU},
 {"&Open...",		0,		menu_cb},
-{"&Pause/Quit", 	0,		script_dlg,0,FL_MENU_DIVIDER},
+{"&Pause/Quit", FL_CMD+'p',	script_dlg,0,FL_MENU_DIVIDER},
 {0},
 {"Options", 	FL_CMD+'o',	0,		0,	FL_SUBMENU},
 {"&Font...",		0,		font_dlg},
@@ -946,7 +947,7 @@ void httpFile(int s1, char *file)
 			for ( int j=0; j<8; j++ )
 				if ( strcmp(filext, exts[j])==0 ) i=j;
 		}
-		len+=sprintf(reply+len,"Content-Type: %s\n",mime[i]);
+		len+=sprintf(reply+len,"Content-Type: %s\n", mime[i]);
 
 		long filesize = sb.st_size;
 		len+=sprintf(reply+len, "Content-Length: %ld\n", filesize);
