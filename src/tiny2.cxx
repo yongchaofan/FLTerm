@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 27867 2020-08-31 10:05:10 $"
+// "$Id: tiny2.cxx 29150 2020-08-31 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -26,7 +26,7 @@ const char ABOUT_TERM2[]="\r\n\n\
 \t    * drag&drop text to run commands in batch\r\n\n\
 \t    * drag&drop files to transfer to remote host\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
-\tVersion 1.2.7 ©2018-2020 Yongchao Fan http://tinyTerm2.us.to\r\n";
+\tVersion 1.2.8 ©2018-2020 Yongchao Fan http://tinyTerm2.us.to\r\n";
 const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -69,7 +69,7 @@ Fl_Browser_Input *pCmd;
 Fl_Tabs *pTabs;
 Fl_Window *pWindow;
 Fl_Sys_Menu_Bar *pMenuBar;
-Fl_Menu_Item *pMenuEcho, *pMenuEdit, *pMenuLogg;
+Fl_Menu_Item *pMenuEcho, *pMenuEdit, *pMenuLogg, *pMenuTran;
 Fl_Font fontnum = FL_COURIER;
 char fontname[256] = DEFAULTFONT;
 int fontsize = 16;
@@ -77,7 +77,29 @@ int termcols = 80;
 int termrows = 25;
 bool sendtoall = false;
 bool local_edit = false;
+bool is_transparent = false;
 
+#if defined (__APPLE__)
+void setTransparency(Fl_Window *pWin, double alpha);//cocoa_wrapper.mm
+#elif defined (WIN32)
+void setTransparency(Fl_Window *pWin, double alpha)
+{
+	HWND hwnd = fl_xid(pWin);
+	LONG_PTR exstyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+	if (!(exstyle & WS_EX_LAYERED)) {
+		SetWindowLongPtr(hwnd, GWL_EXSTYLE, exstyle | WS_EX_LAYERED);
+	}
+	SetLayeredWindowAttributes(hwnd, 0, alpha*255, LWA_ALPHA);	
+}
+#elif defined (__linux__) || defined (__unix__)
+void setTransparency(Fl_Window *pWin, double alpha)
+{
+	Atom atom = XInternAtom(fl_display, "_NET_WM_WINDOW_OPACITY", False);
+	uint32_t opacity = alpha*0xFFFFFFFF;
+	XChangeProperty(fl_display, fl_xid(pWin), atom, XA_CARDINAL, 32,
+					PropModeReplace, (unsigned char *)&opacity, 1);
+}
+#endif
 #define OPEN_FILE 	Fl_Native_File_Chooser::BROWSE_FILE
 #define SAVE_FILE	Fl_Native_File_Chooser::BROWSE_SAVE_FILE
 static Fl_Native_File_Chooser fnfc;
@@ -678,6 +700,10 @@ void menu_cb(Fl_Widget *w, void *data)
 			pCmd->add(cmd);
 		}
 	}
+	else if ( strcmp(menutext, "Transparent")==0 ) {
+		is_transparent = !is_transparent;
+		setTransparency(pWindow, is_transparent?0.875:1.0);
+	}
 }
 void close_cb(Fl_Widget *w, void *data)
 {
@@ -727,6 +753,7 @@ Fl_Menu_Item menubar[] = {
 {"Local &Edit",	FL_CMD+'e',	localedit_cb,0,	FL_MENU_TOGGLE},
 {"Send to All",		0,		sendall_cb,	0,	FL_MENU_TOGGLE},
 {"Local Echo",		0,		menu_cb,0,	FL_MENU_TOGGLE},
+{"Transparent",		0, 		menu_cb,0, 	FL_MENU_TOGGLE},
 #ifndef __APPLE__
 {"&About tinyTerm2",0, 		about_cb},
 #endif
@@ -773,6 +800,10 @@ void load_dict()
 					localedit_cb(NULL, NULL);
 					pMenuEdit->set();
 				}
+				else if ( strcmp(line+1, "Transparent")==0 ) {
+					is_transparent = true;
+					pMenuTran->set();
+				}
 			}
 			else {
 				pCmd->add(line);
@@ -809,6 +840,7 @@ void save_dict()
 		fprintf(fp, "~FontFace %s\n", Fl::get_font_name(fontnum, &t));
 		fprintf(fp, "~FontSize %d\n", fontsize);
 		if ( local_edit ) fprintf(fp, "~LocalEdit\n");
+		if ( is_transparent ) fprintf(fp, "~Transparent\n");
 
 		const char *p = pCmd->first();
 		while ( p!=NULL ) {
@@ -871,6 +903,7 @@ int main(int argc, char **argv)
 	pMenuLogg = (Fl_Menu_Item *)pMenuBar->find_item("Term/&Log...");
 	pMenuEcho = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local Echo");
 	pMenuEdit = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local &Edit");
+	pMenuTran = (Fl_Menu_Item *)pMenuBar->find_item("Options/Transparent");
 #ifdef WIN32
 	pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
@@ -889,6 +922,7 @@ int main(int argc, char **argv)
 	fl_getcwd(cwd, 4096);	//save cwd set by load_dict()
 
 	pWindow->show();
+	setTransparency(pWindow, is_transparent?0.875:1.0);
 	Fl::add_timeout(0.02, redraw_cb);
 	if ( !local_edit ) connect_dlg(NULL, NULL);
 	Fl::run();
