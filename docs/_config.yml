@@ -3,5 +3,5 @@ show_downloads: true
 github:
   apple_url: https://apps.apple.com/us/app/id1522389053
   microsoft_url: https://www.microsoft.com/store/apps/9NXGN9LJTL05
-  zip_url: https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.7/tinyTerm2-1.2.7.zip
+  zip_url: https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.8/tinyTerm2-1.2.8.zip
   description: simple, small and scriptable terminal emulator with tabs
