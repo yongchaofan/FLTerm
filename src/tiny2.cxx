@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 29150 2020-08-31 10:05:10 $"
+// "$Id: tiny2.cxx 29140 2020-09-07 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -20,8 +20,8 @@
 const char ABOUT_TERM2[]="\r\n\n\
 \ttinyTerm2 is a simple, small, scriptable terminal emulator,\r\n\n\
 \ta serial/telnet/ssh/sftp/netconf client that features:\r\n\n\n\
+\t    * lightweight minimalist design\r\n\n\
 \t    * cross platform and open source\r\n\n\
-\t    * lightweight and minimalist design\r\n\n\
 \t    * command history and autocompletion\r\n\n\
 \t    * drag&drop text to run commands in batch\r\n\n\
 \t    * drag&drop files to transfer to remote host\r\n\n\
@@ -77,7 +77,7 @@ int termcols = 80;
 int termrows = 25;
 bool sendtoall = false;
 bool local_edit = false;
-bool is_transparent = false;
+double opacity = 1.0;
 
 #if defined (__APPLE__)
 void setTransparency(Fl_Window *pWin, double alpha);//cocoa_wrapper.mm
@@ -700,9 +700,9 @@ void menu_cb(Fl_Widget *w, void *data)
 			pCmd->add(cmd);
 		}
 	}
-	else if ( strcmp(menutext, "Transparent")==0 ) {
-		is_transparent = !is_transparent;
-		setTransparency(pWindow, is_transparent?0.875:1.0);
+	else if ( strcmp(menutext, "Transparency")==0 ) {
+		opacity =  (opacity==1.0) ? 0.875 : 1.0;
+		setTransparency(pWindow, opacity);
 	}
 }
 void close_cb(Fl_Widget *w, void *data)
@@ -713,7 +713,7 @@ void close_cb(Fl_Widget *w, void *data)
 			pTerm->disconn();
 		}
 	}
-	else {						//multi-tabbed
+	else {					//multi-tabbed
 		bool confirmed = false;
 		for ( int i=0; i<pTabs->children(); i++ ) {
 			Fl_Term *pt = (Fl_Term *)pTabs->child(i);
@@ -753,7 +753,7 @@ Fl_Menu_Item menubar[] = {
 {"Local &Edit",	FL_CMD+'e',	localedit_cb,0,	FL_MENU_TOGGLE},
 {"Send to All",		0,		sendall_cb,	0,	FL_MENU_TOGGLE},
 {"Local Echo",		0,		menu_cb,0,	FL_MENU_TOGGLE},
-{"Transparent",		0, 		menu_cb,0, 	FL_MENU_TOGGLE},
+{"Transparency",	0, 		menu_cb,0, 	FL_MENU_TOGGLE},
 #ifndef __APPLE__
 {"&About tinyTerm2",0, 		about_cb},
 #endif
@@ -796,13 +796,13 @@ void load_dict()
 				else if ( strncmp(line+1, "TermSize ", 9)==0 ) {
 					sscanf(line+10, "%dx%d", &termcols, &termrows);
 				}
+				else if ( strncmp(line+1, "WindowOpacity", 12)==0 ) {
+					opacity = atof(line+14);
+					pMenuTran->set();
+				}
 				else if ( strcmp(line+1, "LocalEdit")==0 ) {
 					localedit_cb(NULL, NULL);
 					pMenuEdit->set();
-				}
-				else if ( strcmp(line+1, "Transparent")==0 ) {
-					is_transparent = true;
-					pMenuTran->set();
 				}
 			}
 			else {
@@ -840,7 +840,8 @@ void save_dict()
 		fprintf(fp, "~FontFace %s\n", Fl::get_font_name(fontnum, &t));
 		fprintf(fp, "~FontSize %d\n", fontsize);
 		if ( local_edit ) fprintf(fp, "~LocalEdit\n");
-		if ( is_transparent ) fprintf(fp, "~Transparent\n");
+		if ( opacity!=1.0 ) 
+			fprintf(fp, "~WindowOpacity %.3f\n", opacity);
 
 		const char *p = pCmd->first();
 		while ( p!=NULL ) {
@@ -903,7 +904,7 @@ int main(int argc, char **argv)
 	pMenuLogg = (Fl_Menu_Item *)pMenuBar->find_item("Term/&Log...");
 	pMenuEcho = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local Echo");
 	pMenuEdit = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local &Edit");
-	pMenuTran = (Fl_Menu_Item *)pMenuBar->find_item("Options/Transparent");
+	pMenuTran = (Fl_Menu_Item *)pMenuBar->find_item("Options/Transparency");
 #ifdef WIN32
 	pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
@@ -922,7 +923,7 @@ int main(int argc, char **argv)
 	fl_getcwd(cwd, 4096);	//save cwd set by load_dict()
 
 	pWindow->show();
-	setTransparency(pWindow, is_transparent?0.875:1.0);
+	setTransparency(pWindow, opacity);
 	Fl::add_timeout(0.02, redraw_cb);
 	if ( !local_edit ) connect_dlg(NULL, NULL);
 	Fl::run();
