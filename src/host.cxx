@@ -1,5 +1,5 @@
 //
-// "$Id: Hosts.cxx 14432 2020-08-07 12:15:10 $"
+// "$Id: Hosts.cxx 14600 2020-09-07 12:15:10 $"
 //
 // HOST tcpHost comHost pipeHost and daemon hosts
 //
@@ -344,6 +344,13 @@ int tcpHost::tcp()
 	sock = socket(ainfo->ai_family, SOCK_STREAM, 0);
 	if ( sock!=-1 )
 		print("Trying...");
+	else
+		return -1;
+
+#ifdef __APPLE__
+	int set = 1;			//prevent SIGPIPE to cause app exit
+	setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
+#endif
 	int rc = ::connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
 	freeaddrinfo(ainfo);
 	if ( rc!=-1 )
