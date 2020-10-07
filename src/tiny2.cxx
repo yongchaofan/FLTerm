@@ -693,7 +693,7 @@ void menu_cb(Fl_Widget *w, void *data)
 		sendtoall = !sendtoall;
 		pCmd->color(sendtoall?0x40004000:FL_BLACK);
 	}
-	else if ( strcmp(menutext, "Send to All")==0 ) {
+	else if ( strcmp(menutext, "Transparency")==0 ) {
 		opacity =  (opacity==1.0) ? 0.875 : 1.0;
 		setTransparency(pWindow, opacity);
 	}
