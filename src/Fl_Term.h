@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.h 5222 2020-07-18 13:08:10 $"
+// "$Id: Fl_Term.h 5175 2020-09-18 13:08:10 $"
 //
 // Fl_Term -- A terminal simulation widget
 //
@@ -89,6 +89,7 @@ class Fl_Term : public Fl_Widget {
 	char keys[64];		//gets receive buffer
 	bool bPassword;		//if gets() is wating for password, no echo if yes
 
+	char *LogFileName;
 	FILE *fpLogFile;
 	HOST *host;
 
@@ -117,11 +118,9 @@ public:
 	const char *title() { return sTitle; }
 	const char *hostname() { return host->name(); }
 
-	int logg() { return fpLogFile!=NULL; }
-	int echo() { return bEcho; }
 	int sizeX() { return size_x; }
 	int sizeY() { return size_y; }
-	void echo(int e) { bEcho = e; }
+	char *logg() { return LogFileName; }
 	void logg(const char *fn);
 	void save(const char *fn);
 	void srch(const char *word);

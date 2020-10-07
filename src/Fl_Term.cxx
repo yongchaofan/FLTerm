@@ -1,5 +1,5 @@
 //
-// "$Id: Fl_Term.cxx 37643 2020-08-31 10:08:20 $"
+// "$Id: Fl_Term.cxx 37790 2020-09-18 10:08:20 $"
 //
 // Fl_Term -- A terminal simulator widget
 //
@@ -159,6 +159,7 @@ Fl_Term::Fl_Term(int X,int Y,int W,int H,const char *L) : Fl_Widget(X,Y,W,H,L)
 	bDND = false;
 	bScriptRun = bScriptPause = false;
 	fpLogFile = NULL;
+	LogFileName = NULL;
 
 	line = NULL;
 	buff = attr = NULL;
@@ -1073,16 +1074,23 @@ void Fl_Term::logg(const char *fn)
 	if ( fpLogFile!=NULL ) {
 		fclose( fpLogFile );
 		fpLogFile = NULL;
-		disp("\r\n\033[32m***Log file closed***\033[37m\r\n");
+		disp("\r\n\033[32m***logging off ");
+		disp(LogFileName);
+		free(LogFileName);
+		LogFileName = NULL;
 	}
 	else {
 		fpLogFile = fl_fopen(fn, "wb");
 		if ( fpLogFile != NULL ) {
-			disp("\r\n\033[32m***");
-			disp(fn);
-			disp(" opened for logging***\033[37m\r\n");
+			LogFileName = strdup(fn);
+			disp("\r\n\033[32m***logging on ");
+			disp(LogFileName);
+		}
+		else {
+			disp("\r\n\033[31m***Failed to open logfile");
 		}
 	}
+	disp("***\033[37m\r\n");
 }
 void Fl_Term::save(const char *fn)
 {
@@ -1164,8 +1172,22 @@ int Fl_Term::command(const char *cmd, const char **preply)
 		while (*p==' ') p++;
 		
 		if ( strncmp(cmd,"Clear",5)==0 ) clear();
-		else if ( strncmp(cmd,"Log",3)==0 ) logg( p );
 		else if ( strncmp(cmd,"Wait",4)==0 ) Sleep(atoi(p)*1000);
+		else if ( strncmp(cmd,"Log", 3)==0 ) {
+			mark_prompt();
+			logg( p );
+			rc = cursor_x-recv0;
+			if ( preply!=NULL ) *preply = buff+recv0;
+		}
+		else if ( strncmp(cmd,"Echo",4)==0 ) {
+			bEcho=!bEcho;
+			mark_prompt();
+			disp("\r\n\033[32m***local echo ");
+			disp(bEcho?"on":"off");
+			disp("***\033[37m\r\n");
+			rc = cursor_x-recv0;
+			if ( preply!=NULL ) *preply = buff+recv0;
+		}
 		else if ( strncmp(cmd,"Disp",4)==0 ) {
 			mark_prompt();
 			disp(p);
