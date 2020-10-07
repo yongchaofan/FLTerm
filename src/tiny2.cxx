@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 28576 2020-09-18 10:05:10 $"
+// "$Id: tiny2.cxx 28633 2020-10-08 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -69,7 +69,6 @@ Fl_Tabs *pTabs;
 Fl_Term *pTerm;
 Fl_Browser_Input *pCmd;
 Fl_Sys_Menu_Bar *pMenuBar;
-Fl_Menu_Item  *pMenuEdit, *pMenuTran;
 Fl_Font fontnum = FL_COURIER;
 char fontname[256] = DEFAULTFONT;
 int fontsize = 16;
@@ -115,7 +114,6 @@ void about_cb(Fl_Widget *w, void *data)
 {
 	char buf[4096];
 	sprintf(buf, ABOUT_TERM2, httport);
-	pTerm->clear();
 	pTerm->disp(buf);
 }
 const char *kb_gets(const char *prompt, int echo)
@@ -520,14 +518,6 @@ void pause_cb(Fl_Widget *w)
 	else
 		w->parent()->hide();
 }
-void script_dlg(Fl_Widget *w, void *data)
-{
-	if ( pTerm->script_running() ) {
-		pScriptDlg->resize(pWindow->x()+400, pWindow->y()+40, 220, 72);
-		pScriptDlg->show();
-		pause_cb(NULL);
-	}
-}
 void script_dlg_build()
 {
 	pScriptDlg = new Fl_Double_Window(220, 72, "Script Control");
@@ -541,6 +531,8 @@ void script_dlg_build()
 	}
 	pScriptDlg->end();
 	pScriptDlg->set_modal();
+	pScriptDlg->resize(pWindow->x()+pWindow->w()-220, 
+							pWindow->y()+40, 220, 72);
 }
 void script_open( const char *fn )
 {
@@ -615,7 +607,7 @@ void cmd_cb(Fl_Widget *o, void *p)
 		pCmd->value("");
 	}
 }
-void localedit_cb(Fl_Widget *w, void *data)
+void toggle_localedit()
 {
 	local_edit = !local_edit;
 	if ( local_edit ) {
@@ -654,7 +646,7 @@ void menu_cb(Fl_Widget *w, void *data)
 	else if ( strncmp(menutext, "&Log", 4)==0 ) {
 		const char *fname = pTerm->logg();
 		if ( fname==NULL ) {
-			fname = file_chooser("log sesstion to file:",
+			fname = file_chooser("log session to file:",
 								"Log\t*.log", SAVE_FILE);
 			if ( fname==NULL ) return;
 		}
@@ -665,19 +657,19 @@ void menu_cb(Fl_Widget *w, void *data)
 		pTerm->logg(fname);
 	}
 	else if ( strcmp(menutext, "&Save...")==0 ) {
-		const char *fname = file_chooser("save buffter to file:", 
+		const char *fname = file_chooser("save buffer to file:", 
 										 "Text\t*.txt", SAVE_FILE);
 		if ( fname!=NULL ) pTerm->save(fname);
 	}
 	else if ( strcmp(menutext, "Search...")==0 ) {
 		const char *keyword="";
 		while ( true ) {
-			keyword = fl_input("Search scroll buffer for:", keyword);
+			keyword = fl_input("Search buffer for:", keyword);
 			if ( keyword==NULL ) break;
 			pTerm->srch(keyword);
 		}
 	}
-	else if ( strcmp(menutext, "&Open...")==0 ) {
+	else if ( strcmp(menutext, "&Run...")==0 ) {
 		const char *fname = file_chooser("script:", "All\t*.*", OPEN_FILE);
 		if ( fname!=NULL ) {
 			script_open(fname);
@@ -688,6 +680,9 @@ void menu_cb(Fl_Widget *w, void *data)
 			cmd[255] = 0;
 			pCmd->add(cmd);
 		}
+	}
+	else if ( strcmp(menutext, "Local &Edit")==0 ) {
+		toggle_localedit();
 	}
 	else if ( strcmp(menutext, "Send to All")==0 ) {
 		sendtoall = !sendtoall;
@@ -737,12 +732,11 @@ Fl_Menu_Item menubar[] = {
 {"&Disconnect", 	0,		menu_cb,0,	FL_MENU_DIVIDER},
 {0},
 {"Script",		FL_CMD+'s',	0,		0,	FL_SUBMENU},
-{"&Open...",		0,		menu_cb},
-{"&Pause/Quit", FL_CMD+'p',	script_dlg,0,FL_MENU_DIVIDER},
+{"&Run...",			0,		menu_cb,0,	FL_MENU_DIVIDER},
 {0},
 {"Options", 	FL_CMD+'o',	0,		0,	FL_SUBMENU},
 {"&Font...",		0,		font_dlg},
-{"Local &Edit",	FL_CMD+'e',	localedit_cb,0,	FL_MENU_TOGGLE},
+{"Local &Edit",	FL_CMD+'e',	menu_cb,0,	FL_MENU_TOGGLE},
 {"Send to All",		0,		menu_cb,0,	FL_MENU_TOGGLE},
 {"Transparency",	0, 		menu_cb,0, 	FL_MENU_TOGGLE},
 #ifndef __APPLE__
@@ -789,11 +783,15 @@ void load_dict()
 				}
 				else if ( strncmp(line+1, "WindowOpacity", 12)==0 ) {
 					opacity = atof(line+14);
-					pMenuTran->set();
+					Fl_Menu_Item * pItem = (Fl_Menu_Item *)
+									pMenuBar->find_item("Options/Transparency");
+					pItem->set();
 				}
 				else if ( strcmp(line+1, "LocalEdit")==0 ) {
-					localedit_cb(NULL, NULL);
-					pMenuEdit->set();
+					toggle_localedit();
+					Fl_Menu_Item * pItem = (Fl_Menu_Item *)
+									pMenuBar->find_item("Options/Local &Edit");
+					pItem->set();
 				}
 			}
 			else {
@@ -844,11 +842,15 @@ void save_dict()
 }
 void redraw_cb(void *)
 {
-static char title[256]="tinyTerm2      ";
 	if ( pTerm->pending() ) {
 		pTerm->redraw();
 		if ( pCmd->visible() ) pCmd->redraw();
 	}
+	Fl::repeat_timeout(0.02, redraw_cb);
+}
+static char title[256]="tinyTerm2      ";
+void title_cb(void *)
+{
 	if ( title_changed ) {
 		strncpy(title+15, pTerm->title(), 240);
 		pWindow->label(title);
@@ -859,7 +861,11 @@ static char title[256]="tinyTerm2      ";
 			resize_window(termcols, termrows);
 		}
 	}
-	Fl::repeat_timeout(0.02, redraw_cb);
+	if ( pTerm->script_running() )
+		pScriptDlg->show();
+	else 
+		pScriptDlg->hide();
+	Fl::repeat_timeout(1.0, title_cb);
 }
 int main(int argc, char **argv)
 {
@@ -892,8 +898,6 @@ int main(int argc, char **argv)
 	pWindow->resizable(pTerm);
 	pWindow->end();
 	pTabs = NULL;
-	pMenuEdit = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local &Edit");
-	pMenuTran = (Fl_Menu_Item *)pMenuBar->find_item("Options/Transparency");
 #ifdef WIN32
 	pWindow->icon((char*)LoadIcon(fl_display, MAKEINTRESOURCE(128)));
 #endif
@@ -901,19 +905,20 @@ int main(int argc, char **argv)
 	connect_dlg_build();
 	load_dict();		//get fontface
 	font_dlg_build();	//get fontnum
-	script_dlg_build();
 	pTerm->textfont(fontnum);
 	pTerm->textsize(fontsize);
 	pCmd->textfont(fontnum);
 	pCmd->textsize(fontsize);
 	resize_window(termcols, termrows);
+	pWindow->show();
+	setTransparency(pWindow, opacity);
+	script_dlg_build();
 
 	char cwd[4096];
 	fl_getcwd(cwd, 4096);	//save cwd set by load_dict()
 
-	pWindow->show();
-	setTransparency(pWindow, opacity);
 	Fl::add_timeout(0.02, redraw_cb);
+	Fl::add_timeout(1.0, title_cb);
 	if ( !local_edit ) connect_dlg(NULL, NULL);
 	Fl::run();
 
