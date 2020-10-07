@@ -1,7 +1,7 @@
 //
-// "$Id: Fl_Term.cxx 37790 2020-09-18 10:08:20 $"
+// "$Id: Fl_Term.cxx 38158 2020-10-08 10:08:20 $"
 //
-// Fl_Term -- A terminal simulator widget
+// Fl_Term -- A terminal emulator widget
 //
 // Copyright 2017-2020 by Yongchao Fan.
 //
@@ -1115,7 +1115,7 @@ void Fl_Term::srch(const char *sstr)
 	while ( --p>=buff+l ) {
 		int i;
 		for ( i=l-1; i>=0; i-- )
-			if ( sstr[i]!=p[i-l] ) break;
+			if ( toupper(sstr[i])!=toupper(p[i-l]) ) break;
 		if ( i==-1 ) {
 			sel_left = p-l-buff;
 			sel_right = sel_left+l;
