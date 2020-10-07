@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 29140 2020-09-07 10:05:10 $"
+// "$Id: tiny2.cxx 28576 2020-09-18 10:05:10 $"
 //
 // tinyTerm2 -- FLTK based terminal emulator
 //
@@ -26,7 +26,7 @@ const char ABOUT_TERM2[]="\r\n\n\
 \t    * drag&drop text to run commands in batch\r\n\n\
 \t    * drag&drop files to transfer to remote host\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
-\tVersion 1.2.8 ©2018-2020 Yongchao Fan http://tinyTerm2.us.to\r\n";
+\tVersion 1.2.9 ©2018-2020 Yongchao Fan http://tinyTerm2.us.to\r\n";
 const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
 
 #include <thread>
@@ -64,12 +64,12 @@ int httport;
 void httpd_init();
 void httpd_exit();
 
+Fl_Window *pWindow;
+Fl_Tabs *pTabs;
 Fl_Term *pTerm;
 Fl_Browser_Input *pCmd;
-Fl_Tabs *pTabs;
-Fl_Window *pWindow;
 Fl_Sys_Menu_Bar *pMenuBar;
-Fl_Menu_Item *pMenuEcho, *pMenuEdit, *pMenuLogg, *pMenuTran;
+Fl_Menu_Item  *pMenuEdit, *pMenuTran;
 Fl_Font fontnum = FL_COURIER;
 char fontname[256] = DEFAULTFONT;
 int fontsize = 16;
@@ -115,6 +115,7 @@ void about_cb(Fl_Widget *w, void *data)
 {
 	char buf[4096];
 	sprintf(buf, ABOUT_TERM2, httport);
+	pTerm->clear();
 	pTerm->disp(buf);
 }
 const char *kb_gets(const char *prompt, int echo)
@@ -137,8 +138,6 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 {
 	Fl_Term *term=(Fl_Term *)w;
 	if ( term==pTerm ) {
-		pTerm->echo() ? pMenuEcho->set() : pMenuEcho->clear();
-		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 		title_changed = true;
 	}
 	if ( data==NULL ) {//disconnected
@@ -152,7 +151,7 @@ void term_cb(Fl_Widget *w, void *data )	//called when term connection changes
 void tab_act(Fl_Term *pt)
 {
 	char label[64];
-	if ( pTerm!=NULL ) {	//remove "  x" from previous active tab
+	if ( pTerm!=NULL ) {	//remove "x" from previous active tab
 		strcpy(label, pTerm->label());
 		char *p = strstr(label, " @-31+");
 		if ( p!=NULL ) {
@@ -162,15 +161,13 @@ void tab_act(Fl_Term *pt)
 	}
 
 	pTabs->value(pTerm=pt);
-	pTerm->take_focus();	//add " x" to current active tab
+	pTerm->take_focus();
 	pTerm->textfont(fontnum);
 	pTerm->textsize(fontsize);
 
-	strcpy(label, pTerm->label());
+	strcpy(label, pTerm->label());	//add "x" to current active tab
 	strcat(label, " @-31+");
 	pTerm->copy_label(label);
-	pTerm->echo() ? pMenuEcho->set() : pMenuEcho->clear();
-	pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	
 	title_changed = true;
 }
@@ -618,11 +615,6 @@ void cmd_cb(Fl_Widget *o, void *p)
 		pCmd->value("");
 	}
 }
-void sendall_cb(Fl_Widget *w, void *data)
-{
-	sendtoall = !sendtoall;
-	pCmd->color(sendtoall?0x40004000:FL_BLACK);
-}
 void localedit_cb(Fl_Widget *w, void *data)
 {
 	local_edit = !local_edit;
@@ -659,15 +651,18 @@ void menu_cb(Fl_Widget *w, void *data)
 	if ( strcmp(menutext, "&Disconnect")==0 ) {
 		pTerm->disconn();
 	}
-	else if ( strcmp(menutext, "&Log...")==0 ) {
-		const char *fname = NULL;
-		if ( !pTerm->logg() ) {
+	else if ( strncmp(menutext, "&Log", 4)==0 ) {
+		const char *fname = pTerm->logg();
+		if ( fname==NULL ) {
 			fname = file_chooser("log sesstion to file:",
 								"Log\t*.log", SAVE_FILE);
 			if ( fname==NULL ) return;
 		}
+		else {
+			if ( fl_choice("Stop logging to %s?", "No", "Yes", 0, fname)==0 )
+				 return;
+		}
 		pTerm->logg(fname);
-		pTerm->logg() ? pMenuLogg->set() : pMenuLogg->clear();
 	}
 	else if ( strcmp(menutext, "&Save...")==0 ) {
 		const char *fname = file_chooser("save buffter to file:", 
@@ -682,12 +677,6 @@ void menu_cb(Fl_Widget *w, void *data)
 			pTerm->srch(keyword);
 		}
 	}
-	else if ( strcmp(menutext, "Clear")==0 ) {
-		pTerm->clear();
-	}
-	else if ( strcmp(menutext, "Local Echo")==0 ) {
-		pTerm->echo(!pTerm->echo());
-	}
 	else if ( strcmp(menutext, "&Open...")==0 ) {
 		const char *fname = file_chooser("script:", "All\t*.*", OPEN_FILE);
 		if ( fname!=NULL ) {
@@ -700,7 +689,11 @@ void menu_cb(Fl_Widget *w, void *data)
 			pCmd->add(cmd);
 		}
 	}
-	else if ( strcmp(menutext, "Transparency")==0 ) {
+	else if ( strcmp(menutext, "Send to All")==0 ) {
+		sendtoall = !sendtoall;
+		pCmd->color(sendtoall?0x40004000:FL_BLACK);
+	}
+	else if ( strcmp(menutext, "Send to All")==0 ) {
 		opacity =  (opacity==1.0) ? 0.875 : 1.0;
 		setTransparency(pWindow, opacity);
 	}
@@ -709,7 +702,7 @@ void close_cb(Fl_Widget *w, void *data)
 {
 	if ( pTabs==NULL ) {	//not multi-tab
 		if ( pTerm->live() ) {
-			if ( fl_choice("Disconnect and exit?", "Yes", "No", 0)==1 ) return;
+			if ( fl_choice("Disconnect and exit?", "No", "Yes", 0)==0 ) return;
 			pTerm->disconn();
 		}
 	}
@@ -720,7 +713,7 @@ void close_cb(Fl_Widget *w, void *data)
 			if ( pt->live() ) {
 				if ( !confirmed ) {
 					if (fl_choice("Disconnect all and exit?",
-									"Yes", "No", 0)==1 ) return;
+									"No", "Yes", 0)==0 ) return;
 					confirmed = true;
 				} 
 				pt->disconn();
@@ -738,10 +731,9 @@ void close_cb(Fl_Widget *w, void *data)
 Fl_Menu_Item menubar[] = {
 {"Term",	 	FL_CMD+'t',	0,		0,	FL_SUBMENU},
 {"&Connect...", FL_CMD+'c',	connect_dlg},
-{"&Log...",			0,		menu_cb,0,	FL_MENU_TOGGLE},
+{"&Log...",			0,		menu_cb},
 {"&Save...",		0,		menu_cb},
 {"Search...",		0,		menu_cb},
-{"Clear",			0,		menu_cb},
 {"&Disconnect", 	0,		menu_cb,0,	FL_MENU_DIVIDER},
 {0},
 {"Script",		FL_CMD+'s',	0,		0,	FL_SUBMENU},
@@ -751,8 +743,7 @@ Fl_Menu_Item menubar[] = {
 {"Options", 	FL_CMD+'o',	0,		0,	FL_SUBMENU},
 {"&Font...",		0,		font_dlg},
 {"Local &Edit",	FL_CMD+'e',	localedit_cb,0,	FL_MENU_TOGGLE},
-{"Send to All",		0,		sendall_cb,	0,	FL_MENU_TOGGLE},
-{"Local Echo",		0,		menu_cb,0,	FL_MENU_TOGGLE},
+{"Send to All",		0,		menu_cb,0,	FL_MENU_TOGGLE},
 {"Transparency",	0, 		menu_cb,0, 	FL_MENU_TOGGLE},
 #ifndef __APPLE__
 {"&About tinyTerm2",0, 		about_cb},
@@ -901,8 +892,6 @@ int main(int argc, char **argv)
 	pWindow->resizable(pTerm);
 	pWindow->end();
 	pTabs = NULL;
-	pMenuLogg = (Fl_Menu_Item *)pMenuBar->find_item("Term/&Log...");
-	pMenuEcho = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local Echo");
 	pMenuEdit = (Fl_Menu_Item *)pMenuBar->find_item("Options/Local &Edit");
 	pMenuTran = (Fl_Menu_Item *)pMenuBar->find_item("Options/Transparency");
 #ifdef WIN32
