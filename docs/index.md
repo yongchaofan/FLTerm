@@ -2,10 +2,10 @@
 
 tinyTerm2 is a simple small and scriptable terminal emulator, with unique features like **command autocompletion**, **scp integration**, **batch automation**, and **scripting**. It is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). now cross platform with tabs support, and it is still very small, win64 executable is 825KB at current release, MacOS install package just 1.6MB
 
-Stable release: |[1.2.8](https://github.com/yongchaofan/tinyterm2) | License: | [GPL 3.0](https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE)
+Stable release: |[1.2.9](https://github.com/yongchaofan/tinyterm2) | License: | [GPL 3.0](https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE)
 --- |:---:|:---:|:---:
-**PC install:** | [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05) | [32bit EXE](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.8/tinyTerm2.exe) | [64bit EXE](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.8/tinyTerm2_x64.exe)
-**Mac install:** | [Apple store](https://apps.apple.com/us/app/id1522389053) | [tinyTerm2.pkg](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.8/tinyTerm2.pkg)
+**PC install:** | [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05) | [32bit EXE](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.9/tinyTerm2.exe) | [64bit EXE](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.9/tinyTerm2_x64.exe)
+**Mac install:** | [Apple store](https://apps.apple.com/us/app/id1522389053) | [tinyTerm2.pkg](https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.9/tinyTerm2.pkg)
 
 <video width="960" height="540" controls>
 <source src="tinyTerm2.mp4" type="video/mp4">
