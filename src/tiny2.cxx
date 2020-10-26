@@ -1,7 +1,7 @@
 //
-// "$Id: tiny2.cxx 28633 2020-10-08 10:05:10 $"
+// "$Id: tiny2.cxx 28751 2020-10-08 10:05:10 $"
 //
-// tinyTerm2 -- FLTK based terminal emulator
+// FLTerm2 -- FLTK based terminal emulator
 //
 //    example application using the Fl_Term widget.
 //
@@ -10,15 +10,15 @@
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
 //
-//     https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE
+//     https://github.com/yongchaofan/FLTerm/blob/master/LICENSE
 //
 // Please report all bugs and problems on the following page:
 //
-//     https://github.com/yongchaofan/tinyTerm2/issues/new
+//     https://github.com/yongchaofan/FLTerm/issues/new
 //
 
 const char ABOUT_TERM2[]="\r\n\n\
-\ttinyTerm2 is a simple, small, scriptable terminal emulator,\r\n\n\
+\tFLTerm is a simple, small, scriptable terminal emulator,\r\n\n\
 \ta serial/telnet/ssh/sftp/netconf client that features:\r\n\n\n\
 \t    * lightweight minimalist design\r\n\n\
 \t    * cross platform and open source\r\n\n\
@@ -26,8 +26,9 @@ const char ABOUT_TERM2[]="\r\n\n\
 \t    * drag&drop text to run commands in batch\r\n\n\
 \t    * drag&drop files to transfer to remote host\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
-\tVersion 1.2.9 ©2018-2020 Yongchao Fan http://tinyTerm2.us.to\r\n";
-const char TINYTERM2[]="\r\033[32mtinyTerm2> \033[37m";
+\tVersion 1.2.10 ©2018-2020 Yongchao Fan\r\n\n\
+\t http://yongchaofan.github.io/FLTerm\r\n\n";
+const char TINYTERM2[]="\r\033[32mFLTerm > \033[37m";
 
 #include <thread>
 #include "host.h"
@@ -607,17 +608,21 @@ void cmd_cb(Fl_Widget *o, void *p)
 		pCmd->value("");
 	}
 }
-void toggle_localedit()
+void localedit(bool e)
 {
-	local_edit = !local_edit;
+	local_edit = e;
+	Fl_Menu_Item * pItem = (Fl_Menu_Item *)
+							pMenuBar->find_item("Options/Local &Edit");
 	if ( local_edit ) {
 		if ( !pTerm->live() ) pTerm->disp(TINYTERM2);
 		pCmd->show();
 		pTerm->pending(true);
+		pItem->set();
 	}
 	else {
 		pCmd->hide();
 		pTerm->take_focus();
+		pItem->clear();
 	}
 }
 bool show_editor(int x, int y, int w, int h)
@@ -682,7 +687,7 @@ void menu_cb(Fl_Widget *w, void *data)
 		}
 	}
 	else if ( strcmp(menutext, "Local &Edit")==0 ) {
-		toggle_localedit();
+		localedit(!local_edit);
 	}
 	else if ( strcmp(menutext, "Send to All")==0 ) {
 		sendtoall = !sendtoall;
@@ -740,7 +745,7 @@ Fl_Menu_Item menubar[] = {
 {"Send to All",		0,		menu_cb,0,	FL_MENU_TOGGLE},
 {"Transparency",	0, 		menu_cb,0, 	FL_MENU_TOGGLE},
 #ifndef __APPLE__
-{"&About tinyTerm2",0, 		about_cb},
+{"&About FLTerm",0, 		about_cb},
 #endif
 {0},
 {0}
@@ -755,15 +760,16 @@ const char *HOMEDIR = "USERPROFILE";
 #else
 const char *HOMEDIR = "HOME";
 #endif
-const char *DICTFILE = "tinyTerm.hist";
+const char *DICTFILE = ".FLTerm";
 void load_dict()			
 {
 	FILE *fp = fopen(DICTFILE, "r");
 	if ( fp==NULL ) {// current directory doesn't have .hist
 		if ( fl_chdir(getenv(HOMEDIR))==0 ) {
-			fl_mkdir(".tinyTerm", 0700);
-			DICTFILE = ".tinyTerm/tinyTerm.hist";
 			fp = fopen(DICTFILE, "r");
+			if ( fp==NULL ) {
+				fp = fopen(".tinyTerm/tinyTerm.hist", "r");
+			}
 		}
 	}
 	if ( fp!=NULL ) {
@@ -788,7 +794,7 @@ void load_dict()
 					pItem->set();
 				}
 				else if ( strcmp(line+1, "LocalEdit")==0 ) {
-					toggle_localedit();
+					localedit(true);
 					Fl_Menu_Item * pItem = (Fl_Menu_Item *)
 									pMenuBar->find_item("Options/Local &Edit");
 					pItem->set();
@@ -848,11 +854,11 @@ void redraw_cb(void *)
 	}
 	Fl::repeat_timeout(0.02, redraw_cb);
 }
-static char title[256]="tinyTerm2      ";
+static char title[256]="FLTerm      ";
 void title_cb(void *)
 {
 	if ( title_changed ) {
-		strncpy(title+15, pTerm->title(), 240);
+		strncpy(title+12, pTerm->title(), 240);
 		pWindow->label(title);
 		title_changed = false;
 		if ( pTerm->sizeX()!=termcols || pTerm->sizeY()!=termrows ) {
@@ -874,7 +880,7 @@ int main(int argc, char **argv)
 	Fl::scheme("gtk+");
 	Fl::lock();
 
-	pWindow = new Fl_Double_Window(800, 640, "tinyTerm2");
+	pWindow = new Fl_Double_Window(800, 640, "FLTerm");
 	{
 		pMenuBar=new Fl_Sys_Menu_Bar(0, 0, pWindow->w(), MENUHEIGHT);
 		pMenuBar->window_menu_style(Fl_Sys_Menu_Bar::no_window_menu);
@@ -929,7 +935,7 @@ int main(int argc, char **argv)
 	return 0;
 }
 /**********************************HTTPd**************************************/
-const char HEADER[]="HTTP/1.1 200 OK\nServer: tinyTerm2\n\
+const char HEADER[]="HTTP/1.1 200 OK\nServer: FLTerm\n\
 Access-Control-Allow-Origin: *\nContent-Type: text/plain\n\
 Cache-Control: no-cache\nContent-length: %d\n\n";
 
@@ -958,7 +964,7 @@ void httpFile(int s1, char *file)
 	struct stat sb;
 	if ( stat( file, &sb ) ==-1 ) {
 		len=sprintf(reply, "HTTP/1.1 404 not found\nDate: %s\n", timebuf);
-		len+=sprintf(reply+len, "Server: tinyTerm2\nConnection: close");
+		len+=sprintf(reply+len, "Server: FLTerm\nConnection: close");
 	    len+=sprintf(reply+len, "Content-Type: text/html\nContent-Length: 14");
 	    len+=sprintf(reply+len, "\n\nfile not found");
 		send(s1, reply, len, 0);
@@ -968,7 +974,7 @@ void httpFile(int s1, char *file)
 	FILE *fp = fopen( file, "rb" );
 	if ( fp!=NULL ) {
 		len=sprintf(reply, "HTTP/1.1 200 Ok\nDate: %s\n", timebuf);
-		len+=sprintf(reply+len, "Server: tinyTerm2\nConnection: close");
+		len+=sprintf(reply+len, "Server: FLTerm\nConnection: close");
 
 		const char *filext=strrchr(file, '.');
 		int i=0;
