@@ -87,7 +87,8 @@ int Fl_Browser_Input::handle(int e)
 						if ( id<0 ) id=0;
 						browser->value(id);
 						browser->middleline(id);
-						return 1;
+						value(browser->text(id));
+					return 1;
 					}
 	}
 	int rc = Fl_Input::handle(e);
