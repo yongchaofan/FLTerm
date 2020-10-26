@@ -3,5 +3,5 @@ show_downloads: true
 github:
   apple_url: https://apps.apple.com/us/app/id1522389053
   microsoft_url: https://www.microsoft.com/store/apps/9NXGN9LJTL05
-  zip_url: https://github.com/yongchaofan/tinyTerm2/releases/download/1.2.9/tinyTerm2-1.2.9.zip
-  description: simple, small and scriptable terminal emulator with tabs
+  zip_url: https://github.com/yongchaofan/FLTerm/releases/download/2.0.0/FLTerm-2.0.0.zip
+  description: fast light terminal emulator
