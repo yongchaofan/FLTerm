@@ -2,7 +2,7 @@
 
 FLTerm(Fast Light Terminal, formally "tinyTerm2") is a simple small scriptable terminal emulator, with unique features like **command autocompletion**, **scp integration**, **batch automation**, and **scripting**. It is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). now cross platform with tabs support, and it is still very small, win64 executable is 825KB at current release, MacOS install package just 1.6MB
 
-Stable release: |[1.2.9](https://github.com/yongchaofan/tinyterm2) | License: | [GPL 3.0](https://github.com/yongchaofan/tinyTerm2/blob/master/LICENSE)
+Stable release: |[2.0.0](https://github.com/yongchaofan/FLTerm) | License: | [GPL 3.0](https://github.com/yongchaofan/FLTerm/blob/master/LICENSE)
 --- |:---:|:---:|:---:
 **PC install:** | [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05) | [32bit EXE](https://github.com/yongchaofan/FLTerm/releases/download/2.0.0/FLTerm.exe) | [64bit EXE](https://github.com/yongchaofan/FLTerm/releases/download/2.0.0/FLTerm_x64.exe)
 **Mac install:** | [Apple store](https://apps.apple.com/us/app/id1522389053) | [FLTerm.pkg](https://github.com/yongchaofan/FLTerm/releases/download/2.0.0/FLTerm.pkg)
@@ -17,7 +17,7 @@ Your browser does not support the video tag.
 ## Documentation
 
 > ### Making connections
-> A connection dialog will popup at the start of tinyTerm2, simply choose the protocol, type in port and ip address/hostname then press enter to make a connection. Each time a connection is make using dialog, an entry will be added to the Term menu, simply select the menu entry to make the same connection again. Six types of connections are supported: shell, serial, telnet, ssh, sftp and netconf, except that sandboxed Apple store app will block shell execution.
+> A connection dialog will popup at the start of FLTerm, simply choose the protocol, type in port and ip address/hostname then press enter to make a connection. Each time a connection is make using dialog, an entry will be added to the Term menu, simply select the menu entry to make the same connection again. Six types of connections are supported: shell, serial, telnet, ssh, sftp and netconf, except that sandboxed Apple store app will block shell execution.
 >
 > Once a connection is made, any key press will be transmitted to remote host, with response from host displayed in the terminal, most vt100/xterm escape sequences are supported, enough to work normally for top, vi, vttest etc. 
 > 
@@ -31,7 +31,7 @@ Your browser does not support the video tag.
 >
 > When local edit mode is enabled, key presses are not sent to remote host until "Enter", "Tab" or "?" key is pressed, and the input is auto completed using command history, user can also press "up" or "down" key to bring up the command history list, then select command from the list to send to host. Every command typed in local edit mode is added to command history, which saved to tinyTerm.hist at exit, then loaded into memory at the next start of tinyTerm. 
 >  
-> Additionally when disconnected with local edit mode enabled, user is presented with a "tinyTerm >" prompt, simply type commands like "telnet 192.168.1.1" or "ssh admin@172.16.1.1" to make conection
+> Additionally when disconnected with local edit mode enabled, user is presented with a "FLTerm >" prompt, simply type commands like "telnet 192.168.1.1" or "ssh admin@172.16.1.1" to make conection
 > 
 > ### Transfer files to remote host
 >
@@ -66,7 +66,7 @@ Your browser does not support the video tag.
 
 for example:
 
-	http://127.0.0.1:8080/tinyTerm.html	return tinyTerm.html from current working folder
+	http://127.0.0.1:8080/FLTerm.html	return FLTerm.html from current working folder
 	http://127.0.0.1:8080/?ls -al		return the result of "ls -al" from remote host
 	http://127.0.0.1:8080/?!Selection 	return current selected text from scroll back buffer
 	
@@ -109,12 +109,13 @@ The following commands can be used programatically for scripting
 
 ## Under The Hood
 
-> **Command history** is saved in %USERPROFILE%\.tinyTerm\tinyTerm.hist on Windows, $HOME/.tinyTerm/tinyTerm.hist on MacOS/Linux by default, copy tinyTerm.hist to the same folder as tinyTerm2 executable for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary. In addition to command history, the following lines in the .hist file are used to save settings between sessions
+> **Command history** is saved in %USERPROFILE%\.FLTerm on Windows, $HOME/.FLTerm on MacOS/Linux by default, copy .FLTerm to the same folder as FLTerm executable for portable use. Since the command history file is just a plain text file, user can edit the file outside of tinyTerm to put additional commands in the list for command auto-completion. For example put all TL1 commands in the history list to use as a dictionary. In addition to command history, the following lines in the .hist file are used to save settings between sessions
 
     ~TermSize 100x40    set terminal size to 100 cols x 40 rows
     ~FontFace Consolas  set font face to “Consolas”
     ~FontSize 18        set font size to 18
     ~LocalEdit	        Enable local edit
+    ~WindowOpacity 80	set terminal window opacity to 80%
 
 > **SSH know_hosts** file is stored at %USERPROFILE%\.ssh on Windows, $HOME/.ssh on MacOS/Linux. Password, keyboard interactive and public key are the three ways of authentication supported, when public key is used, key pairs should be copied to the same .ssh directory. id_rsa is supported by the Microsoft store version, which was compiled with winCNG crypto backend, id_rsa, id_ecdsa and id_ed25512 are supported on the apple app store version, which was compiled with openssl crypto.
 
@@ -127,6 +128,6 @@ The following commands can be used programatically for scripting
     !tun                list all ssh2 tunnels 
     !tun 3256           close ssh2 tunnel number 3256
 
-> **Apple store app is sandboxed**, which means the home directory is isolated to "Library/Containers/com.github.tinyTerm2/Data", both .ssh and .tinyTerm are there, any file transfered without specifying local dir are copied to there. Note that even if a path is specified, access is most likely denied by the sandbox, even /tmp is not accessible.
+> **Apple store app is sandboxed**, which means the home directory is isolated to "Library/Containers/com.github.tinyTerm2/Data", both .ssh and .FLTerm are there, any file transfered without specifying local dir are copied to there. Note that even if a path is specified, access is most likely denied by the sandbox, even /tmp is not accessible.
 
-> To access the sandboxed home directory, the easies way is to type "!script $HOME" in local edit mode, which will open the sandboxed home dir in Finder, press "CMD+Shift+." to see .ssh and .tinyTerm
+> To access the sandboxed home directory, the easies way is to type "!script $HOME" in local edit mode, which will open the sandboxed home dir in Finder, press "CMD+Shift+." to see .ssh and .FLTerm
