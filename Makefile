@@ -1,4 +1,4 @@
-#Makefile for macOS/Linux
+#Makefile for Linux build with mbedTLS crypto backend
 HEADERS = src/host.h src/ssh2.h
 OBJS = obj/tiny2.o obj/ssh2.o obj/host.o obj/Fl_Term.o obj/Fl_Browser_Input.o
 
