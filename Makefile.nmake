@@ -1,0 +1,35 @@
+HDRS = src\conf.h src\node.h
+SRCS = src\flTable.cxx src\sqlTable.cxx src\sql.cxx
+SRCS1 = src\NETable.cxx src\httpd.cxx src\node.cxx src\conf.cxx src\finity.cxx src\oroadm.cxx src\tl1.cxx	
+OBJS = obj\flTable.obj obj\sqlTable.obj obj\sql.obj
+OBJS1= obj\NETable.obj obj\httpd.obj obj\node.obj obj\conf.obj obj\finity.obj obj\oroadm.obj obj\tl1.obj
+LIBS = 	ucrt.lib user32.lib gdi32.lib comdlg32.lib comctl32.lib ole32.lib shell32.lib ws2_32.lib uuid.lib shlwapi.lib Advapi32.lib bcrypt.lib crypt32.lib ../%Platform%/lib/libssh2.lib ../%Platform%/lib/fltk.lib
+
+FLTABLE = FLTable_%Platform%.exe
+NETABLE = NETable_%Platform%.exe	
+# build application
+all: $(FLTABLE) $(NETABLE)
+
+# description block
+$(FLTABLE) : $(OBJS) res\FLTable.res
+	link /LTCG /NXCOMPAT /DYNAMICBASE /SUBSYSTEM:WINDOWS /NODEFAULTLIB:libucrt.lib \
+		$(LIBS) $(OBJS) sqlite3\sqlite3_%Platform%.obj ..\FLTerm\obj\Fl_Browser_Input.obj res\FLTable.res /out:$(FLTABLE)
+
+res\FLTable.res: res\FLTable.rc
+	rc res\FLTable.rc
+   
+$(OBJS): $(SRCS)
+	cl /c -O1 /GL /MT /EHsc /DWIN32 /Foobj\  /Isqlite3 /Itinyxml2 /I../%Platform%/include /I../FLTerm/src $(SRCS)
+
+$(NETABLE) : $(OBJS1) res\NETable.res
+	link /LTCG /NXCOMPAT /DYNAMICBASE /SUBSYSTEM:WINDOWS /NODEFAULTLIB:libucrt.lib \
+		$(LIBS) $(OBJS1) sqlite3\sqlite3_%Platform%.obj tinyxml2\tinyxml2_%Platform%.obj ..\FLTerm\Fl_Browser_Input.obj ..\FLTerm\host.obj ..\FLTerm\ssh2.obj res\NETable.res /out:$(NETABLE)
+
+res\NETable.res: res\NETable.rc
+	rc res\NETable.rc
+   
+$(OBJS1): $(SRCS1) $(HDRS)
+	cl /c -O1 /GL /MT /EHsc /DWIN32 /Foobj\  /Isqlite3 /Itinyxml2 /I../%Platform%/include /I../FLTerm/src $(SRCS1)
+
+clean:
+	del obj\*.obj $(FLTABLE) $(NETABLE)
