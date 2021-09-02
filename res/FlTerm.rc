@@ -1,0 +1,27 @@
+#pragma code_page(65001)
+
+1 VERSIONINFO
+FILEVERSION 1,2,9,0
+PRODUCTVERSION 1,2,9,0
+FILEOS 0x4
+FILETYPE 0x1
+{
+BLOCK "StringFileInfo"
+{
+	BLOCK "040904B0"
+	{
+		VALUE "FileDescription", "tiny Terminal emulator 2"
+		VALUE "LegalCopyright", "©2018-2020 Yongchao Fan"
+		VALUE "ProductName", "tinyTerm2"
+		VALUE "ProductVersion", "1.2.9.0"
+	}
+}
+
+BLOCK "VarFileInfo"
+{
+	VALUE "Translation", 0x0409, 0x04B0
+}
+}
+
+128 ICON "FL.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "fltk.manifest"
