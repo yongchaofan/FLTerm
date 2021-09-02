@@ -5,7 +5,7 @@ FLTerm(Fast Light Terminal, formally "tinyTerm2") is a simple small scriptable t
 Stable release: |[2.1.0](https://github.com/yongchaofan/FLTerm) | License: | [GPL 3.0](https://github.com/yongchaofan/FLTerm/blob/master/LICENSE)
 --- |:---:|:---:|:---:
 **PC install:** | [Microsoft Store](https://www.microsoft.com/store/apps/9NXGN9LJTL05) | [32bit EXE](https://github.com/yongchaofan/FLTerm/releases/download/2.1.0/FLTerm.exe) | [64bit EXE](https://github.com/yongchaofan/FLTerm/releases/download/2.1.0/FLTerm64.exe)
-**Mac install:** | [Apple store](https://apps.apple.com/us/app/id1522389053) | [FLTerm.pkg](https://github.com/yongchaofan/FLTerm/releases/download/2.0.0/FLTerm.pkg)
+**Mac install:** | [Apple store](https://apps.apple.com/us/app/id1522389053) | [FLTerm.pkg](https://github.com/yongchaofan/FLTerm/releases/download/2.1.0/FLTerm.pkg)
 
 <video width="960" height="540" controls>
 <source src="tinyTerm2.mp4" type="video/mp4">
