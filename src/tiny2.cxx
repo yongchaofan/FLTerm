@@ -1,11 +1,11 @@
 //
-// "$Id: tiny2.cxx 29048 2021-08-31 22:05:10 $"
+// "$Id: tiny2.cxx 28739 2024-12-23 22:05:10 $"
 //
 // FLTerm2 -- FLTK based terminal emulator
 //
 //    example application using the Fl_Term widget.
 //
-// Copyright 2017-2021 by Yongchao Fan.
+// Copyright 2017-2024 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -26,7 +26,7 @@ const char ABOUT_TERM2[]="\r\n\n\
 \t    * drag&drop text to run commands in batch\r\n\n\
 \t    * drag&drop files to transfer to remote host\r\n\n\
 \t    * scripting interface at xmlhttp://127.0.0.1:%d\r\n\n\n\
-\tVersion 2.1 ©2018-2021 Yongchao Fan\r\n\n\
+\tVersion 2.2 ©2018-2024 Yongchao Fan\r\n\n\
 \thttp://yongchaofan.github.io/FLTerm\r\n\n";
 const char FLTERM[]="\r\033[32mFLTerm > \033[37m";
 
@@ -114,13 +114,13 @@ const char *file_chooser(const char *title, const char *filter, int type)
 void about_cb(Fl_Widget *w, void *data)
 {
 	char buf[4096];
-	sprintf(buf, ABOUT_TERM2, httport);
+	snprintf(buf, 4096, ABOUT_TERM2, httport);
 	pTerm->disp(buf);
 }
-const char *kb_gets(const char *prompt, int echo)
+const char *kb_gets(unsigned char *prompt, int echo)
 {
 	if ( !pTerm->live() ) return NULL;
-	return pTerm->gets(prompt, echo);
+	return pTerm->gets((const char *)prompt, echo);
 }
 void resize_window(int cols, int rows)
 {
@@ -326,7 +326,7 @@ void protocol_cb(Fl_Widget *w)
 #ifdef WIN32
 		char port[32]="\\\\.\\";
 		for ( int i=1; i<32; i++ ) {	//auto detect serial ports
-			sprintf(port+4, "COM%d", i);
+			snprintf(port+4, 28, "COM%d", i);
 			HANDLE hPort = CreateFileA(port, GENERIC_READ, 0, NULL,
 											OPEN_EXISTING, 0, NULL);
 			if ( hPort!=INVALID_HANDLE_VALUE ) {
@@ -372,7 +372,7 @@ void connect_cb(Fl_Widget *w)
 	}
 	pConnectDlg->hide();
 	if ( pCmd->add(buf)!=0 )
-		pMenuBar->insert(pMenuBar->find_index("Script")-1, 
+		pMenuBar->insert(pMenuBar->find_index("Options")-1, 
 							buf+1, 0, menu_host_cb);
 	term_connect(buf+1);
 }
@@ -440,7 +440,7 @@ void font_cb(Fl_Widget *, long)
 		int j = 1;
 		for (int i=6; i<=32 || i<s[n-1]; i++) {
 			char buf[20];
-			sprintf(buf,"%d",i);
+			snprintf(buf, 20, "%d", i);
 			sizeobj->add(buf);
 			if ( i==fontsize ) sizeobj->value(sizeobj->size());
 		}
@@ -449,7 +449,7 @@ void font_cb(Fl_Widget *, long)
 		int w = 0;
 		for (int i = 0; i < n; i++) {
 			char buf[20];
-			sprintf(buf,"@b%d",s[i]);
+			snprintf(buf, 20, "@b%d", s[i]);
 			sizeobj->add(buf);
 			if ( s[i]==fontsize ) sizeobj->value(sizeobj->size());
 		}
@@ -519,51 +519,21 @@ void font_dlg(Fl_Widget *w, void *data)
 /*******************************************************************************
 * scripting functions                                                          *
 *******************************************************************************/
-Fl_Window *pScriptDlg;
-Fl_Button *quitBtn, *pauseBtn;
-void quit_cb(Fl_Widget *w) 
-{
-	pTerm->quit_script();
-	w->parent()->hide();
-}
-void pause_cb(Fl_Widget *w)
-{
-	if ( pTerm->script_running() )
-		pauseBtn->label(pTerm->pause_script()?"Resume":"Pause");
-	else
-		w->parent()->hide();
-}
-void script_dlg_build()
-{
-	pScriptDlg = new Fl_Double_Window(220, 72, "Script Control");
-	{
-		pauseBtn = new Fl_Button(20, 20, 80, 32, "Pause");
-		pauseBtn->callback(pause_cb);
-		pauseBtn->labelsize(16);
-		quitBtn = new Fl_Button(120, 20, 80, 32, "Quit");
-		quitBtn->callback(quit_cb);
-		quitBtn->labelsize(16);
-	}
-	pScriptDlg->end();
-	pScriptDlg->set_modal();
-	pScriptDlg->resize(pWindow->x()+pWindow->w()-220, 
-							pWindow->y()+40, 220, 72);
-}
-void script_open( const char *fn )
+void script_open(const char *fn)
 {
 	pTerm->learn_prompt();
 	const char *ext = fl_filename_ext(fn);
 	if ( ext!=NULL ) {
 		if ( strcmp(ext, ".html")==0 ) {
 			char url[1024], msg[1024];
-			sprintf(url, "http://127.0.0.1:%d/%s", httport, fn);
+			snprintf(url, 1024, "http://127.0.0.1:%d/%s", httport, fn);
  			if ( !fl_open_uri(url, msg, 1024) ) fl_alert("Error:%s",msg);
 			return;
 		}
 	}
 #ifdef WIN32
 	char http_port[16];
-	sprintf(http_port, "%d", httport);
+	snprintf(http_port, 16, "%d", httport);
 	ShellExecuteA(NULL, "open", fn, http_port, NULL, SW_SHOW);
 #else
 	char cmd[4096]="open ";
@@ -577,7 +547,29 @@ void script_cb(Fl_Widget *w, void *data)
 	const Fl_Menu_Item script = menu[pMenuBar->value()];
 	script_open((char *)script.user_data());
 }
-
+void run_cb(Fl_Widget *w, void *data)
+{
+	const char *fname = file_chooser("script:", "All\t*.*", OPEN_FILE);
+	if ( fname!=NULL ) {
+		script_open(fname);
+		pMenuBar->insert(pMenuBar->find_index("Script")+5,
+					fl_filename_name(fname), 0, script_cb, strdup(fname));
+		char cmd[256]="!script ";
+		strncpy(cmd+8, fname, 248);
+		cmd[255] = 0;
+		pCmd->add(cmd);
+	}
+}
+void quit_cb(Fl_Widget *w, void *data) 
+{
+	pTerm->quit_script();
+}
+void pause_cb(Fl_Widget *w, void *data)
+{
+	if ( !pTerm->script_running() ) return;
+	pMenuBar->replace(pMenuBar->find_index("Script/Quit")+1,
+					pTerm->pause_script()?"Resume":"Pause");
+}
 /*******************************************************************************
 * command editor functions                                                     *
 *******************************************************************************/
@@ -656,49 +648,37 @@ bool show_editor(int x, int y, int w, int h)
 /*******************************************************************************
 * menu call back functions                                                     *
 *******************************************************************************/
+void logg_cb(Fl_Widget *w, void *data)
+{
+	const char *fname = pTerm->logg();
+	if ( fname==NULL ) {
+		fname = file_chooser("log session to file:",
+							"Log\t*.log", SAVE_FILE);
+		if ( fname==NULL ) return;
+	}
+	else {
+		if ( fl_choice("Stop logging to %s?", "No", "Yes", 0, fname)==0 )
+			 return;
+	}
+	pTerm->logg(fname);
+}
 void menu_cb(Fl_Widget *w, void *data)
 {
 	const char *menutext = pMenuBar->text();
 	if ( strcmp(menutext, "&Disconnect")==0 ) {
 		pTerm->disconn();
 	}
-	else if ( strncmp(menutext, "&Log", 4)==0 ) {
-		const char *fname = pTerm->logg();
-		if ( fname==NULL ) {
-			fname = file_chooser("log session to file:",
-								"Log\t*.log", SAVE_FILE);
-			if ( fname==NULL ) return;
-		}
-		else {
-			if ( fl_choice("Stop logging to %s?", "No", "Yes", 0, fname)==0 )
-				 return;
-		}
-		pTerm->logg(fname);
-	}
-	else if ( strcmp(menutext, "&Save...")==0 ) {
+	else if ( strcmp(menutext, "Save...")==0 ) {
 		const char *fname = file_chooser("save buffer to file:", 
 										 "Text\t*.txt", SAVE_FILE);
 		if ( fname!=NULL ) pTerm->save(fname);
 	}
 	else if ( strcmp(menutext, "Search...")==0 ) {
-		const char *keyword="";
-		while ( true ) {
-			keyword = fl_input("Search buffer for:", keyword);
-			if ( keyword==NULL ) break;
-			pTerm->srch(keyword);
-		}
-	}
-	else if ( strcmp(menutext, "&Run...")==0 ) {
-		const char *fname = file_chooser("script:", "All\t*.*", OPEN_FILE);
-		if ( fname!=NULL ) {
-			script_open(fname);
-			pMenuBar->insert(pMenuBar->find_index("Options")-1,
-						fl_filename_name(fname), 0, script_cb, strdup(fname));
-			char cmd[256]="!script ";
-			strncpy(cmd+8, fname, 248);
-			cmd[255] = 0;
-			pCmd->add(cmd);
-		}
+		const char *word="";
+		do {
+			word=fl_input("Search buffer for:", word);
+			if ( word!=NULL ) pTerm->srch(word);
+		} while ( word!=NULL );
 	}
 	else if ( strcmp(menutext, "Local &Edit")==0 ) {
 		localedit(!local_edit);
@@ -743,21 +723,24 @@ void close_cb(Fl_Widget *w, void *data)
 #define FL_CMD FL_ALT
 #endif
 Fl_Menu_Item menubar[] = {
-{"Term",	 	FL_CMD+'t',	0,		0,	FL_SUBMENU},
+{"Term",	 	0,			0,		0,	FL_SUBMENU},
 {"&Connect...", FL_CMD+'c',	connect_dlg},
-{"&Log...",			0,		menu_cb},
-{"&Save...",		0,		menu_cb},
-{"Search...",		0,		menu_cb},
-{"&Disconnect", FL_CMD+'d',	menu_cb,0,	FL_MENU_DIVIDER},
+{"&Disconnect", FL_CMD+'d',	menu_cb},
+{"Log...",		0,			logg_cb},
+{"Save...",		0,			menu_cb},
+{"Search...",	0,			menu_cb,0,	FL_MENU_DIVIDER},
 {0},
-{"Script",		FL_CMD+'s',	0,		0,	FL_SUBMENU},
-{"&Run...",			0,		menu_cb,0,	FL_MENU_DIVIDER},
-{0},
-{"Options", 	FL_CMD+'o',	0,		0,	FL_SUBMENU},
-{"&Font...",		0,		font_dlg},
+{"Options", 	0,			0,		0,	FL_SUBMENU},
+{"&Font...",	FL_CMD+'f',	font_dlg},
 {"Local &Edit",	FL_CMD+'e',	menu_cb,0,	FL_MENU_TOGGLE},
-{"Send to All",		0,		menu_cb,0,	FL_MENU_TOGGLE},
-{"Transparency",	0, 		menu_cb,0, 	FL_MENU_TOGGLE},
+{"Send to All",	0,			menu_cb,0,	FL_MENU_TOGGLE},
+{"Transparency",0, 			menu_cb,0, 	FL_MENU_TOGGLE},
+{0},
+{"Script",		0,			0,		0,	FL_SUBMENU},
+{"&Run...",		FL_CMD+'r',	run_cb},
+{"Quit",		0,			quit_cb},
+{"Pause",		0,			pause_cb,0,	FL_MENU_DIVIDER},
+{"$HOME",		0,			script_cb,	(void *)"$HOME"},
 #ifndef __APPLE__
 {"&About FLTerm",0, 		about_cb},
 #endif
@@ -822,16 +805,16 @@ void load_dict()
 						strncmp(line+1, "telnet ",7)==0 ||
 						strncmp(line+1, "serial ",7)==0 ||
 						strncmp(line+1, "netconf ",8)==0 ) {
-						pMenuBar->insert(pMenuBar->find_index("Script")-1,
+						pMenuBar->insert(pMenuBar->find_index("Options")-1,
 												line+1, 0, menu_host_cb);
 						pHostname->add(strchr(line+1, ' ')+1);
 					}
 					else if (strncmp(line+1, "script ", 7)==0 ) {
-						pMenuBar->insert(pMenuBar->find_index("Options")-1,
-											fl_filename_name(line+8), 0,
-											script_cb, strdup(line+8));
+						pMenuBar->insert(pMenuBar->find_index("Script")+5,
+										fl_filename_name(line+8), 0,
+										script_cb, strdup(line+8));
 					}
-					else if ( strncmp(line+1, "Boot ", 5)==0 ) {
+					else if (strncmp(line+1, "Boot ", 5)==0 ) {
 						script_open(line+6);
 					}
 				}
@@ -881,10 +864,10 @@ void title_cb(void *)
 			resize_window(termcols, termrows);
 		}
 	}
-	if ( pTerm->script_running() )
-		pScriptDlg->show();
-	else 
-		pScriptDlg->hide();
+	if ( pTerm->script_running() ) {
+		//change menu item status of "quit" and "pause"
+	}
+
 	Fl::repeat_timeout(1.0, title_cb);
 }
 int main(int argc, char **argv)
@@ -932,7 +915,6 @@ int main(int argc, char **argv)
 	resize_window(termcols, termrows);
 	pWindow->show();
 	setTransparency(pWindow, opacity);
-	script_dlg_build();
 
 	char cwd[4096];
 	fl_getcwd(cwd, 4096);	//save cwd set by load_dict()
@@ -977,18 +959,18 @@ void httpFile(int s1, char *file)
 	int len;
 	struct stat sb;
 	if ( stat( file, &sb ) ==-1 ) {
-		len=sprintf(reply, "HTTP/1.1 404 not found\nDate: %s\n", timebuf);
-		len+=sprintf(reply+len, "Server: FLTerm\nConnection: close");
-	    len+=sprintf(reply+len, "Content-Type: text/html\nContent-Length: 14");
-	    len+=sprintf(reply+len, "\n\nfile not found");
+		len=snprintf(reply, 4096, "HTTP/1.1 404 not found\nDate: %s\n", timebuf);
+		len+=snprintf(reply+len, 4096-len, "Server: FLTerm\nConnection: close");
+	    len+=snprintf(reply+len, 4096-len, "Content-Type: text/html\nContent-Length: 14");
+	    len+=snprintf(reply+len, 4096-len, "\n\nfile not found");
 		send(s1, reply, len, 0);
 		return;
 	}
 
 	FILE *fp = fopen( file, "rb" );
 	if ( fp!=NULL ) {
-		len=sprintf(reply, "HTTP/1.1 200 Ok\nDate: %s\n", timebuf);
-		len+=sprintf(reply+len, "Server: FLTerm\nConnection: close");
+		len=snprintf(reply, 4096, "HTTP/1.1 200 Ok\nDate: %s\n", timebuf);
+		len+=snprintf(reply+len, 4096-len, "Server: FLTerm\nConnection: close");
 
 		const char *filext=strrchr(file, '.');
 		int i=0;
@@ -996,12 +978,12 @@ void httpFile(int s1, char *file)
 			for ( int j=0; j<8; j++ )
 				if ( strcmp(filext, exts[j])==0 ) i=j;
 		}
-		len+=sprintf(reply+len,"Content-Type: %s\n", mime[i]);
+		len+=snprintf(reply+len, 4096-len, "Content-Type: %s\n", mime[i]);
 
 		long filesize = sb.st_size;
-		len+=sprintf(reply+len, "Content-Length: %ld\n", filesize);
+		len+=snprintf(reply+len, 4096-len, "Content-Length: %ld\n", filesize);
 		strftime(timebuf, sizeof(timebuf), RFC1123FMT, gmtime( &sb.st_mtime));
-		len+=sprintf(reply+len, "Last-Modified: %s\n\n", timebuf);
+		len+=snprintf(reply+len, 4096-len, "Last-Modified: %s\n\n", timebuf);
 
 		send(s1, reply, len, 0);
 		while ( (len=fread(reply, 1, 4096, fp))>0 )
@@ -1033,7 +1015,7 @@ void httpd( int s0 )
 			}
 			else {				//CGI request
 				replen = term_command(++cmd, &reply);
-				int len = sprintf(buf, HEADER, replen);
+				int len = snprintf(buf, 4096, HEADER, replen);
 				if ( send(http_s1, buf, len, 0)<0 ) break;
 				len = 0;
 				while ( replen>0 ) {
