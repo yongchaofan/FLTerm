@@ -1,9 +1,9 @@
 //
-// "$Id: Fl_Term.cxx 38158 2020-10-08 10:08:20 $"
+// "$Id: Fl_Term.cxx 38177 2024-12-24 10:08:20 $"
 //
 // Fl_Term -- A terminal emulator widget
 //
-// Copyright 2017-2020 by Yongchao Fan.
+// Copyright 2017-2024 by Yongchao Fan.
 //
 // This library is free software distributed under GNU GPL 3.0,
 // see the license at:
@@ -245,7 +245,7 @@ const unsigned int VT_attr[] = {
 };
 void Fl_Term::draw()
 {	
-	pending(false);
+	redraw_pending=false;
 	fl_color(color());
 	fl_rectf(x(),y(),w(),h());
 	fl_font(font_face, font_size);
@@ -634,7 +634,7 @@ void Fl_Term::append( const char *newtext, int len )
 		char *p=buff+cursor_x-iPrompt;
 		if ( strncmp(p, sPrompt, iPrompt)==0 ) bPrompt=true;
 	}
-	pending(true);
+	redraw_pending=true;
 	append_mtx.unlock();
 }
 void Fl_Term::buff_clear(int offset, int len)
@@ -1102,7 +1102,7 @@ void Fl_Term::save(const char *fn)
 		}
 		fclose(fp);
 		char msg[256];
-		sprintf(msg, "\r\n\033[32m***%d bytes saved to %s***\03337m\r\n",
+		snprintf(msg, 256, "\r\n\033[32m***%d bytes saved to %s***\03337m\r\n",
 				cursor_x, fn);
 		disp(msg);
 	}
