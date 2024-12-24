@@ -1,6 +1,6 @@
 ## Introduction
 
-FLTerm(Fast Light Terminal, formally "tinyTerm2") is a simple small scriptable terminal emulator, with unique features like **command autocompletion**, **scp integration**, **batch automation**, and **scripting**. It is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). now cross platform with tabs support, and it is still very small, win64 executable is 825KB at current release, MacOS install package just 1.6MB
+FLTerm(Fast Light Terminal, formally "tinyTerm2") is a simple small scriptable terminal emulator, with unique features like **command autocompletion**, **scp integration**, **batch automation**, and **scripting**. It is a rewrite of [tinyTerm](https://yongchaofan.github.io/tinyTerm) using C++, [FLTK](http://fltk.org), and [libssh2](http://libssh2.org). now cross platform with tabs support, and it is still very small, win64 executable is 825KB at current release, MacOS install package just below 1MB
 
 Stable release: |[2.1.0](https://github.com/yongchaofan/FLTerm) | License: | [GPL 3.0](https://github.com/yongchaofan/FLTerm/blob/master/LICENSE)
 --- |:---:|:---:|:---:
@@ -27,7 +27,7 @@ Your browser does not support the video tag.
 >
 > ### Command history and autocompletion
 > 
-> Local Edit Mode was a feature on physical terminals used to save time on slow connections. On tinyTerm2 local edit mode is used to implement command history and command auto-completion, which is useful to help users remember long commands and save time on typing.
+> Local Edit Mode was a feature on physical terminals used to save time on slow connections. On FLTerm local edit mode is used to implement command history and command auto-completion, which is useful to help users remember long commands and save time on typing.
 >
 > When local edit mode is enabled, key presses are not sent to remote host until "Enter", "Tab" or "?" key is pressed, and the input is auto completed using command history, user can also press "up" or "down" key to bring up the command history list, then select command from the list to send to host. Every command typed in local edit mode is added to command history, which saved to tinyTerm.hist at exit, then loaded into memory at the next start of tinyTerm. 
 >  
@@ -72,7 +72,7 @@ for example:
 	
 Notice the "!" just before "Selection" in the last example, when a command is started with "!", it's being executed by tinyTerm instead of sent to remote host, There are about 30 tinyTerm commands supported for the purpose of making connections, setting options, sending commands, scp files, turning up ssh2 tunnels, see appendix for the list.
 
-The snippet below shows how to call the xmlhttp interfaces from javascript. An example in github/tinyTerm2/scripts, xmlhttp_get.html, demostrates a simple webpage, which takes a command from input field, send it through tinyTerm2, and present the result in browser
+The snippet below shows how to call the xmlhttp interfaces from javascript. An example in github/FLTerm/scripts, xmlhttp_get.html, demostrates a simple webpage, which takes a command from input field, send it through FLTerm, and present the result in browser
 
 ```js
 var xhr = new XMLHttpRequest();
@@ -92,7 +92,7 @@ The following commands can be used programatically for scripting
     !sftp -P 2222 jun01 sftp to host jun01 port 2222
     !netconf rtr1       netconf to port 830(default) of host rtr1
     !disconn            disconnect from current connection
-    !Tab                open a new tab on tinyTerm2
+    !Tab                open a new tab
 
     !Clear              set clear scroll back buffer
     !Prompt $%20        set command prompt to “$ “, for CLI script
