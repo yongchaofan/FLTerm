@@ -1,12 +1,10 @@
 #Makefile for macOS with openssl crypto backend
 HEADERS = src/host.h src/ssh2.h src/Fl_Term.h src/Fl_Browser_Input.h
 OBJS = obj/tiny2.o obj/ssh2.o obj/host.o obj/Fl_Term.o obj/Fl_Browser_Input.o obj/cocoa_wrapper.o
-LIBS = /usr/local/lib/libssh2.a /usr/local/lib/libssl.a /usr/local/lib/libcrypto.a
-#libmbedcrypto.a
+LIBS = /usr/local/lib/libssh2.a
 		
 CFLAGS= -std=c++11 ${shell fltk-config --cxxflags}
-LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++ -lz 
-#-lssl -lcrypto 
+LDFLAGS = ${shell fltk-config --ldstaticflags} -lstdc++ -lz -lssl -lcrypto 
 
 all: tinyTerm2 
 
