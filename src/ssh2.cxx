@@ -1,5 +1,5 @@
 //
-// "$Id: ssh2.cxx 39364 2020-08-21 11:55:10 $"
+// "$Id: ssh2.cxx 39367 2023-06-16 11:55:10 $"
 //
 // sshHost sftpHost
 //
@@ -125,7 +125,7 @@ static const char *errmsgs[] = {
 "Channel failure", "pty failure", "Shell failure", "Subsystem failure"
 };
 
-const char *kb_gets(const char *prompt, int echo);	//define in tiny2.cxx
+const char *kb_gets(unsigned char *prompt, int echo);	//define in tiny2.cxx
 sshHost::sshHost(const char *name) : tcpHost(name)
 {
 	port = 0;
@@ -209,14 +209,14 @@ int sshHost::ssh_knownhost()
 
 	const char *key = libssh2_session_hostkey(session, &len, &type);
 	if ( key==NULL ) return -4;
-	buff_len=sprintf(keybuf, "%s key fingerprint", keytypes[type]);
+	buff_len=snprintf(keybuf, 256, "%s key fingerprint", keytypes[type]);
 	if ( type>0 ) type++;
 
 	const char *fingerprint = libssh2_hostkey_hash(session,
 										LIBSSH2_HOSTKEY_HASH_SHA1);
 	if ( fingerprint==NULL ) return -4;
 	for( int i=0; i<20; i++, buff_len+=3)
-		sprintf(keybuf+buff_len, ":%02x", (unsigned char)fingerprint[i] );
+		snprintf(keybuf+buff_len, 256-buff_len, ":%02x", (unsigned char)fingerprint[i] );
 
 	LIBSSH2_KNOWNHOSTS *nh = libssh2_knownhost_init(session);
 	if ( nh==NULL ) return -4;

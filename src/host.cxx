@@ -249,7 +249,7 @@ int comHost::write(const char *buf, int len)
 #else
 int comHost::read()
 {
-	speed_t baud = B9600;
+	speed_t baud = atoi(settings);
 	ttySfd = open(portname, O_RDWR|O_NDELAY);
 	if ( ttySfd<0 ) {
 		term_puts("Port openning", -1);
@@ -259,11 +259,6 @@ int comHost::read()
 
 	struct termios SerialPortSettings;
 	tcgetattr(ttySfd, &SerialPortSettings);
-	if ( 	  strncmp(settings, "230400", 6)==0 )baud = B230400;
-	else if ( strncmp(settings, "115200", 6)==0 )baud = B115200;
-	else if ( strncmp(settings, "57600", 5)==0 ) baud = B57600;
-	else if ( strncmp(settings, "38400", 5)==0 ) baud = B38400;
-	else if ( strncmp(settings, "19200", 5)==0 ) baud = B19200;
 	cfsetispeed(&SerialPortSettings, baud);
 	cfsetospeed(&SerialPortSettings, baud);
 	cfmakeraw(&SerialPortSettings);

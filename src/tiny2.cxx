@@ -372,7 +372,7 @@ void connect_cb(Fl_Widget *w)
 	}
 	pConnectDlg->hide();
 	if ( pCmd->add(buf)!=0 )
-		pMenuBar->insert(pMenuBar->find_index("Options")-1, 
+		pMenuBar->insert(pMenuBar->find_index("Script")-1, 
 							buf+1, 0, menu_host_cb);
 	term_connect(buf+1);
 }
@@ -552,7 +552,7 @@ void run_cb(Fl_Widget *w, void *data)
 	const char *fname = file_chooser("script:", "All\t*.*", OPEN_FILE);
 	if ( fname!=NULL ) {
 		script_open(fname);
-		pMenuBar->insert(pMenuBar->find_index("Script")+5,
+		pMenuBar->insert(pMenuBar->find_index("Options")-1,
 					fl_filename_name(fname), 0, script_cb, strdup(fname));
 		char cmd[256]="!script ";
 		strncpy(cmd+8, fname, 248);
@@ -691,6 +691,9 @@ void menu_cb(Fl_Widget *w, void *data)
 		opacity =  (opacity==1.0) ? 0.875 : 1.0;
 		setTransparency(pWindow, opacity);
 	}
+	else if ( strcmp(menutext, "Ctrl-Shift-6")==0 ) {
+		pTerm->send("\036");//ASCII code for "Record Separator"
+	}
 }
 void close_cb(Fl_Widget *w, void *data)
 {
@@ -730,17 +733,20 @@ Fl_Menu_Item menubar[] = {
 {"Save...",		0,			menu_cb},
 {"Search...",	0,			menu_cb,0,	FL_MENU_DIVIDER},
 {0},
+{"Script",		0,			0,		0,	FL_SUBMENU},
+{"&Run...",		FL_CMD+'r',	run_cb},
+{"Quit",		0,			quit_cb},
+{"Pause",		0,			pause_cb,0,	FL_MENU_DIVIDER},
+{0},
 {"Options", 	0,			0,		0,	FL_SUBMENU},
 {"&Font...",	FL_CMD+'f',	font_dlg},
 {"Local &Edit",	FL_CMD+'e',	menu_cb,0,	FL_MENU_TOGGLE},
 {"Send to All",	0,			menu_cb,0,	FL_MENU_TOGGLE},
 {"Transparency",0, 			menu_cb,0, 	FL_MENU_TOGGLE},
 {0},
-{"Script",		0,			0,		0,	FL_SUBMENU},
-{"&Run...",		FL_CMD+'r',	run_cb},
-{"Quit",		0,			quit_cb},
-{"Pause",		0,			pause_cb,0,	FL_MENU_DIVIDER},
+{"eXtras",		0,			0,		0,	FL_SUBMENU},
 {"$HOME",		0,			script_cb,	(void *)"$HOME"},
+{"Ctrl-Shift-6",FL_CMD+'^',	menu_cb},
 #ifndef __APPLE__
 {"&About FLTerm",0, 		about_cb},
 #endif
@@ -805,12 +811,12 @@ void load_dict()
 						strncmp(line+1, "telnet ",7)==0 ||
 						strncmp(line+1, "serial ",7)==0 ||
 						strncmp(line+1, "netconf ",8)==0 ) {
-						pMenuBar->insert(pMenuBar->find_index("Options")-1,
+						pMenuBar->insert(pMenuBar->find_index("Script")-1,
 												line+1, 0, menu_host_cb);
 						pHostname->add(strchr(line+1, ' ')+1);
 					}
 					else if (strncmp(line+1, "script ", 7)==0 ) {
-						pMenuBar->insert(pMenuBar->find_index("Script")+5,
+						pMenuBar->insert(pMenuBar->find_index("Options")-1,
 										fl_filename_name(line+8), 0,
 										script_cb, strdup(line+8));
 					}
