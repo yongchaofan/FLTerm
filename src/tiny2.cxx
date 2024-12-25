@@ -1,5 +1,5 @@
 //
-// "$Id: tiny2.cxx 28739 2024-12-23 22:05:10 $"
+// "$Id: tiny2.cxx 28931 2024-12-25 22:05:10 $"
 //
 // FLTerm2 -- FLTK based terminal emulator
 //
